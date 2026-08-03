@@ -9,7 +9,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Lock, Trash2, CheckCircle2 } from 'lucide-react';
+import { Lock, Trash2, ShieldCheck } from 'lucide-react';
 
 interface DisableSharingModalProps {
   open: boolean;
@@ -27,7 +27,7 @@ export function DisableSharingModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-5 rounded-2xl sm:rounded-3xl bg-card border-border shadow-2xl">
-        <DialogHeader className="space-y-2 text-left">
+        <DialogHeader className="space-y-1.5 text-left">
           <div className="w-10 h-10 rounded-2xl bg-destructive/10 text-destructive border border-destructive/20 flex items-center justify-center mb-1">
             <Trash2 className="w-5 h-5" />
           </div>
@@ -35,30 +35,13 @@ export function DisableSharingModal({
             Disable Cloud Sharing?
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-            Returning this bill to local-only mode will revoke all external access.
+            This will delete the cloud copy and revoke access for all shared links.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Consequences Checklist */}
-        <div className="space-y-2.5 py-2">
-          <div className="p-3 rounded-2xl bg-muted/40 border border-border/70 space-y-2 text-xs">
-            <div className="flex items-start gap-2 text-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-destructive mt-1.5 shrink-0" />
-              <span>Other participants and link holders will <strong>immediately lose access</strong>.</span>
-            </div>
-            <div className="flex items-start gap-2 text-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-destructive mt-1.5 shrink-0" />
-              <span>The cloud copy on Ledger&apos;s servers will be <strong>permanently deleted</strong>.</span>
-            </div>
-            <div className="flex items-start gap-2 text-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-destructive mt-1.5 shrink-0" />
-              <span>Previously distributed share links will permanently return a <strong>404 Not Found</strong> page.</span>
-            </div>
-            <div className="flex items-start gap-2 text-emerald-600 dark:text-emerald-400 font-medium pt-1 border-t border-border/50">
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
-              <span>Your local copy, split history, and items will be <strong>100% preserved</strong> on this device.</span>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 py-1 px-1 text-[11px] text-muted-foreground">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <span>Your local bill and items remain safely saved on this device.</span>
         </div>
 
         <DialogFooter className="pt-2 gap-2 flex-row justify-end">
@@ -81,7 +64,7 @@ export function DisableSharingModal({
             className="rounded-xl font-bold text-xs gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>{isRevoking ? 'Revoking...' : 'Disable Sharing & Delete Cloud Copy'}</span>
+            <span>{isRevoking ? 'Revoking...' : 'Disable Sharing'}</span>
           </Button>
         </DialogFooter>
       </DialogContent>
