@@ -48,11 +48,13 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
       setCurrency(defaultCurrency);
       fetchGroups();
       const initial = defaultGroupId || initialGroupId;
-      if (initial) {
+      if (initial && initial !== 'none') {
         setGroupId(initial);
+      } else {
+        setGroupId('none');
       }
     }
-  }, [open, defaultGroupId, initialGroupId, fetchGroups]);
+  }, [open, defaultGroupId, initialGroupId, fetchGroups, defaultCurrency]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
