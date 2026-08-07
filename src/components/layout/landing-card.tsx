@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronRight, Clock, MapPin, Folder, Crown, Sparkles, Shield, Globe, Users, AlertTriangle } from "lucide-react";
+import { ChevronRight, Clock, MapPin, Folder, Crown, Sparkles, Shield, Globe, Users, AlertTriangle, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import type { BillSharingStatus, BillVisibility } from '@/lib/local-db/types';
@@ -64,6 +64,7 @@ export interface LandingCardProps {
     extraMetadata?: React.ReactNode;
     isDraft?: boolean;
     onClick: () => void;
+    onDelete?: () => void;
 }
 
 export function LandingCard({
@@ -82,6 +83,7 @@ export function LandingCard({
     extraMetadata,
     isDraft = false,
     onClick,
+    onDelete,
 }: LandingCardProps) {
     const iconContainerClass = (() => {
         if (iconVariant === 'primary') {
@@ -165,9 +167,9 @@ export function LandingCard({
 
                             {/* Sharing Status Badge */}
                             {sharingStatus === 'local' && (
-                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/70 shrink-0 inline-flex items-center gap-1 shadow-2xs">
-                                    <Shield className="w-2.5 h-2.5 text-muted-foreground" />
-                                    <span>Only on this device</span>
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1 shadow-2xs">
+                                    <Shield className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                                    <span>Local</span>
                                 </span>
                             )}
                             {sharingStatus === 'shared' && visibility === 'public' && (
@@ -196,7 +198,7 @@ export function LandingCard({
                                     <span>
                                         {typeof timestamp === 'string'
                                             ? formatDistanceToNow(new Date(timestamp), { addSuffix: true })
-                                            : formatDistanceToNow(timestamp, { addSuffix: true })}
+                                             : formatDistanceToNow(timestamp, { addSuffix: true })}
                                     </span>
                                 </div>
                             )}
@@ -214,8 +216,22 @@ export function LandingCard({
                         </div>
                     </div>
 
-                    {/* Right Chevron Button */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Right Actions */}
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                        {onDelete && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete();
+                                }}
+                                className="h-8 w-8 sm:h-9 sm:w-9 flex items-center justify-center rounded-xl text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all active:scale-95"
+                                title="Delete"
+                                aria-label="Delete"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        )}
                         <div className={`h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-muted transition-all duration-300 ${chevronHoverClass}`}>
                             <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>

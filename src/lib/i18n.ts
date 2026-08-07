@@ -54,7 +54,7 @@ export const translations = {
     licenses: 'Open Source Licenses',
 
     // Sharing
-    onlyOnThisDevice: 'Only on this device',
+    onlyOnThisDevice: 'Local',
     sharedRestricted: 'Shared (Participants)',
     sharedPublic: 'Shared (Public Link)',
     pendingRevocation: 'Revocation Pending',
@@ -114,7 +114,7 @@ export const translations = {
     licenses: 'Giấy phép mã nguồn mở',
 
     // Sharing
-    onlyOnThisDevice: 'Chỉ trên máy này',
+    onlyOnThisDevice: 'Cục bộ',
     sharedRestricted: 'Đã chia sẻ (Thành viên)',
     sharedPublic: 'Đã chia sẻ (Công khai)',
     pendingRevocation: 'Đang hủy chia sẻ...',

@@ -39,8 +39,10 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
         lastSaved,
         globalCharges,
         dbStatus,
+        deleteBill,
+        resetBill,
     } = useBillStore();
-    const { groups, fetchGroups } = useGroupStore();
+    const { groups, fetchGroups, deleteGroup } = useGroupStore();
     const { user, signInWithGoogle, signOut } = useAuthStore();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
@@ -70,6 +72,20 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
             setHasCreatedSample(true);
         }
         onLoadDemo?.();
+    };
+
+    const handleDeleteBill = async (id: string, name?: string) => {
+        if (!window.confirm(`Are you sure you want to delete "${name || 'this bill'}"? This action cannot be undone.`)) {
+            return;
+        }
+        await deleteBill(id);
+    };
+
+    const handleDeleteGroup = async (id: string, name: string) => {
+        if (!window.confirm(`Are you sure you want to delete "${name}"?\n\nThe bills inside this group will not be deleted; they will simply be unlinked.`)) {
+            return;
+        }
+        await deleteGroup(id);
     };
 
     useEffect(() => {
@@ -335,6 +351,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         role={group.is_owner ? 'owner' : 'participant'}
                                         timestamp={group.updated_at}
                                         onClick={() => onSelectGroup?.(group.id)}
+                                        onDelete={group.is_owner ? () => handleDeleteGroup(group.id, group.name) : undefined}
                                     />
                                 ))
                             )
@@ -370,6 +387,11 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                             </div>
                                         }
                                         onClick={() => onSelectBill('current')}
+                                        onDelete={() => {
+                                            if (window.confirm('Discard current draft?')) {
+                                                resetBill();
+                                            }
+                                        }}
                                     />
                                 )}
 
@@ -388,6 +410,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         timestamp={bill.updated_at}
                                         location={bill.location}
                                         onClick={() => onSelectBill(bill.id)}
+                                        onDelete={() => handleDeleteBill(bill.id, bill.name)}
                                     />
                                 ))}
                             </>
