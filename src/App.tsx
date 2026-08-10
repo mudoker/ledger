@@ -350,21 +350,39 @@ function App() {
     const newBillId = crypto.randomUUID();
 
     const matchedGroup = targetGroupId ? useGroupStore.getState().groups.find(g => g.id === targetGroupId) : null;
+    const groupParticipants = (matchedGroup as any)?.participants || (currentGroup?.id === targetGroupId ? (currentGroup as any)?.participants : []) || [];
+
+    const inheritedPeople = [
+      {
+        id: hostId,
+        name: hostName,
+        sponsorAmount: 0,
+        paidAmount: 0,
+        userId: user?.id || null,
+        email: user?.email || null,
+      },
+    ];
+
+    for (const gp of groupParticipants) {
+      const isHost = (gp.email && gp.email.toLowerCase() === user?.email?.toLowerCase()) ||
+                     (gp.name.trim().toLowerCase() === hostName.trim().toLowerCase());
+      if (!isHost) {
+        inheritedPeople.push({
+          id: crypto.randomUUID(),
+          name: gp.name,
+          sponsorAmount: 0,
+          paidAmount: 0,
+          userId: gp.userId || null,
+          email: gp.email || null,
+        });
+      }
+    }
 
     useBillStore.setState({
       currentBillId: newBillId,
       groupId: targetGroupId || null,
       groupName: matchedGroup?.name || null,
-      people: [
-        {
-          id: hostId,
-          name: hostName,
-          sponsorAmount: 0,
-          paidAmount: 0,
-          userId: user?.id || null,
-          email: user?.email || null,
-        },
-      ],
+      people: inheritedPeople,
       hostId: hostId,
     });
 
@@ -393,7 +411,7 @@ function App() {
     }
   };
 
-  const handleSelectBill = (id: string | 'current') => {
+  const handleSelectBill = async (id: string | 'current') => {
     if (id === 'current') {
       if (!user) return;
       setView('editor');
@@ -413,8 +431,30 @@ function App() {
     }
     url.searchParams.set('id', id);
     window.history.pushState({}, '', url.toString());
+
+    // Clear previous bill state to avoid briefly flashing the wrong bill
+    useBillStore.setState({
+      currentBillId: id,
+      billName: '',
+      people: [],
+      items: [],
+      globalCharges: [],
+      isReadOnly: false,
+    });
     setView('editor');
-    fetchBill(id);
+
+    try {
+      await fetchBill(id);
+    } catch (err: any) {
+      console.error("Fetch bill error:", err);
+      setRequestedBillId(id);
+      if (err?.status === 403 || err?.isForbidden) {
+        setView('access-denied');
+      } else {
+        setNotFoundError(err?.message || 'Shared bill is unavailable');
+        setView('not-found');
+      }
+    }
   };
 
   const handleSelectGroup = (groupId: string) => {
