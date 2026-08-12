@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { fetchExchangeRate, convertCurrency } from '@/lib/currency';
 import { useGroupStore } from './useGroupStore';
 import { useAppSettingsStore } from './useAppSettingsStore';
+import { useAuthStore } from './useAuthStore';
 import { getLocalDb } from '@/lib/local-db';
 import { syncManager } from '@/lib/local-db/sync-manager';
 import type { BillSharingStatus, BillVisibility, LocalBillRecord } from '@/lib/local-db/types';
@@ -109,6 +110,7 @@ interface BillState {
     // Persistence & Sharing Actions
     saveToLocal: () => Promise<string | null>;
     saveToDb: () => Promise<string | null>;
+    deleteBill: (id?: string) => Promise<boolean>;
     enableSharing: (visibility: BillVisibility) => Promise<boolean>;
     disableSharing: () => Promise<boolean>;
     updateSharingVisibility: (visibility: BillVisibility) => Promise<boolean>;
@@ -154,6 +156,44 @@ export const useBillStore = create<BillState>()(
                 const matchedGroup = groupId ? groupStore.groups.find(g => g.id === groupId) : null;
                 const oldGroupId = get().groupId;
 
+                // If linking to a group, inherit group participants!
+                if (groupId) {
+                    let groupParticipants = matchedGroup?.participants;
+                    if (!groupParticipants || groupParticipants.length === 0) {
+                        try {
+                            const gd = await groupStore.fetchGroup(groupId);
+                            if (gd && (gd as any).participants?.length) {
+                                groupParticipants = (gd as any).participants;
+                            }
+                        } catch {}
+                    }
+
+                    if (groupParticipants && groupParticipants.length > 0) {
+                        const currentPeople = [...get().people];
+                        let addedAny = false;
+                        for (const gp of groupParticipants) {
+                            const exists = currentPeople.some(p =>
+                                (p.email && gp.email && p.email.toLowerCase() === gp.email.toLowerCase()) ||
+                                p.name.trim().toLowerCase() === gp.name.trim().toLowerCase()
+                            );
+                            if (!exists) {
+                                currentPeople.push({
+                                    id: crypto.randomUUID(),
+                                    name: gp.name,
+                                    sponsorAmount: 0,
+                                    paidAmount: 0,
+                                    userId: gp.userId || null,
+                                    email: gp.email || null,
+                                });
+                                addedAny = true;
+                            }
+                        }
+                        if (addedAny) {
+                            set({ people: currentPeople });
+                        }
+                    }
+                }
+
                 set({
                     groupId,
                     groupName: matchedGroup?.name || null
@@ -177,7 +217,39 @@ export const useBillStore = create<BillState>()(
                     window.history.replaceState({}, '', url.toString());
                 }
 
-                await get().saveToDb();
+                // Save locally immediately
+                await get().saveToLocal();
+
+                // Also notify server of group assignment/unassignment if bill has an ID
+                const billId = get().currentBillId;
+                if (billId) {
+                    try {
+                        await fetch('/api/bills', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                id: billId,
+                                isShared: get().sharingStatus === 'shared',
+                                visibility: get().visibility,
+                                shareToken: get().shareToken,
+                                data: {
+                                    name: get().billName,
+                                    location: get().location,
+                                    people: get().people,
+                                    items: get().items,
+                                    globalCharges: get().globalCharges,
+                                    hostId: get().hostId,
+                                    qrCode: get().qrCode,
+                                    currency: get().currency,
+                                    groupId: groupId || null,
+                                    group_id: groupId || null,
+                                    visibility: get().visibility,
+                                    shareToken: get().shareToken,
+                                }
+                            })
+                        });
+                    } catch {}
+                }
 
                 await groupStore.fetchGroups();
                 if (groupId) {
@@ -186,6 +258,7 @@ export const useBillStore = create<BillState>()(
                 if (oldGroupId && oldGroupId !== groupId) {
                     await groupStore.fetchGroup(oldGroupId);
                 }
+                await get().fetchHistory();
             },
 
             transferBillOwnership: async (newOwnerId: string) => {
@@ -382,7 +455,7 @@ export const useBillStore = create<BillState>()(
                     qrCode: state.qrCode,
                     groupId: state.groupId,
                     groupName: state.groupName,
-                    ownerId: null,
+                    ownerId: useAuthStore.getState().user?.id || null,
                     people: state.people,
                     items: state.items,
                     globalCharges: state.globalCharges,
@@ -482,6 +555,46 @@ export const useBillStore = create<BillState>()(
                     set({ isSaving: false });
                 }
                 return billId;
+            },
+
+            deleteBill: async (id?: string) => {
+                const billId = id || get().currentBillId;
+                if (!billId) return false;
+
+                // 1. Delete from local DB
+                try {
+                    const localDb = getLocalDb();
+                    await localDb.deleteBill(billId);
+                } catch (e) {
+                    console.warn('Failed to delete bill locally:', e);
+                }
+
+                // 2. Delete from server API
+                try {
+                    await fetch(`/api/bills/${billId}`, { method: 'DELETE' });
+                } catch (e) {
+                    console.warn('Failed to delete bill on server:', e);
+                }
+
+                // 3. Reset active bill if currently loaded
+                if (get().currentBillId === billId) {
+                    get().resetBill();
+                }
+
+                // 4. Update billHistory state immediately
+                set((state) => ({
+                    billHistory: state.billHistory.filter((b) => b.id !== billId),
+                }));
+
+                // 5. Refresh groups and history
+                await get().fetchHistory();
+                await useGroupStore.getState().fetchGroups();
+                const curGroup = useGroupStore.getState().currentGroup;
+                if (curGroup) {
+                    await useGroupStore.getState().fetchGroup(curGroup.id);
+                }
+
+                return true;
             },
 
             enableSharing: async (visibility: BillVisibility) => {
@@ -712,9 +825,10 @@ export const useBillStore = create<BillState>()(
                     const localDb = getLocalDb();
                     const localBills = await localDb.listBills();
                     for (const b of localBills) {
-                        const rawSubtotal = b.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                        const bItems = b.items || [];
+                        const rawSubtotal = bItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
                         let total = rawSubtotal;
-                        for (const ch of b.globalCharges) {
+                        for (const ch of (b.globalCharges || [])) {
                             if (ch.type === 'percent') {
                                 total += (rawSubtotal * ch.amount) / 100;
                             } else {
@@ -749,12 +863,24 @@ export const useBillStore = create<BillState>()(
                         const serverData: BillHistoryItem[] = await response.json();
                         for (const sb of serverData) {
                             const existing = historyMap.get(sb.id);
-                            historyMap.set(sb.id, {
-                                ...sb,
-                                sharingStatus: existing?.sharingStatus || 'shared',
-                                visibility: existing?.visibility || sb.visibility || 'restricted',
-                                shareToken: existing?.shareToken || sb.shareToken || null,
-                            });
+                            if (existing) {
+                                historyMap.set(sb.id, {
+                                    ...sb,
+                                    name: existing.name || sb.name,
+                                    group_id: existing.group_id,
+                                    group_name: existing.group_name,
+                                    sharingStatus: existing.sharingStatus || 'shared',
+                                    visibility: existing.visibility || sb.visibility || 'restricted',
+                                    shareToken: existing.shareToken || sb.shareToken || null,
+                                });
+                            } else {
+                                historyMap.set(sb.id, {
+                                    ...sb,
+                                    sharingStatus: 'shared',
+                                    visibility: sb.visibility || 'restricted',
+                                    shareToken: sb.shareToken || null,
+                                });
+                            }
                         }
                     }
                 } catch {

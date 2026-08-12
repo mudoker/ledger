@@ -60,6 +60,7 @@ export interface LocalGroupRecord {
   description: string | null;
   currency: string;
   ownerId: string | null;
+  participants?: LocalPerson[];
   createdAt: string;
   updatedAt: string;
 }

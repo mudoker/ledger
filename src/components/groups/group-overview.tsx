@@ -28,6 +28,8 @@ import {
   Settings2,
   X,
   Scale,
+  Users,
+  Shield,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
@@ -48,14 +50,35 @@ interface GroupOverviewProps {
 }
 
 export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupOverviewProps) {
-  const { deleteGroup, fetchGroup } = useGroupStore();
+  const { deleteGroup, fetchGroup, addGroupParticipant, removeGroupParticipant } = useGroupStore();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isCreateBillModalOpen, setIsCreateBillModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'summary'>('bills');
+  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'members' | 'summary'>('bills');
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [isAddingMember, setIsAddingMember] = useState(false);
+
+  const handleAddMember = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!newMemberName.trim()) return;
+    setIsAddingMember(true);
+    try {
+      await addGroupParticipant(group.id, newMemberName.trim(), newMemberEmail.trim() || null);
+      setNewMemberName('');
+      setNewMemberEmail('');
+    } finally {
+      setIsAddingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (participantId: string, name: string) => {
+    if (!window.confirm(`Remove "${name}" from this group's participants?`)) return;
+    await removeGroupParticipant(group.id, participantId);
+  };
 
   const handleCopyLink = async () => {
     try {
@@ -262,6 +285,18 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             </button>
             <button
               type="button"
+              onClick={() => setActiveMainTab('members')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'members'
+                  ? 'bg-background text-foreground shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-primary" />
+              <span>Members ({group.participants?.length || 0})</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveMainTab('summary')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeMainTab === 'summary'
@@ -292,7 +327,95 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
           <GroupSummary group={group} onSelectBill={onSelectBill} />
         )}
 
-        {/* Tab 2: Bills View (Single-surface clean cards without item dropdowns) */}
+        {/* Tab 2: Group Members View */}
+        {activeMainTab === 'members' && (
+          <div className="space-y-4">
+            <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Users className="w-4 h-4 text-primary" /> Group Participants
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Participants added here are automatically inherited whenever a new bill is created in or linked to this group.
+                </p>
+              </div>
+
+              {group.is_owner && (
+                <form onSubmit={handleAddMember} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                  <Input
+                    placeholder="Participant Name (e.g. Sarah)"
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    className="h-9 text-xs rounded-xl flex-1 bg-muted/20"
+                  />
+                  <Input
+                    placeholder="Email (optional)"
+                    type="email"
+                    value={newMemberEmail}
+                    onChange={(e) => setNewMemberEmail(e.target.value)}
+                    className="h-9 text-xs rounded-xl sm:w-56 bg-muted/20"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={!newMemberName.trim() || isAddingMember}
+                    className="h-9 px-4 rounded-xl text-xs font-bold gap-1.5 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{isAddingMember ? 'Adding...' : 'Add Member'}</span>
+                  </Button>
+                </form>
+              )}
+            </div>
+
+            {/* Members List */}
+            {(!group.participants || group.participants.length === 0) ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-2 rounded-2xl border-2 border-dashed bg-muted/20 px-4">
+                <Users className="w-8 h-8 text-muted-foreground/30" />
+                <p className="text-xs font-bold text-foreground">No group participants yet</p>
+                <p className="text-[11px] text-muted-foreground/70 max-w-xs">
+                  Add group members so all new bills automatically inherit everyone!
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.participants.map((person) => (
+                  <div
+                    key={person.id}
+                    className="flex items-center justify-between p-3 rounded-2xl bg-card border border-border/70 hover:border-border transition-all"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0">
+                        {person.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{person.name}</p>
+                        {person.email ? (
+                          <p className="text-[10px] text-muted-foreground truncate">{person.email}</p>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground/60 italic">Local Participant</p>
+                        )}
+                      </div>
+                    </div>
+                    {group.is_owner && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveMember(person.id, person.name)}
+                        className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                        title="Remove member"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Bills View (Single-surface clean cards without item dropdowns) */}
         {activeMainTab === 'bills' && (
           <div className="space-y-4">
             {/* Controls: In-Page Filter */}
@@ -376,10 +499,16 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                           <Receipt className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
                               {bill.name}
                             </h3>
+                            {(bill as any).isLocal && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1">
+                                <Shield className="w-2.5 h-2.5 text-emerald-500" />
+                                <span>Local</span>
+                              </span>
+                            )}
                             <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                           </div>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
@@ -402,10 +531,28 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2.5 shrink-0 ml-3">
+                      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-3">
                         <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
                           {formatCurrency(bill.totalAmount)}
                         </span>
+                        {group.is_owner && (
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Are you sure you want to delete "${bill.name}"?`)) {
+                                const { useBillStore } = await import('@/store/useBillStore');
+                                await useBillStore.getState().deleteBill(bill.id);
+                                fetchGroup(group.id);
+                              }
+                            }}
+                            className="p-1 rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            title="Delete Bill"
+                            aria-label="Delete Bill"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <ChevronRight className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
                       </div>
                     </div>

@@ -88,6 +88,7 @@ export interface BillGroupDetail {
   created_at: string;
   updated_at: string;
   bills: GroupBillOverview[];
+  participants?: PersonData[];
 }
 
 export interface BillGroupSummary {
@@ -104,6 +105,7 @@ export interface BillGroupSummary {
   total_items: number;
   created_at: string;
   updated_at: string;
+  participants?: PersonData[];
 }
 
 export interface SearchResults {
@@ -195,6 +197,7 @@ export interface BillSummary {
 export interface DatabaseAdapter {
   readonly type: 'neon' | 'postgres' | 'sqlite';
   init(): Promise<void>;
+  ping?(): Promise<boolean>;
   getBill(id: string, userId?: string | null, isShare?: boolean, shareToken?: string | null): Promise<BillDetail | null>;
   getBillMeta?(id: string): Promise<{ id: string; owner_id: string | null; name: string | null; is_shared: boolean } | null>;
   saveBill(billId: string, data: BillPayload, userId?: string | null): Promise<void>;
@@ -204,7 +207,7 @@ export interface DatabaseAdapter {
   createGroup?(name: string, ownerId: string, description?: string | null, currency?: string): Promise<BillGroupDetail>;
   getGroup?(id: string, userId?: string | null): Promise<BillGroupDetail | null>;
   listGroups?(userId?: string | null): Promise<BillGroupSummary[]>;
-  updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string }, userId?: string | null): Promise<void>;
+  updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string; participants?: PersonData[] }, userId?: string | null): Promise<void>;
   deleteGroup?(id: string, userId?: string | null): Promise<boolean>;
   transferGroupOwnership?(id: string, newOwnerId: string, userId?: string | null): Promise<void>;
   transferBillOwnership?(billId: string, newOwnerId: string, userId?: string | null): Promise<void>;
