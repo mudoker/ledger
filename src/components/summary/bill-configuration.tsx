@@ -63,6 +63,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
     const setGroupId = useBillStore((state) => state.setGroupId);
     const currentBillId = useBillStore((state) => state.currentBillId);
     const isReadOnly = useBillStore((state) => state.isReadOnly);
+    const deleteBill = useBillStore((state) => state.deleteBill);
     const { groups, fetchGroups } = useGroupStore();
 
     useEffect(() => {
@@ -92,11 +93,16 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
     useEffect(() => {
         setSaving(true);
         const timer = setTimeout(() => {
-            onSave().then(() => {
-                setSaving(false);
-                setSaved(true);
-                setTimeout(() => setSaved(false), 2000);
-            });
+            onSave()
+                .then(() => {
+                    setSaving(false);
+                    setSaved(true);
+                    setTimeout(() => setSaved(false), 2000);
+                })
+                .catch((err) => {
+                    console.warn('Auto-save error:', err);
+                    setSaving(false);
+                });
         }, 800);
 
         return () => clearTimeout(timer);
@@ -434,6 +440,38 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                 )}
                             </div>
                         </div>
+
+                        {/* Danger Zone: Delete Bill */}
+                        {!isReadOnly && currentBillId && (
+                            <div className="space-y-3 pt-2 border-t border-destructive/20">
+                                <Label className="text-[11px] font-black text-destructive uppercase tracking-[0.2em] pl-1 flex items-center gap-1.5">
+                                    <Trash2 className="w-3.5 h-3.5 text-destructive" /> Danger Zone
+                                </Label>
+                                <div className="p-3.5 sm:p-4 rounded-2xl border border-destructive/30 bg-destructive/5 flex items-center justify-between gap-3 flex-wrap">
+                                    <div className="space-y-0.5 min-w-0">
+                                        <p className="text-xs font-bold text-destructive">Delete this bill</p>
+                                        <p className="text-[10px] text-muted-foreground">
+                                            Permanently delete this bill and all associated items and calculations.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={async () => {
+                                            if (window.confirm(`Are you sure you want to permanently delete "${billName || 'this bill'}"?`)) {
+                                                await deleteBill(currentBillId);
+                                                window.location.href = window.location.origin + window.location.pathname;
+                                            }
+                                        }}
+                                        className="h-8 rounded-xl font-bold text-xs gap-1.5 shrink-0 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Delete Bill</span>
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </ScrollArea>
             </CardContent>

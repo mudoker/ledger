@@ -4,7 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Settings, Plus, Trash2 } from "lucide-react";
-import type { Person, GlobalCharge } from "@/store/useBillStore";
+import { useBillStore, type Person, type GlobalCharge } from "@/store/useBillStore";
+import { getCurrencySymbol } from "@/lib/currency";
 
 interface BillSettingsProps {
     people: Person[];
@@ -25,6 +26,9 @@ export function BillSettings({
     updateGlobalCharge,
     removeGlobalCharge,
 }: BillSettingsProps) {
+    const currency = useBillStore((state) => state.currency);
+    const currSymbol = getCurrencySymbol(currency);
+
     return (
         <Popover>
             <PopoverTrigger asChild>
@@ -67,7 +71,7 @@ export function BillSettings({
                                     <div className="flex items-center gap-1 w-28">
                                         <Input type="number" value={charge.amount} onChange={(e) => updateGlobalCharge(charge.id, { amount: parseFloat(e.target.value) || 0 })} className="h-8 text-xs w-16" />
                                         <Button variant="ghost" size="sm" className="h-8 w-8 px-0 text-xs font-bold" onClick={() => updateGlobalCharge(charge.id, { type: charge.type === 'percent' ? 'fixed' : 'percent' })}>
-                                            {charge.type === 'percent' ? '%' : '₫'}
+                                            {charge.type === 'percent' ? '%' : currSymbol}
                                         </Button>
                                     </div>
                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeGlobalCharge(charge.id)}>
