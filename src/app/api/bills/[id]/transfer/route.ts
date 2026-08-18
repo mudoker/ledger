@@ -20,13 +20,23 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      return NextResponse.json({ error: 'Invalid or missing bill ID' }, { status: 400, headers: corsHeaders });
+    }
+
     const user = await getSessionUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized: Login required' }, { status: 401, headers: corsHeaders });
     }
 
-    const body = await req.json();
-    const newOwnerId = body.new_owner_id || body.newOwnerId;
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400, headers: corsHeaders });
+    }
+
+    const newOwnerId = body?.new_owner_id || body?.newOwnerId;
 
     if (!newOwnerId || typeof newOwnerId !== 'string') {
       return NextResponse.json({ error: 'new_owner_id is required' }, { status: 400, headers: corsHeaders });

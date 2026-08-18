@@ -53,6 +53,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      return NextResponse.json({ error: 'Invalid or missing bill ID' }, { status: 400, headers: corsHeaders });
+    }
     const url = new URL(req.url);
     const isRevokeOnly = url.searchParams.get('revoke') === '1' || url.searchParams.get('revoke') === 'true';
 
