@@ -20,11 +20,20 @@ export async function GET() {
   let dbError: string | null = null;
 
   try {
-    const db = await getDb();
-    if (db) {
-      dbConnected = true;
-      pingLatencyMs = Date.now() - startTime;
-    }
+    const pingPromise = (async () => {
+      const db = await getDb();
+      if (db.ping) {
+        return await db.ping();
+      }
+      return Boolean(db);
+    })();
+
+    const timeoutPromise = new Promise<boolean>((_, reject) =>
+      setTimeout(() => reject(new Error('Database ping timeout (7000ms exceeded)')), 7000)
+    );
+
+    dbConnected = await Promise.race([pingPromise, timeoutPromise]);
+    pingLatencyMs = Date.now() - startTime;
   } catch (e: unknown) {
     dbError = e instanceof Error ? e.message : 'Database ping failure';
     console.warn('Health check DB init error:', e);

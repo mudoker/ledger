@@ -144,6 +144,16 @@ export class PostgresAdapter implements DatabaseAdapter {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_bills_share_token ON bills(share_token);
         ALTER TABLE bills ADD COLUMN IF NOT EXISTS is_shared INTEGER DEFAULT 1;
         ALTER TABLE bills ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+        ALTER TABLE bill_groups ADD COLUMN IF NOT EXISTS participants JSONB DEFAULT '[]'::jsonb;
+
+        -- Performance Indexes
+        CREATE INDEX IF NOT EXISTS idx_bills_owner ON bills(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_bills_updated ON bills(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_people_bill_id ON people(bill_id);
+        CREATE INDEX IF NOT EXISTS idx_people_user_id ON people(user_id);
+        CREATE INDEX IF NOT EXISTS idx_items_bill_id ON items(bill_id);
+        CREATE INDEX IF NOT EXISTS idx_item_assignments_person ON item_assignments(person_id);
+        CREATE INDEX IF NOT EXISTS idx_global_charges_bill_id ON global_charges(bill_id);
 
         CREATE TABLE IF NOT EXISTS device_subscriptions (
           id TEXT PRIMARY KEY,
@@ -159,6 +169,19 @@ export class PostgresAdapter implements DatabaseAdapter {
         CREATE INDEX IF NOT EXISTS idx_device_subscriptions_user ON device_subscriptions(user_id);
         CREATE INDEX IF NOT EXISTS idx_device_subscriptions_device ON device_subscriptions(device_id);
       `);
+    } finally {
+      client.release();
+    }
+  }
+
+  async ping(): Promise<boolean> {
+    if (!this.pool) return false;
+    const client = await this.pool.connect();
+    try {
+      await client.query('SELECT 1');
+      return true;
+    } catch {
+      return false;
     } finally {
       client.release();
     }
@@ -724,85 +747,122 @@ export class PostgresAdapter implements DatabaseAdapter {
       let totalItemsCount = 0;
       const bills: GroupBillOverview[] = [];
 
-      for (const b of billsRes.rows) {
+      if (billsRes.rows.length > 0) {
+        const billIds = billsRes.rows.map(b => b.id);
+
         const peopleRes = await client.query(
-          'SELECT id, name, sponsor_amount as "sponsorAmount", paid_amount as "paidAmount", user_id as "userId", email FROM people WHERE bill_id = $1',
-          [b.id]
+          'SELECT bill_id, id, name, sponsor_amount as "sponsorAmount", paid_amount as "paidAmount", user_id as "userId", email FROM people WHERE bill_id = ANY($1)',
+          [billIds]
         );
-        const people: PersonData[] = peopleRes.rows.map(p => ({
-          id: String(p.id),
-          name: String(p.name),
-          sponsorAmount: Number(p.sponsorAmount || 0),
-          paidAmount: Number(p.paidAmount || 0),
-          userId: p.userId ? String(p.userId) : null,
-          email: p.email ? String(p.email) : null,
-        }));
-
-        const hostPerson = people.find(p => p.id === b.host_id);
-        const hostName = hostPerson?.name || null;
-
         const chargesRes = await client.query(
-          'SELECT id, name, type, amount FROM global_charges WHERE bill_id = $1',
-          [b.id]
+          'SELECT bill_id, id, name, type, amount FROM global_charges WHERE bill_id = ANY($1)',
+          [billIds]
         );
-        const globalCharges: GlobalChargeData[] = chargesRes.rows.map(gc => ({
-          id: String(gc.id),
-          name: String(gc.name),
-          type: String(gc.type),
-          amount: Number(gc.amount || 0),
-        }));
-
         const itemsRes = await client.query(
-          'SELECT id, name, price, quantity FROM items WHERE bill_id = $1',
-          [b.id]
+          'SELECT bill_id, id, name, price, quantity FROM items WHERE bill_id = ANY($1)',
+          [billIds]
         );
 
-        const items: GroupItemOverview[] = [];
-        for (const it of itemsRes.rows) {
-          const assignRes = await client.query(
-            'SELECT person_id, quantity FROM item_assignments WHERE item_id = $1',
-            [it.id]
-          );
-          const assignments: Record<string, number> = {};
-          assignRes.rows.forEach(row => {
-            assignments[row.person_id] = Number(row.quantity);
-          });
-          items.push({
-            id: String(it.id),
-            name: String(it.name),
-            price: Number(it.price || 0),
-            quantity: Number(it.quantity || 1),
-            totalPrice: Number(it.price || 0) * Number(it.quantity || 1),
-            assignments,
+        const itemIds = itemsRes.rows.map(it => it.id);
+        const assignRes = itemIds.length > 0
+          ? await client.query('SELECT item_id, person_id, quantity FROM item_assignments WHERE item_id = ANY($1)', [itemIds])
+          : { rows: [] };
+
+        const assignmentsByItem = new Map<string, Record<string, number>>();
+        for (const row of assignRes.rows) {
+          let map = assignmentsByItem.get(row.item_id);
+          if (!map) {
+            map = {};
+            assignmentsByItem.set(row.item_id, map);
+          }
+          map[row.person_id] = Number(row.quantity);
+        }
+
+        const peopleByBill = new Map<string, PersonData[]>();
+        for (const p of peopleRes.rows) {
+          let list = peopleByBill.get(p.bill_id);
+          if (!list) {
+            list = [];
+            peopleByBill.set(p.bill_id, list);
+          }
+          list.push({
+            id: String(p.id),
+            name: String(p.name),
+            sponsorAmount: Number(p.sponsorAmount || 0),
+            paidAmount: Number(p.paidAmount || 0),
+            userId: p.userId ? String(p.userId) : null,
+            email: p.email ? String(p.email) : null,
           });
         }
 
-        const subtotal = items.reduce((s, it) => s + it.totalPrice, 0);
-        let fixedCharges = 0;
-        let percentCharges = 0;
-        chargesRes.rows.forEach(c => {
-          if (c.type === 'fixed') fixedCharges += Number(c.amount || 0);
-          if (c.type === 'percent') percentCharges += Number(c.amount || 0);
-        });
-        const billTotal = Math.round(subtotal * (1 + percentCharges / 100) + fixedCharges);
+        const chargesByBill = new Map<string, GlobalChargeData[]>();
+        for (const gc of chargesRes.rows) {
+          let list = chargesByBill.get(gc.bill_id);
+          if (!list) {
+            list = [];
+            chargesByBill.set(gc.bill_id, list);
+          }
+          list.push({
+            id: String(gc.id),
+            name: String(gc.name),
+            type: String(gc.type),
+            amount: Number(gc.amount || 0),
+          });
+        }
 
-        totalGroupAmount += billTotal;
-        totalItemsCount += items.length;
+        const itemsByBill = new Map<string, GroupItemOverview[]>();
+        for (const it of itemsRes.rows) {
+          let list = itemsByBill.get(it.bill_id);
+          if (!list) {
+            list = [];
+            itemsByBill.set(it.bill_id, list);
+          }
+          const price = Number(it.price || 0);
+          const quantity = Number(it.quantity || 1);
+          list.push({
+            id: String(it.id),
+            name: String(it.name),
+            price,
+            quantity,
+            totalPrice: price * quantity,
+            assignments: assignmentsByItem.get(it.id) || {},
+          });
+        }
 
-        bills.push({
-          id: String(b.id),
-          name: b.name || `Bill ${b.id.slice(0, 8)}`,
-          location: b.location ?? null,
-          currency: b.currency || 'VND',
-          totalAmount: billTotal,
-          host_id: b.host_id ? String(b.host_id) : null,
-          host_name: hostName,
-          created_at: typeof b.created_at === 'string' ? b.created_at : new Date(b.created_at).toISOString(),
-          updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
-          items,
-          people,
-          globalCharges,
-        });
+        for (const b of billsRes.rows) {
+          const people = peopleByBill.get(b.id) || [];
+          const hostPerson = people.find(p => p.id === b.host_id);
+          const hostName = hostPerson?.name || null;
+          const globalCharges = chargesByBill.get(b.id) || [];
+          const items = itemsByBill.get(b.id) || [];
+
+          const subtotal = items.reduce((s, it) => s + it.totalPrice, 0);
+          let fixedCharges = 0;
+          let percentCharges = 0;
+          globalCharges.forEach(c => {
+            if (c.type === 'fixed') fixedCharges += Number(c.amount || 0);
+            if (c.type === 'percent') percentCharges += Number(c.amount || 0);
+          });
+          const billTotal = Math.round(subtotal * (1 + percentCharges / 100) + fixedCharges);
+
+          totalGroupAmount += billTotal;
+          totalItemsCount += items.length;
+
+          bills.push({
+            id: String(b.id),
+            name: b.name || `Bill ${b.id.slice(0, 8)}`,
+            location: b.location ?? null,
+            currency: b.currency || 'VND',
+            totalAmount: billTotal,
+            host_id: b.host_id ? String(b.host_id) : null,
+            host_name: hostName,
+            created_at: typeof b.created_at === 'string' ? b.created_at : new Date(b.created_at).toISOString(),
+            updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
+            items,
+            people,
+            globalCharges,
+          });
+        }
       }
 
       return {
@@ -820,6 +880,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         created_at: typeof group.created_at === 'string' ? group.created_at : new Date(group.created_at).toISOString(),
         updated_at: typeof group.updated_at === 'string' ? group.updated_at : new Date(group.updated_at).toISOString(),
         bills,
+        participants: Array.isArray(group.participants) ? group.participants : (typeof group.participants === 'string' ? JSON.parse(group.participants) : []),
       };
     } finally {
       client.release();
@@ -858,28 +919,38 @@ export class PostgresAdapter implements DatabaseAdapter {
         ORDER BY g.updated_at DESC
       `, [userId, userEmail]);
 
-      const results: BillGroupSummary[] = [];
+      if (groupsRes.rows.length === 0) {
+        return [];
+      }
 
-      for (const g of groupsRes.rows) {
-        const billStats = await client.query(`
-          SELECT b.id,
-            (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
-            (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed') as fixed_extras,
-            (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras,
-            (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
-          FROM bills b
-          WHERE b.group_id = $1
-        `, [g.id]);
+      const groupIds = groupsRes.rows.map(g => g.id);
+      const billStatsRes = await client.query(`
+        SELECT b.id, b.group_id,
+          (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
+          (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed') as fixed_extras,
+          (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras,
+          (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
+        FROM bills b
+        WHERE b.group_id = ANY($1)
+      `, [groupIds]);
 
-        let totalAmount = 0;
-        let totalItems = 0;
-        billStats.rows.forEach(bs => {
-          const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
-          totalAmount += billTotal;
-          totalItems += Number(bs.item_count || 0);
-        });
+      const statsByGroup = new Map<string, { totalAmount: number; totalItems: number; billsCount: number }>();
+      for (const bs of billStatsRes.rows) {
+        const gid = String(bs.group_id);
+        let curr = statsByGroup.get(gid);
+        if (!curr) {
+          curr = { totalAmount: 0, totalItems: 0, billsCount: 0 };
+          statsByGroup.set(gid, curr);
+        }
+        const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
+        curr.totalAmount += billTotal;
+        curr.totalItems += Number(bs.item_count || 0);
+        curr.billsCount += 1;
+      }
 
-        results.push({
+      const results: BillGroupSummary[] = groupsRes.rows.map(g => {
+        const stats = statsByGroup.get(String(g.id)) || { totalAmount: 0, totalItems: 0, billsCount: 0 };
+        return {
           id: String(g.id),
           name: String(g.name),
           description: g.description ? String(g.description) : null,
@@ -888,13 +959,13 @@ export class PostgresAdapter implements DatabaseAdapter {
           owner_email: g.owner_email ? String(g.owner_email) : null,
           is_owner: g.owner_id === userId,
           currency: g.currency ? String(g.currency) : 'VND',
-          total_amount: totalAmount,
-          total_bills: billStats.rows.length,
-          total_items: totalItems,
+          total_amount: stats.totalAmount,
+          total_bills: stats.billsCount,
+          total_items: stats.totalItems,
           created_at: typeof g.created_at === 'string' ? g.created_at : new Date(g.created_at).toISOString(),
           updated_at: typeof g.updated_at === 'string' ? g.updated_at : new Date(g.updated_at).toISOString(),
-        });
-      }
+        };
+      });
 
       return results;
     } finally {
@@ -902,7 +973,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string }, userId?: string | null): Promise<void> {
+  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; participants?: PersonData[] }, userId?: string | null): Promise<void> {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
@@ -912,15 +983,22 @@ export class PostgresAdapter implements DatabaseAdapter {
         throw new Error('Forbidden: Only the group owner can update this group');
       }
 
-      const { name, description, currency } = data;
+      const { name, description, currency, participants } = data;
       await client.query(`
         UPDATE bill_groups
         SET name = COALESCE($1, name),
             description = COALESCE($2, description),
             currency = COALESCE($3, currency),
+            participants = CASE WHEN $4::text IS NOT NULL THEN $4::jsonb ELSE participants END,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4
-      `, [name !== undefined ? name.trim() : null, description !== undefined ? description : null, currency || null, id]);
+        WHERE id = $5
+      `, [
+        name !== undefined ? name.trim() : null,
+        description !== undefined ? description : null,
+        currency || null,
+        participants !== undefined ? JSON.stringify(participants) : null,
+        id
+      ]);
     } finally {
       client.release();
     }
