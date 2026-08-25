@@ -2,6 +2,31 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { useGroupStore } from '../src/store/useGroupStore';
 import { useBillStore } from '../src/store/useBillStore';
 import { getLocalDb } from '../src/lib/local-db';
+import type { LocalBillRecord } from '../src/lib/local-db/types';
+
+function mockLocalBill(overrides: Partial<LocalBillRecord> & { id: string }): LocalBillRecord {
+  return {
+    id: overrides.id,
+    name: overrides.name || 'Test Bill',
+    location: overrides.location ?? null,
+    currency: overrides.currency || 'VND',
+    hostId: overrides.hostId ?? null,
+    qrCode: overrides.qrCode ?? null,
+    groupId: overrides.groupId ?? null,
+    groupName: overrides.groupName ?? null,
+    ownerId: overrides.ownerId ?? null,
+    people: overrides.people || [],
+    items: overrides.items || [],
+    globalCharges: overrides.globalCharges || [],
+    sharingStatus: overrides.sharingStatus || 'local',
+    visibility: overrides.visibility || 'local',
+    shareToken: overrides.shareToken ?? null,
+    lastSyncedAt: overrides.lastSyncedAt ?? null,
+    syncError: overrides.syncError ?? null,
+    createdAt: overrides.createdAt || new Date().toISOString(),
+    updatedAt: overrides.updatedAt || new Date().toISOString(),
+  };
+}
 
 describe('Group Participants, Inheritance & Deletion Suite', () => {
   beforeEach(() => {
@@ -57,9 +82,9 @@ describe('Group Participants, Inheritance & Deletion Suite', () => {
       await useGroupStore.getState().addGroupParticipant('grp_1', 'Bob', 'bob@example.com');
 
       const current = useGroupStore.getState().currentGroup;
-      expect(current?.participants.length).toBe(2);
-      expect(current?.participants[1].name).toBe('Bob');
-      expect(current?.participants[1].email).toBe('bob@example.com');
+      expect(current?.participants?.length).toBe(2);
+      expect(current?.participants?.[1]?.name).toBe('Bob');
+      expect(current?.participants?.[1]?.email).toBe('bob@example.com');
       expect(updatePayload).not.toBeNull();
       expect(updatePayload.participants.length).toBe(2);
     });
@@ -102,8 +127,8 @@ describe('Group Participants, Inheritance & Deletion Suite', () => {
       await useGroupStore.getState().removeGroupParticipant('grp_1', 'gp_2');
 
       const current = useGroupStore.getState().currentGroup;
-      expect(current?.participants.length).toBe(1);
-      expect(current?.participants[0].name).toBe('Alice');
+      expect(current?.participants?.length).toBe(1);
+      expect(current?.participants?.[0]?.name).toBe('Alice');
       expect(updatePayload.participants.length).toBe(1);
     });
   });
@@ -228,15 +253,15 @@ describe('Group Participants, Inheritance & Deletion Suite', () => {
       }) as any;
 
       // Seed local DB with a local bill assigned to this group
-      await getLocalDb().saveBill({
+      await getLocalDb().saveBill(mockLocalBill({
         id: 'local_bill_grp_1',
         name: 'Offline Coffee',
-        group_id: 'grp_hybrid',
+        groupId: 'grp_hybrid',
         visibility: 'local',
         currency: 'VND',
-        people: [{ id: 'p_local', name: 'Me', paidAmount: 25000 }],
-        items: [{ id: 'i1', name: 'Latte', price: 25000, quantity: 1 }],
-      });
+        people: [{ id: 'p_local', name: 'Me', paidAmount: 25000, sponsorAmount: 0 }],
+        items: [{ id: 'i1', name: 'Latte', price: 25000, quantity: 1, assignments: {} }],
+      }));
 
       await useGroupStore.getState().fetchGroup('grp_hybrid');
 
@@ -263,11 +288,11 @@ describe('Group Participants, Inheritance & Deletion Suite', () => {
         return new Response(JSON.stringify({}), { status: 200 });
       }) as any;
 
-      await getLocalDb().saveBill({
+      await getLocalDb().saveBill(mockLocalBill({
         id: 'bill_to_delete',
         name: 'Obsolete Bill',
         currency: 'VND',
-      });
+      }));
 
       useBillStore.setState({
         currentBillId: 'bill_to_delete',
