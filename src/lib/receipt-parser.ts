@@ -30,7 +30,7 @@ export const parseReceiptText = (text: string): DetectedBill => {
     const ignorePatterns = [
         /total/i, /subtotal/i, /gratuity/i,
         /thành tiền/i, /tổng/i, /tiền mặt/i, /trả lại/i, /thối lại/i,
-        /món ăn/i, /đơn giá/i, /số lượng/i, /thanh toán/i, /phiếu tạm tính/i,
+        /món ăn/i, /đơn giá/i, /số lượng/i, /thanh toán/i, /tạm tính/i, /tiền thừa/i,
         /check/i, /thu ngân/i, /khách/i, /bàn/i, /giờ/i, /ngày/i
     ];
 
