@@ -934,22 +934,23 @@ export class PostgresAdapter implements DatabaseAdapter {
         WHERE b.group_id = ANY($1)
       `, [groupIds]);
 
-      const statsByGroup = new Map<string, { totalAmount: number; totalItems: number; billsCount: number }>();
+      const statsByGroup = new Map<string, { totalAmount: number; totalItems: number; billsCount: number; billIds: string[] }>();
       for (const bs of billStatsRes.rows) {
         const gid = String(bs.group_id);
         let curr = statsByGroup.get(gid);
         if (!curr) {
-          curr = { totalAmount: 0, totalItems: 0, billsCount: 0 };
+          curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [] };
           statsByGroup.set(gid, curr);
         }
         const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
         curr.totalAmount += billTotal;
         curr.totalItems += Number(bs.item_count || 0);
         curr.billsCount += 1;
+        curr.billIds.push(String(bs.id));
       }
 
       const results: BillGroupSummary[] = groupsRes.rows.map(g => {
-        const stats = statsByGroup.get(String(g.id)) || { totalAmount: 0, totalItems: 0, billsCount: 0 };
+        const stats = statsByGroup.get(String(g.id)) || { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [] };
         return {
           id: String(g.id),
           name: String(g.name),
@@ -962,8 +963,12 @@ export class PostgresAdapter implements DatabaseAdapter {
           total_amount: stats.totalAmount,
           total_bills: stats.billsCount,
           total_items: stats.totalItems,
+          bill_ids: stats.billIds,
           created_at: typeof g.created_at === 'string' ? g.created_at : new Date(g.created_at).toISOString(),
           updated_at: typeof g.updated_at === 'string' ? g.updated_at : new Date(g.updated_at).toISOString(),
+          participants: Array.isArray((g as any).participants)
+            ? (g as any).participants
+            : (typeof (g as any).participants === 'string' ? JSON.parse((g as any).participants) : []),
         };
       });
 

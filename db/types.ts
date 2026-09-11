@@ -71,6 +71,7 @@ export interface GroupBillOverview {
   items: GroupItemOverview[];
   people?: PersonData[];
   globalCharges?: GlobalChargeData[];
+  isLocal?: boolean;
 }
 
 export interface BillGroupDetail {
@@ -106,6 +107,7 @@ export interface BillGroupSummary {
   created_at: string;
   updated_at: string;
   participants?: PersonData[];
+  bill_ids?: string[];
 }
 
 export interface SearchResults {
