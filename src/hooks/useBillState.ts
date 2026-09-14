@@ -17,9 +17,11 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
     items.forEach((item) => {
         const assignments = item.assignments || {};
         const assignmentEntries = Object.entries(assignments).filter(([_, pQty]) => pQty > 0);
-        const itemQty = item.quantity || 1;
-        const itemPrice = item.price;
-        totalItemCost += itemPrice;
+        const itemQty = Math.max(1, item.quantity || 1);
+        const lineTotal = (item as any).totalPrice !== undefined && (item as any).totalPrice !== null
+            ? Number((item as any).totalPrice)
+            : Number(item.price || 0) * itemQty;
+        totalItemCost += lineTotal;
 
         if (assignmentEntries.length > 0) {
             assignmentEntries.forEach(([pId]) => activePersonIds.add(pId));
@@ -30,21 +32,21 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
             if (totalClaimedQty >= itemQty) {
                 assignmentEntries.forEach(([pId, pQty]) => {
                     const cappedPQty = Math.min(pQty, itemQty);
-                    const share = (cappedPQty / totalClaimedQty) * itemPrice;
+                    const share = (cappedPQty / totalClaimedQty) * lineTotal;
                     rawCosts[pId] = (rawCosts[pId] || 0) + share;
                 });
             } else {
                 let totalAccountedFor = 0;
                 assignmentEntries.forEach(([pId, pQty]) => {
                     const cappedPQty = Math.min(pQty, itemQty);
-                    const share = (cappedPQty / itemQty) * itemPrice;
+                    const share = (cappedPQty / itemQty) * lineTotal;
                     rawCosts[pId] = (rawCosts[pId] || 0) + share;
                     totalAccountedFor += share;
                 });
-                totalUnassignedPrice += Math.max(0, itemPrice - totalAccountedFor);
+                totalUnassignedPrice += Math.max(0, lineTotal - totalAccountedFor);
             }
         } else {
-            totalUnassignedPrice += itemPrice;
+            totalUnassignedPrice += lineTotal;
         }
     });
 

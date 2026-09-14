@@ -425,13 +425,18 @@ export function eliminateDebtCycles(
  * 5. Returns structured aggregation both by person and by bills.
  */
 export function calculateGroupSettlement(
-  group: Pick<BillGroupDetail, 'bills' | 'total_amount'>
+  group: Pick<BillGroupDetail, 'bills' | 'total_amount'> & { participants?: PersonData[] }
 ): GroupSettlementResult {
   const bills = group.bills || [];
+  const groupParticipants = group.participants || [];
   let totalExpenses = 0;
 
   // Build canonical participant registry across all bills in this group
-  const { personToCanonicalKey, canonicalPersons } = buildCanonicalPersonRegistry(bills);
+  const effectiveBills = bills.map(b => ({
+    ...b,
+    people: (b.people && b.people.length > 0) ? b.people : groupParticipants,
+  }));
+  const { personToCanonicalKey, canonicalPersons } = buildCanonicalPersonRegistry(effectiveBills);
 
   // Person aggregation dictionary keyed by canonical key
   const personMap = new Map<
@@ -450,7 +455,7 @@ export function calculateGroupSettlement(
   const billSummaries: GroupBillSummaryItem[] = [];
 
   for (const b of bills) {
-    const people: PersonData[] = b.people || [];
+    const people: PersonData[] = (b.people && b.people.length > 0) ? b.people : groupParticipants;
     const items: GroupItemOverview[] = b.items || [];
     const globalCharges: GlobalChargeData[] = b.globalCharges || [];
 
@@ -478,6 +483,7 @@ export function calculateGroupSettlement(
         name: it.name,
         price: it.price,
         quantity: it.quantity,
+        totalPrice: it.totalPrice,
         assignments: it.assignments || {},
       })),
       globalCharges: globalCharges.map((gc: GlobalChargeData) => ({
