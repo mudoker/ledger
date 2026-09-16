@@ -7,6 +7,7 @@ import { useAuthStore } from './useAuthStore';
 import { getLocalDb } from '@/lib/local-db';
 import { syncManager } from '@/lib/local-db/sync-manager';
 import type { BillSharingStatus, BillVisibility, LocalBillRecord } from '@/lib/local-db/types';
+import { calculateBillTotals } from '@/lib/common-data-model';
 
 export interface Person {
     id: string;
@@ -88,9 +89,10 @@ interface BillState {
     setBillName: (name: string) => void;
     setLocation: (location: string) => void;
     setQrCode: (url: string) => void;
-    setGroupId: (groupId: string | null) => void;
+    setGroupId: (groupId: string | null, participantsToInherit?: Array<{ name: string; email?: string | null; userId?: string | null }>) => Promise<void>;
     transferBillOwnership: (newOwnerId: string) => Promise<boolean>;
     addPerson: (name: string, email?: string | null, userId?: string | null) => void;
+    addPeople: (people: Array<{ name: string; email?: string | null; userId?: string | null }>) => void;
     updatePerson: (id: string, data: Partial<Person>) => void;
     removePerson: (id: string) => void;
 
@@ -151,13 +153,39 @@ export const useBillStore = create<BillState>()(
             shareToken: null,
             syncError: null,
 
-            setGroupId: async (groupId: string | null) => {
+            setGroupId: async (groupId: string | null, participantsToInherit?: Array<{ name: string; email?: string | null; userId?: string | null }>) => {
                 const groupStore = useGroupStore.getState();
                 const matchedGroup = groupId ? groupStore.groups.find(g => g.id === groupId) : null;
                 const oldGroupId = get().groupId;
 
-                // If linking to a group, inherit group participants!
-                if (groupId) {
+                // If participantsToInherit was explicitly specified, add those selected participants
+                if (groupId && participantsToInherit !== undefined) {
+                    if (participantsToInherit.length > 0) {
+                        const currentPeople = [...get().people];
+                        let addedAny = false;
+                        for (const gp of participantsToInherit) {
+                            const exists = currentPeople.some(p =>
+                                (p.email && gp.email && p.email.toLowerCase() === gp.email.toLowerCase()) ||
+                                p.name.trim().toLowerCase() === gp.name.trim().toLowerCase()
+                            );
+                            if (!exists) {
+                                currentPeople.push({
+                                    id: crypto.randomUUID(),
+                                    name: gp.name,
+                                    sponsorAmount: 0,
+                                    paidAmount: 0,
+                                    userId: gp.userId || null,
+                                    email: gp.email || null,
+                                });
+                                addedAny = true;
+                            }
+                        }
+                        if (addedAny) {
+                            set({ people: currentPeople });
+                        }
+                    }
+                } else if (groupId) {
+                    // Fallback when participantsToInherit is omitted
                     let groupParticipants = matchedGroup?.participants;
                     if (!groupParticipants || groupParticipants.length === 0) {
                         try {
@@ -190,6 +218,16 @@ export const useBillStore = create<BillState>()(
                         }
                         if (addedAny) {
                             set({ people: currentPeople });
+                        }
+                    }
+                }
+
+                // Invariant: Bill.participants ⊆ Group.participants
+                // Ensure all existing people on this bill are registered into the target group
+                if (groupId) {
+                    for (const p of get().people) {
+                        if (p.name && p.name.trim()) {
+                            groupStore.addGroupParticipant(groupId, p.name.trim(), p.email || null).catch(() => {});
                         }
                     }
                 }
@@ -325,20 +363,50 @@ export const useBillStore = create<BillState>()(
             setLocation: (location) => set({ location }),
             setQrCode: (url) => set({ qrCode: url }),
 
-            addPerson: (name, email = null, userId = null) =>
+            addPerson: (name, email = null, userId = null) => {
+                const newPerson = {
+                    id: crypto.randomUUID(),
+                    name,
+                    sponsorAmount: 0,
+                    paidAmount: 0,
+                    userId: userId || null,
+                    email: email || null,
+                };
                 set((state) => ({
-                    people: [
-                        ...state.people,
-                        {
-                            id: crypto.randomUUID(),
-                            name,
-                            sponsorAmount: 0,
-                            paidAmount: 0,
-                            userId: userId || null,
-                            email: email || null,
-                        },
-                    ],
-                })),
+                    people: [...state.people, newPerson],
+                }));
+                // Ensure group superset invariant
+                const currentGroupId = get().groupId;
+                if (currentGroupId && name.trim()) {
+                    useGroupStore.getState().addGroupParticipant(currentGroupId, name.trim(), email || null).catch(() => {});
+                }
+            },
+
+            addPeople: (newPeople) => {
+                const created: Person[] = [];
+                for (const p of newPeople) {
+                    if (!p.name?.trim()) continue;
+                    created.push({
+                        id: crypto.randomUUID(),
+                        name: p.name.trim(),
+                        sponsorAmount: 0,
+                        paidAmount: 0,
+                        userId: p.userId || null,
+                        email: p.email || null,
+                    });
+                }
+                if (created.length === 0) return;
+                set((state) => ({
+                    people: [...state.people, ...created],
+                }));
+                // Ensure group superset invariant
+                const currentGroupId = get().groupId;
+                if (currentGroupId) {
+                    for (const cp of created) {
+                        useGroupStore.getState().addGroupParticipant(currentGroupId, cp.name, cp.email || null).catch(() => {});
+                    }
+                }
+            },
 
             updatePerson: (id, data) =>
                 set((state) => ({
@@ -472,6 +540,9 @@ export const useBillStore = create<BillState>()(
                     const db = getLocalDb();
                     await db.saveBill(localBill);
                     set({ lastSaved: localBill.updatedAt });
+                    if (localBill.groupId) {
+                        useGroupStore.getState().syncGroupWithBills(localBill.groupId);
+                    }
                     return billId;
                 } catch (e) {
                     console.error('Failed to save bill locally:', e);
@@ -825,16 +896,7 @@ export const useBillStore = create<BillState>()(
                     const localDb = getLocalDb();
                     const localBills = await localDb.listBills();
                     for (const b of localBills) {
-                        const bItems = b.items || [];
-                        const rawSubtotal = bItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                        let total = rawSubtotal;
-                        for (const ch of (b.globalCharges || [])) {
-                            if (ch.type === 'percent') {
-                                total += (rawSubtotal * ch.amount) / 100;
-                            } else {
-                                total += ch.amount;
-                            }
-                        }
+                        const total = calculateBillTotals(b).totalAmount;
 
                         historyMap.set(b.id, {
                             id: b.id,

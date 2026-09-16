@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { BillGroupSummary, BillGroupDetail } from '@/../db/types';
 import { getLocalDb } from '@/lib/local-db';
-import type { LocalGroupRecord, LocalPerson } from '@/lib/local-db/types';
+import type { LocalGroupRecord, LocalPerson, LocalBillRecord } from '@/lib/local-db/types';
+import {
+  mergeBillsForGroup,
+  aggregateGroupSummaries,
+  ensureGroupParticipantsSuperset,
+} from '@/lib/common-data-model';
 
 interface GroupState {
   groups: BillGroupSummary[];
@@ -11,6 +16,7 @@ interface GroupState {
 
   fetchGroups: () => Promise<void>;
   fetchGroup: (id: string) => Promise<BillGroupDetail | null>;
+  syncGroupWithBills: (groupId: string) => Promise<void>;
   createGroup: (name: string, description?: string | null, currency?: string) => Promise<BillGroupDetail>;
   updateGroup: (id: string, data: { name?: string; description?: string | null; currency?: string; participants?: any[] }) => Promise<void>;
   deleteGroup: (id: string) => Promise<boolean>;
@@ -28,77 +34,45 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   fetchGroups: async () => {
     set({ isLoading: true, error: null });
-    const groupMap = new Map<string, BillGroupSummary>();
 
-    // 1. Load local groups
+    let localGroups: LocalGroupRecord[] = [];
+    let localBills: LocalBillRecord[] = [];
     try {
       const localDb = getLocalDb();
-      const localGroups = await localDb.listGroups();
-      const localBills = await localDb.listBills();
-
-      for (const lg of localGroups) {
-        const linkedBills = localBills.filter((b) => b.groupId === lg.id);
-        const totalAmount = linkedBills.reduce((sum, b) => {
-          const subtotal = b.items.reduce((s, i) => s + i.price * i.quantity, 0);
-          return sum + subtotal;
-        }, 0);
-        const totalItems = linkedBills.reduce((sum, b) => sum + b.items.length, 0);
-
-        groupMap.set(lg.id, {
-          id: lg.id,
-          name: lg.name,
-          description: lg.description,
-          owner_id: lg.ownerId || 'local',
-          is_owner: true,
-          currency: lg.currency,
-          total_amount: totalAmount,
-          total_bills: linkedBills.length,
-          total_items: totalItems,
-          created_at: lg.createdAt,
-          updated_at: lg.updatedAt,
-          participants: lg.participants || [],
-        });
-      }
+      localGroups = await localDb.listGroups().catch(() => []);
+      localBills = await localDb.listBills().catch(() => []);
     } catch (e) {
-      console.warn('Failed to load local groups:', e);
+      console.warn('Failed to load local groups/bills:', e);
     }
 
-    // 2. Fetch server groups and merge
+    let serverGroups: BillGroupSummary[] = [];
+    let fetchError: string | null = null;
     try {
       const res = await fetch('/api/groups');
       if (res.ok) {
-        const serverGroups: BillGroupSummary[] = await res.json();
-        const localDb = getLocalDb();
-        const localBills = await localDb.listBills().catch(() => []);
-
-        for (const sg of serverGroups) {
-          const linkedLocalBills = localBills.filter((b) => b.groupId === sg.id);
-          const localEntry = groupMap.get(sg.id);
-          const finalTotalBills = Math.max(sg.total_bills, linkedLocalBills.length, localEntry?.total_bills || 0);
-          const finalTotalAmount = Math.max(sg.total_amount, localEntry?.total_amount || 0);
-          groupMap.set(sg.id, {
-            ...sg,
-            total_bills: finalTotalBills,
-            total_amount: finalTotalAmount,
-            participants: (sg as any).participants || (localEntry as any)?.participants || [],
-          });
-        }
+        serverGroups = await res.json();
+      } else {
+        fetchError = 'Failed to fetch groups from server';
       }
     } catch (e: unknown) {
-      if (groupMap.size === 0) {
-        const msg = e instanceof Error ? e.message : 'Failed to fetch groups';
-        set({ error: msg, isLoading: false, groups: [] });
-        return;
-      }
+      fetchError = e instanceof Error ? e.message : 'Network error';
     }
 
-    set({ groups: Array.from(groupMap.values()), isLoading: false });
+    // Unified group summaries aggregation
+    const unifiedSummaries = aggregateGroupSummaries(serverGroups, localGroups, localBills);
+
+    if (unifiedSummaries.length === 0 && fetchError && serverGroups.length === 0 && localGroups.length === 0) {
+      set({ error: fetchError, isLoading: false, groups: [] });
+      return;
+    }
+
+    set({ groups: unifiedSummaries, isLoading: false, error: null });
   },
 
   fetchGroup: async (id: string) => {
     set({ isLoading: true, error: null });
 
-    // 1. Try server fetch first
+    // 1. Load server group if available
     let serverGroup: BillGroupDetail | null = null;
     try {
       const res = await fetch(`/api/groups/${id}`);
@@ -109,101 +83,101 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       // Offline fallback
     }
 
-    // 2. Load local group and bills
+    // 2. Load local group and local bills
     const localDb = getLocalDb();
     const lg = await localDb.getGroup(id).catch(() => null);
     const localBills = await localDb.listBills().catch(() => []);
-    const linkedLocalBills = localBills.filter((b) => b.groupId === id || (b as any).group_id === id);
 
-    if (serverGroup) {
-      if (!serverGroup.bills) {
-        serverGroup.bills = [];
-      }
-      // Merge local bills linked to this group so they are always listed on enter!
-      const existingBillIds = new Set(serverGroup.bills.map((b) => b.id));
-      for (const lb of linkedLocalBills) {
-        if (!existingBillIds.has(lb.id)) {
-          const lbItems = lb.items || [];
-          const totalAmount = lbItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-          serverGroup.bills.push({
-            id: lb.id,
-            name: lb.name,
-            location: lb.location,
-            currency: lb.currency,
-            totalAmount,
-            created_at: lb.createdAt,
-            updated_at: lb.updatedAt,
-            items: lbItems.map((i) => ({
-              id: i.id,
-              name: i.name,
-              price: i.price,
-              quantity: i.quantity,
-              totalPrice: i.price * i.quantity,
-              assignments: i.assignments,
-            })),
-            isLocal: true,
-          } as any);
-        }
-      }
+    // 3. Resolve group metadata & participants
+    const participants = (serverGroup as any)?.participants?.length
+      ? (serverGroup as any).participants
+      : (lg as any)?.participants || [];
 
-      serverGroup.total_bills = serverGroup.bills.length;
-      serverGroup.total_amount = serverGroup.bills.reduce((sum, b) => sum + b.totalAmount, 0);
-      serverGroup.total_items = serverGroup.bills.reduce((sum, b) => sum + b.items.length, 0);
+    const baseGroup = serverGroup || (lg ? {
+      id: lg.id,
+      name: lg.name,
+      description: lg.description,
+      owner_id: lg.ownerId || 'local',
+      owner_name: null,
+      owner_email: null,
+      is_owner: true,
+      currency: lg.currency || 'VND',
+      created_at: lg.createdAt,
+      updated_at: lg.updatedAt,
+      bills: [],
+      participants,
+    } : null);
 
-      if ((lg as any)?.participants?.length && !(serverGroup as any).participants?.length) {
-        (serverGroup as any).participants = (lg as any).participants;
-      }
-
-      set({ currentGroup: serverGroup, isLoading: false });
-      return serverGroup;
+    if (!baseGroup) {
+      set({ error: 'Group not found', isLoading: false, currentGroup: null });
+      return null;
     }
 
-    // 2. Local fallback
-    if (lg) {
-      const totalAmount = linkedLocalBills.reduce((sum, b) => {
-        const subtotal = b.items.reduce((s, i) => s + i.price * i.quantity, 0);
-        return sum + subtotal;
-      }, 0);
-      const totalItems = linkedLocalBills.reduce((sum, b) => sum + b.items.length, 0);
+    // 4. Merge server bills with local bills using common data model
+    const serverBills = serverGroup?.bills || [];
+    const mergedBills = mergeBillsForGroup(serverBills, localBills, id, participants);
 
-      const groupDetail: BillGroupDetail = {
-        id: lg.id,
-        name: lg.name,
-        description: lg.description,
-        owner_id: lg.ownerId || 'local',
-        is_owner: true,
-        currency: lg.currency,
+    // Ensure group participants is strictly the superset of all bill participants (Bill.participants ⊆ Group.participants)
+    const unifiedParticipants = ensureGroupParticipantsSuperset(participants, mergedBills);
+
+    // If new participants were identified from bills, persist them to local and cloud
+    if (unifiedParticipants.length > participants.length) {
+      if (lg) {
+        lg.participants = unifiedParticipants as any;
+        await localDb.saveGroup(lg).catch(() => {});
+      }
+      if (serverGroup && serverGroup.is_owner) {
+        fetch(`/api/groups/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participants: unifiedParticipants }),
+        }).catch(() => {});
+      }
+    }
+
+    const totalAmount = mergedBills.reduce((sum, b) => sum + b.totalAmount, 0);
+    const totalItems = mergedBills.reduce((sum, b) => sum + (b.items?.length || 0), 0);
+
+    const finalDetail: BillGroupDetail = {
+      ...baseGroup,
+      bills: mergedBills,
+      total_bills: mergedBills.length,
+      total_amount: totalAmount,
+      total_items: totalItems,
+      participants: unifiedParticipants,
+    };
+
+    // Update currentGroup and keep groups list in sync
+    set((state) => {
+      const nextGroups = state.groups.map(g => g.id === id ? {
+        ...g,
         total_amount: totalAmount,
-        total_bills: linkedLocalBills.length,
+        total_bills: mergedBills.length,
         total_items: totalItems,
-        created_at: lg.createdAt,
-        updated_at: lg.updatedAt,
-        participants: (lg as any).participants || [],
-        bills: linkedLocalBills.map((b) => ({
-          id: b.id,
-          name: b.name,
-          location: b.location,
-          currency: b.currency,
-          totalAmount: b.items.reduce((s, i) => s + i.price * i.quantity, 0),
-          created_at: b.createdAt,
-          updated_at: b.updatedAt,
-          isLocal: true,
-          items: b.items.map((i) => ({
-            id: i.id,
-            name: i.name,
-            price: i.price,
-            quantity: i.quantity,
-            totalPrice: i.price * i.quantity,
-            assignments: i.assignments,
-          })),
-        })),
+        participants: unifiedParticipants,
+      } : g);
+      return {
+        currentGroup: finalDetail,
+        groups: nextGroups,
+        isLoading: false,
+        error: null,
       };
-      set({ currentGroup: groupDetail, isLoading: false });
-      return groupDetail;
-    }
+    });
 
-    set({ error: 'Group not found', isLoading: false, currentGroup: null });
-    return null;
+    return finalDetail;
+  },
+
+  syncGroupWithBills: async (groupId: string) => {
+    if (!groupId) return;
+    try {
+      const current = get().currentGroup;
+      if (current && current.id === groupId) {
+        await get().fetchGroup(groupId);
+      }
+      await get().fetchGroups();
+    } catch (e) {
+      console.warn('syncGroupWithBills failed:', e);
+    }
   },
 
   createGroup: async (name: string, description: string | null = null, currency: string = 'VND') => {
@@ -357,6 +331,17 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   },
 
   addGroupParticipant: async (groupId: string, name: string, email?: string | null) => {
+    const targetGroup = get().groups.find(g => g.id === groupId);
+    const existingGroupParticipants = (targetGroup?.participants && targetGroup.participants.length > 0)
+      ? targetGroup.participants
+      : (get().currentGroup?.id === groupId ? (get().currentGroup?.participants || []) : []);
+
+    const exists = existingGroupParticipants.some(gp =>
+      (gp.email && email && gp.email.trim().toLowerCase() === email.trim().toLowerCase()) ||
+      gp.name.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    if (exists) return;
+
     const newPerson: LocalPerson = {
       id: crypto.randomUUID(),
       name: name.trim(),
@@ -365,32 +350,34 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       email: email?.trim() || null,
     };
 
-    const localDb = getLocalDb();
-    const lg = await localDb.getGroup(groupId).catch(() => null);
-    if (lg) {
-      const existing = (lg as any).participants || [];
-      (lg as any).participants = [...existing, newPerson];
-      await localDb.saveGroup(lg);
-    }
+    const nextParticipants = [...existingGroupParticipants, newPerson];
 
-    const current = get().currentGroup;
-    let nextParticipants: LocalPerson[] = [];
-    if (current && current.id === groupId) {
-      nextParticipants = [...((current as any).participants || []), newPerson];
-      set({
-        currentGroup: {
-          ...current,
-          participants: nextParticipants,
-        } as any,
-      });
-    }
+    // 1. Update in-memory Zustand state immediately
+    set((state) => ({
+      currentGroup: state.currentGroup?.id === groupId ? {
+        ...state.currentGroup,
+        participants: nextParticipants as any,
+      } : state.currentGroup,
+      groups: state.groups.map(g => g.id === groupId ? {
+        ...g,
+        participants: nextParticipants as any,
+      } : g),
+    }));
 
+    // 2. Asynchronously persist to local storage and remote backend
     try {
+      const localDb = getLocalDb();
+      const lg = await localDb.getGroup(groupId).catch(() => null);
+      if (lg) {
+        (lg as any).participants = nextParticipants;
+        await localDb.saveGroup(lg);
+      }
+
       await fetch(`/api/groups/${groupId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          participants: nextParticipants.length ? nextParticipants : [newPerson],
+          participants: nextParticipants,
         }),
       });
     } catch {}
@@ -408,12 +395,13 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     let nextParticipants: LocalPerson[] = [];
     if (current && current.id === groupId) {
       nextParticipants = ((current as any).participants || []).filter((p: any) => p.id !== participantId);
-      set({
+      set((state) => ({
         currentGroup: {
           ...current,
           participants: nextParticipants,
         } as any,
-      });
+        groups: state.groups.map(g => g.id === groupId ? { ...g, participants: nextParticipants as any } : g),
+      }));
     }
 
     try {
