@@ -5,7 +5,6 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Clock, ChevronRight, Receipt, Play, History, MapPin, Shield, LogIn, Sparkles, FolderPlus, Folder } from "lucide-react";
-import { formatDistanceToNow } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import { motion } from 'framer-motion';
 import { IS_DEV } from '@/lib/env';
@@ -17,6 +16,7 @@ import { CreateGroupModal } from '@/components/shared/create-group-modal';
 import { BottomSearchBar } from '@/components/shared/bottom-search-bar';
 import { FuzzySearchModal } from '@/components/shared/fuzzy-search-modal';
 import { LandingCard } from '@/components/layout/landing-card';
+import { calculateBillTotals } from '@/lib/common-data-model';
 
 interface LandingPageProps {
     onNewBill: (data: CreateBillFormData) => void;
@@ -100,16 +100,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
     const hasActiveDraft = Boolean(user) && (people.length > 0 || items.length > 0) && (!currentBillId || !billHistory.some((b) => b.id === currentBillId));
 
     const draftTotal = useMemo(() => {
-        const rawSubtotal = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-        let total = rawSubtotal;
-        for (const charge of globalCharges) {
-            if (charge.type === 'percent') {
-                total += (rawSubtotal * charge.amount) / 100;
-            } else {
-                total += charge.amount;
-            }
-        }
-        return total;
+        return calculateBillTotals({ items, globalCharges }).totalAmount;
     }, [items, globalCharges]);
 
     return (

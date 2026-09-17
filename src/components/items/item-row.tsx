@@ -80,8 +80,11 @@ export function ItemRow({ item }: { item: Item }) {
         }
     };
 
-    const qty = item.quantity || 1;
-    const unitPrice = qty > 0 ? item.price / qty : 0;
+    const qty = Math.max(1, item.quantity || 1);
+    const lineTotal = (item as any).totalPrice !== undefined
+        ? Number((item as any).totalPrice)
+        : Number(item.price || 0) * qty;
+    const unitPrice = Number(item.price || 0);
     const assignments = item.assignments || {};
     const assignedPeopleIds = Object.keys(assignments);
     const totalClaimedQty = Object.values(assignments).reduce((sum, pQty) => {
@@ -93,9 +96,9 @@ export function ItemRow({ item }: { item: Item }) {
         if (totalClaimedQty <= 0) return 0;
 
         if (totalClaimedQty >= qty) {
-            return (cappedPQty / totalClaimedQty) * item.price;
+            return (cappedPQty / totalClaimedQty) * lineTotal;
         } else {
-            return (cappedPQty / qty) * item.price;
+            return (cappedPQty / qty) * lineTotal;
         }
     };
 
@@ -159,7 +162,7 @@ export function ItemRow({ item }: { item: Item }) {
                                         </span>
                                     )}
                                     <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 tabular-nums">
-                                        {formatCurrency(item.price)}
+                                        {formatCurrency(lineTotal)}
                                     </span>
                                 </div>
                             </div>
@@ -218,7 +221,7 @@ export function ItemRow({ item }: { item: Item }) {
                                 <div className="space-y-0.5 min-w-0 flex-1">
                                     <div className="font-black text-[11px] uppercase tracking-widest text-foreground truncate" title={item.name}>{item.name}</div>
                                     <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-tighter opacity-70">
-                                        {formatCurrency(item.price)} · {qty} units
+                                        {formatCurrency(lineTotal)} · {qty} units
                                     </div>
                                 </div>
                                 {!isReadOnly && (

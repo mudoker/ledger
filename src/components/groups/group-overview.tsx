@@ -31,8 +31,7 @@ import {
   Users,
   Shield,
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/format';
-import { formatDistanceToNow } from 'date-fns';
+import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
 import { RoleBadge } from '@/components/layout/landing-card';
@@ -499,7 +498,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                           <Receipt className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap">
                             <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
                               {bill.name}
                             </h3>
@@ -511,21 +510,21 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                             )}
                             <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                           </div>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-2.5 h-2.5" />
-                              <span>
-                                {formatDistanceToNow(new Date(bill.updated_at), { addSuffix: true })}
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Clock className="w-2.5 h-2.5 shrink-0" />
+                              <span className="whitespace-nowrap">
+                                {formatConciseRelativeTime(bill.updated_at)}
                               </span>
                             </div>
                             {bill.location && (
-                              <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none">
-                                <MapPin className="w-2.5 h-2.5" />
+                              <div className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-[150px] shrink-0">
+                                <MapPin className="w-2.5 h-2.5 shrink-0" />
                                 <span className="truncate">{bill.location}</span>
                               </div>
                             )}
-                            <span className="text-primary font-bold">
-                              {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+                            <span className="text-primary font-bold shrink-0 whitespace-nowrap">
+                              • {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
                             </span>
                           </div>
                         </div>

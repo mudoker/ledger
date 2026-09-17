@@ -50,3 +50,45 @@ export const parseFormattedNumber = (str: string): number => {
     const cleaned = str.replace(/[^\d.-]/g, '');
     return parseFloat(cleaned) || 0;
 };
+
+/**
+ * Formats a timestamp into a concise, non-wrapping relative time string.
+ * Uses concise wording like "recent" for < 60s, "Xm ago", "Xh ago", "Xd ago".
+ */
+export const formatConciseRelativeTime = (timestamp: Date | string | number | null | undefined): string => {
+    if (!timestamp) return 'recent';
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+
+    if (isNaN(diffMs) || diffMs < 0) {
+        return 'recent';
+    }
+
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) {
+        return 'recent';
+    }
+
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) {
+        return `${diffMin}m ago`;
+    }
+
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) {
+        return `${diffHours}h ago`;
+    }
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) {
+        return `${diffDays}d ago`;
+    }
+
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks < 4) {
+        return `${diffWeeks}w ago`;
+    }
+
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};

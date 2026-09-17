@@ -10,6 +10,7 @@ import { BillUploader } from "./bill-uploader";
 import { ItemRow } from "./item-row";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { formatCurrency } from "@/lib/format";
+import { calculateBillTotals } from "@/lib/common-data-model";
 
 export function ItemsSection() {
     const { items, addItem, isReadOnly } = useBillStore();
@@ -28,7 +29,7 @@ export function ItemsSection() {
         }
     };
 
-    const totalItemsCost = items.reduce((sum, item) => sum + item.price, 0);
+    const totalItemsCost = calculateBillTotals({ items }).subtotal;
 
     return (
         <Card className="w-full h-full flex flex-col min-h-0 border-0 md:border md:border-foreground/[0.05] bg-transparent md:bg-card/20 overflow-hidden shadow-none rounded-none md:rounded-2xl">

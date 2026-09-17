@@ -1,8 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronRight, Clock, MapPin, Folder, Crown, Sparkles, Shield, Globe, Users, AlertTriangle, Trash2 } from "lucide-react";
-import { formatDistanceToNow } from 'date-fns';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
 import type { BillSharingStatus, BillVisibility } from '@/lib/local-db/types';
 
 export interface RoleBadgeProps {
@@ -195,10 +194,8 @@ export function LandingCard({
                             {timestamp && (
                                 <div className={`flex items-center gap-1 shrink-0 ${isDraft ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
                                     <Clock className="w-3 h-3 shrink-0" />
-                                    <span>
-                                        {typeof timestamp === 'string'
-                                            ? formatDistanceToNow(new Date(timestamp), { addSuffix: true })
-                                             : formatDistanceToNow(timestamp, { addSuffix: true })}
+                                    <span className="whitespace-nowrap">
+                                        {formatConciseRelativeTime(timestamp)}
                                     </span>
                                 </div>
                             )}
