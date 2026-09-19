@@ -15,6 +15,9 @@ import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import { getCurrencySymbol } from "@/lib/currency";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { calculateBillTotals } from "@/lib/common-data-model";
+import { InheritParticipantsDialog } from "@/components/groups/inherit-participants-dialog";
+import type { PersonData } from "@/../db/types";
 
 export interface BillConfigurationProps {
     people?: Person[];
@@ -70,7 +73,54 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
         fetchGroups();
     }, [fetchGroups]);
 
-    const totalItemCost = items.reduce((sum, item) => sum + (item.price || 0), 0);
+    const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
+    const [showInheritDialog, setShowInheritDialog] = useState(false);
+    const [targetGroupData, setTargetGroupData] = useState<{ name: string; participants: PersonData[] } | null>(null);
+
+    const handleGroupSelect = async (val: string) => {
+        if (val === "none") {
+            await setGroupId(null);
+            return;
+        }
+        if (val === groupId) return;
+
+        const matched = groups.find((g) => g.id === val);
+        let participants: PersonData[] = (matched as any)?.participants || [];
+
+        // If participants not loaded in summary, fetch full group details
+        if (!participants || participants.length === 0) {
+            try {
+                const gd = await useGroupStore.getState().fetchGroup(val);
+                if (gd && (gd as any).participants?.length) {
+                    participants = (gd as any).participants;
+                }
+            } catch {}
+        }
+
+        // Check if there are group members not yet on this bill
+        const hasUnadded = participants.some((gp) => {
+            const gpName = gp.name.trim().toLowerCase();
+            const gpEmail = gp.email?.trim().toLowerCase();
+            return !people.some((cp) => {
+                if (gpEmail && cp.email && cp.email.trim().toLowerCase() === gpEmail) return true;
+                if (cp.name && cp.name.trim().toLowerCase() === gpName) return true;
+                return false;
+            });
+        });
+
+        if (hasUnadded && participants.length > 0) {
+            setPendingGroupId(val);
+            setTargetGroupData({
+                name: matched?.name || 'Group',
+                participants,
+            });
+            setShowInheritDialog(true);
+        } else {
+            await setGroupId(val, []);
+        }
+    };
+
+    const totalItemCost = calculateBillTotals({ items }).subtotal;
 
     const handleTypeChange = (chargeId: string, currentAmount: number, currentType: 'fixed' | 'percent', targetType: 'fixed' | 'percent') => {
         if (currentType === targetType) return;
@@ -193,7 +243,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                             </div>
                             <Select
                                 value={groupId || "none"}
-                                onValueChange={(val) => setGroupId(val === "none" ? null : val)}
+                                onValueChange={handleGroupSelect}
                                 disabled={isReadOnly}
                             >
                                 <SelectTrigger className="h-9 bg-foreground/[0.03] border-border rounded-xl font-medium text-xs">
@@ -475,6 +525,28 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                     </div>
                 </ScrollArea>
             </CardContent>
+
+            {targetGroupData && (
+                <InheritParticipantsDialog
+                    open={showInheritDialog}
+                    onOpenChange={setShowInheritDialog}
+                    groupName={targetGroupData.name}
+                    groupParticipants={targetGroupData.participants}
+                    currentPeople={people}
+                    onConfirm={async (selected) => {
+                        if (pendingGroupId) {
+                            await setGroupId(pendingGroupId, selected);
+                            setPendingGroupId(null);
+                        }
+                    }}
+                    onSkip={async () => {
+                        if (pendingGroupId) {
+                            await setGroupId(pendingGroupId, []);
+                            setPendingGroupId(null);
+                        }
+                    }}
+                />
+            )}
 
             {currentBillId && (
                 <TransferOwnershipModal

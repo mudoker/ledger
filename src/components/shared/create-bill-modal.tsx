@@ -11,10 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tag, MapPin, User, ArrowRight, ReceiptText, Coins, Folder } from "lucide-react";
+import { Tag, MapPin, User, ArrowRight, ReceiptText, Coins, Folder, Users } from "lucide-react";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useAppSettingsStore } from "@/store/useAppSettingsStore";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { PersonData } from "@/../db/types";
 
 export interface CreateBillFormData {
   name: string;
@@ -22,6 +24,7 @@ export interface CreateBillFormData {
   hostName?: string;
   currency?: string;
   groupId?: string | null;
+  selectedMembers?: PersonData[];
 }
 
 interface CreateBillModalProps {
@@ -42,6 +45,34 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
   const [groupId, setGroupId] = useState<string>(effectiveGroupId);
   const [error, setError] = useState('');
   const { groups, fetchGroups } = useGroupStore();
+  const currentGroup = useGroupStore((state) => state.currentGroup);
+  const [groupMembers, setGroupMembers] = useState<PersonData[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (groupId && groupId !== 'none') {
+      const selected = groups.find((g) => g.id === groupId);
+      let members: PersonData[] = (selected as any)?.participants || [];
+      if ((!members || members.length === 0) && currentGroup?.id === groupId) {
+        members = currentGroup.participants || [];
+      }
+
+      if (!members || members.length === 0) {
+        useGroupStore.getState().fetchGroup(groupId).then((g) => {
+          if (g && (g as any).participants?.length) {
+            setGroupMembers((g as any).participants);
+            setSelectedMemberIds(new Set((g as any).participants.map((p: any) => p.id)));
+          }
+        }).catch(() => {});
+      } else {
+        setGroupMembers(members);
+        setSelectedMemberIds(new Set(members.map((p) => p.id)));
+      }
+    } else {
+      setGroupMembers([]);
+      setSelectedMemberIds(new Set());
+    }
+  }, [groupId, groups, currentGroup]);
 
   useEffect(() => {
     if (open) {
@@ -69,6 +100,9 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
       hostName: hostName.trim() || undefined,
       currency,
       groupId: groupId === 'none' ? null : groupId,
+      selectedMembers: groupId !== 'none'
+        ? groupMembers.filter((m) => selectedMemberIds.has(m.id))
+        : undefined,
     });
     setName('');
     setLocation('');
@@ -177,6 +211,64 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                 Adds this bill into a group overview. Can also be updated later in Settings.
               </p>
             </div>
+
+            {groupMembers.length > 0 && (
+              <div className="space-y-2 p-3 rounded-2xl bg-muted/20 border border-border/60">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-foreground">
+                    <Users className="w-3.5 h-3.5 text-primary" />
+                    <span>Include Group Members ({selectedMemberIds.size}/{groupMembers.length})</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (selectedMemberIds.size === groupMembers.length) {
+                        setSelectedMemberIds(new Set());
+                      } else {
+                        setSelectedMemberIds(new Set(groupMembers.map((m) => m.id)));
+                      }
+                    }}
+                    className="h-6 text-[11px] font-semibold text-primary hover:bg-primary/10 px-2 rounded-lg"
+                  >
+                    {selectedMemberIds.size === groupMembers.length ? "Deselect All" : "Select All"}
+                  </Button>
+                </div>
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1 pt-1">
+                  {groupMembers.map((m) => {
+                    const isSelected = selectedMemberIds.has(m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-center gap-2.5 p-2 rounded-xl border transition-all cursor-pointer select-none text-xs ${
+                          isSelected
+                            ? 'bg-primary/5 border-primary/30 text-foreground'
+                            : 'bg-muted/10 border-border/50 text-muted-foreground hover:bg-muted/20'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => {
+                            setSelectedMemberIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(m.id)) next.delete(m.id);
+                              else next.add(m.id);
+                              return next;
+                            });
+                          }}
+                          className="rounded-md"
+                        />
+                        <span className="font-semibold text-foreground truncate">{m.name}</span>
+                        {m.email && (
+                          <span className="text-[10px] text-muted-foreground truncate">({m.email})</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="pt-3 border-t border-border/60 shrink-0 gap-2 flex-col-reverse sm:flex-row">

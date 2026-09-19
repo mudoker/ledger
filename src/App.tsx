@@ -350,7 +350,9 @@ function App() {
     const newBillId = crypto.randomUUID();
 
     const matchedGroup = targetGroupId ? useGroupStore.getState().groups.find(g => g.id === targetGroupId) : null;
-    const groupParticipants = (matchedGroup as any)?.participants || (currentGroup?.id === targetGroupId ? (currentGroup as any)?.participants : []) || [];
+    const groupParticipants = (data as any)?.selectedMembers !== undefined
+      ? (data as any).selectedMembers
+      : ((matchedGroup as any)?.participants || (currentGroup?.id === targetGroupId ? (currentGroup as any)?.participants : []) || []);
 
     const inheritedPeople = [
       {
@@ -364,7 +366,7 @@ function App() {
     ];
 
     for (const gp of groupParticipants) {
-      const isHost = (gp.email && gp.email.toLowerCase() === user?.email?.toLowerCase()) ||
+      const isHost = (gp.email && user?.email && gp.email.toLowerCase() === user.email.toLowerCase()) ||
                      (gp.name.trim().toLowerCase() === hostName.trim().toLowerCase());
       if (!isHost) {
         inheritedPeople.push({
@@ -375,6 +377,13 @@ function App() {
           userId: gp.userId || null,
           email: gp.email || null,
         });
+      }
+    }
+
+    // Guarantee invariant: Bill.participants ⊆ Group.participants
+    if (targetGroupId) {
+      for (const p of inheritedPeople) {
+        useGroupStore.getState().addGroupParticipant(targetGroupId, p.name, p.email || null).catch(() => {});
       }
     }
 

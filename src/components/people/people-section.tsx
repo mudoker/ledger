@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Users, UserPlus, Sparkles, UserCheck, Plus } from "lucide-react";
+import { Users, UserPlus, Sparkles, UserCheck, Plus, Folder } from "lucide-react";
 import { useBillStore } from "@/store/useBillStore";
+import { useGroupStore } from "@/store/useGroupStore";
 import { useBillState } from "@/hooks/useBillState";
 import { PersonRow } from "./person-row";
 import { QuickInsights } from "../summary/quick-insights";
@@ -19,12 +20,26 @@ interface UserSuggestion {
 }
 
 export function PeopleSection() {
-    const { people, addPerson, updatePerson, removePerson, isReadOnly, loadSeedData, hostId } = useBillStore();
+    const { people, addPerson, addPeople, updatePerson, removePerson, isReadOnly, loadSeedData, hostId, groupId } = useBillStore();
+    const { groups, currentGroup } = useGroupStore();
     const { calculate } = useBillState();
     const { totalCosts } = calculate();
     const [newName, setNewName] = useState("");
     const [suggestions, setSuggestions] = useState<UserSuggestion[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+
+    const matchedGroup = groupId ? (groups.find(g => g.id === groupId) || (currentGroup?.id === groupId ? currentGroup : null)) : null;
+    const groupMembers: Array<{ id: string; name: string; email?: string | null; userId?: string | null }> = (matchedGroup as any)?.participants || [];
+
+    const unaddedMembers = groupMembers.filter((gm) => {
+        const gmName = gm.name.trim().toLowerCase();
+        const gmEmail = gm.email?.trim().toLowerCase();
+        return !people.some((p) => {
+            if (gmEmail && p.email && p.email.trim().toLowerCase() === gmEmail) return true;
+            if (p.name && p.name.trim().toLowerCase() === gmName) return true;
+            return false;
+        });
+    });
 
     useEffect(() => {
         const term = newName.trim();
@@ -161,6 +176,37 @@ export function PeopleSection() {
                                             </button>
                                         ))}
                                     </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Quick Add Group Members */}
+                        {!isReadOnly && unaddedMembers.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap p-2.5 rounded-2xl bg-primary/5 border border-primary/20 text-xs">
+                                <div className="flex items-center gap-1 text-[11px] font-bold text-primary mr-1 shrink-0">
+                                    <Folder className="w-3 h-3" />
+                                    <span>From Group:</span>
+                                </div>
+                                {unaddedMembers.map((m) => (
+                                    <button
+                                        key={m.id}
+                                        type="button"
+                                        onClick={() => addPerson(m.name, m.email || null, m.userId || null)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-background border border-primary/30 hover:border-primary text-foreground font-semibold text-xs shadow-2xs hover:scale-105 active:scale-95 transition-all"
+                                    >
+                                        <Plus className="w-3 h-3 text-primary" />
+                                        <span>{m.name}</span>
+                                    </button>
+                                ))}
+                                {unaddedMembers.length > 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => addPeople(unaddedMembers)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-2xs hover:bg-primary/90 active:scale-95 transition-all ml-auto"
+                                    >
+                                        <UserCheck className="w-3 h-3" />
+                                        <span>Add All ({unaddedMembers.length})</span>
+                                    </button>
                                 )}
                             </div>
                         )}
