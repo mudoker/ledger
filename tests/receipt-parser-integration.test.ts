@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { parseReceiptText } from '../src/lib/receipt-parser';
 import { calculateBill } from '../src/hooks/useBillState';
-import type { Person, GlobalCharge } from '../src/store/useBillStore';
+import type { Person, GlobalCharge, Item } from '../src/store/useBillStore';
 
 describe('Receipt OCR Parser & Calculation Pipeline Integration', () => {
   describe('Receipt Text Parsing & Extraction', () => {
@@ -163,19 +163,18 @@ describe('Receipt OCR Parser & Calculation Pipeline Integration', () => {
       // Item 1 (Seafood 300k): Bob and Charlie ate it (0.5 each)
       // Item 2 (Salad 60k): Communal (empty assignment -> auto split equally)
       // Item 3 (Bia Craft 160k total = 4 x 40k): Alice had 1, Bob had 1, Charlie had 2
-      const itemsWithAssignments = parsed.items.map((item, idx) => {
+      const itemsWithAssignments: Item[] = parsed.items.map((item, idx) => {
+        let assignments: Record<string, number> = {};
         if (idx === 0) {
-          return { ...item, assignments: { p_alice: 1, p_bob: 1 } };
+          assignments = { p_alice: 1, p_bob: 1 };
+        } else if (idx === 1) {
+          assignments = { p_bob: 1, p_charlie: 1 };
+        } else if (idx === 2) {
+          assignments = {};
+        } else {
+          assignments = { p_alice: 1, p_bob: 1, p_charlie: 2 };
         }
-        if (idx === 1) {
-          return { ...item, assignments: { p_bob: 1, p_charlie: 1 } };
-        }
-        if (idx === 2) {
-          // Communal: empty assignments -> distributed across all active splitters
-          return { ...item, assignments: {} };
-        }
-        // Beer
-        return { ...item, assignments: { p_alice: 1, p_bob: 1, p_charlie: 2 } };
+        return { ...item, assignments };
       });
 
       // 5. Convert global charges to store types

@@ -306,7 +306,10 @@ describe('Offline Queue Synchronization & Multi-Store Integration Suite', () => 
         description: 'Local and cloud merged',
         currency: 'VND',
         ownerId: 'local_user',
-        participants: [{ id: 'p1', name: 'Alex' }, { id: 'p2', name: 'Beth' }],
+        participants: [
+          { id: 'p1', name: 'Alex', sponsorAmount: 0, paidAmount: 0 },
+          { id: 'p2', name: 'Beth', sponsorAmount: 0, paidAmount: 0 },
+        ],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
