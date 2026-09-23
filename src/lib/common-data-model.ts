@@ -178,6 +178,7 @@ export function mergeBillsForGroup(
       }),
       people: sb.people || [],
       globalCharges: sb.globalCharges || [],
+      host_name: sb.host_name || (sb.people && sb.people.length > 0 ? sb.people[0].name : null),
     });
   }
 
@@ -283,12 +284,22 @@ export function aggregateGroupSummaries(
     const totalItems = sg.total_items + localBillsItemCount;
 
     const matchingLocalGroup = safeLocalGroups.find(lg => lg.id === sg.id);
-    const participants = (sg as any).participants?.length
-      ? (sg as any).participants
-      : matchingLocalGroup?.participants || [];
+    const participants = ensureGroupParticipantsSuperset(
+      (sg as any).participants || [],
+      [
+        { people: matchingLocalGroup?.participants || [] },
+        ...linkedLocalBills.map(b => ({ people: b.people })),
+      ]
+    );
+
+    const isLocalNewer = matchingLocalGroup && matchingLocalGroup.updatedAt
+      ? new Date(matchingLocalGroup.updatedAt).getTime() > new Date(sg.updated_at).getTime()
+      : false;
 
     groupMap.set(sg.id, {
       ...sg,
+      name: isLocalNewer ? (matchingLocalGroup?.name || sg.name) : sg.name,
+      description: isLocalNewer ? (matchingLocalGroup?.description ?? sg.description) : sg.description,
       total_amount: totalAmount,
       total_bills: totalBills,
       total_items: totalItems,
@@ -311,6 +322,11 @@ export function aggregateGroupSummaries(
         0
       );
 
+      const participants = ensureGroupParticipantsSuperset(
+        lg.participants || [],
+        linkedBills.map(b => ({ people: b.people }))
+      );
+
       groupMap.set(lg.id, {
         id: lg.id,
         name: lg.name,
@@ -323,7 +339,7 @@ export function aggregateGroupSummaries(
         total_items: totalItems,
         created_at: lg.createdAt,
         updated_at: lg.updatedAt,
-        participants: lg.participants || [],
+        participants,
       });
     }
   }
@@ -361,7 +377,7 @@ export function ensureGroupParticipantsSuperset(
 
       if (!exists) {
         result.push({
-          id: bp.id || crypto.randomUUID(),
+          id: bp.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'p_' + Math.random().toString(36).substring(2, 9)),
           name: bp.name.trim(),
           userId: bp.userId || null,
           email: bp.email || null,
