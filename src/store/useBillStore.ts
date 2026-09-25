@@ -815,11 +815,12 @@ export const useBillStore = create<BillState>()(
             },
 
             fetchBill: async (id: string, isShare: boolean = false, token?: string | null) => {
-                // 1. Try local storage first if not in explicit share mode
+                let localBill: LocalBillRecord | null = null;
+                // 1. Try local storage first for instant rendering
                 if (!isShare) {
                     try {
                         const localDb = getLocalDb();
-                        const localBill = await localDb.getBill(id);
+                        localBill = await localDb.getBill(id);
                         if (localBill) {
                             set({
                                 billName: localBill.name || '',
@@ -839,14 +840,19 @@ export const useBillStore = create<BillState>()(
                                 lastSaved: localBill.updatedAt,
                                 isReadOnly: false,
                             });
-                            return;
                         }
                     } catch (e) {
                         console.warn('Local bill lookup failed, falling back to server:', e);
                     }
                 }
 
-                // 2. Fetch from server API
+                // If offline and we already loaded a local copy, we can stop here
+                const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+                if (isOffline && localBill) {
+                    return;
+                }
+
+                // 2. Background Revalidate / Fetch from server API
                 try {
                     let url = isShare ? `/api/bills/${id}?share=1` : `/api/bills/${id}`;
                     if (token) {
@@ -854,6 +860,8 @@ export const useBillStore = create<BillState>()(
                     }
                     const response = await fetch(url);
                     if (!response.ok) {
+                        // If we already loaded a valid local bill, gracefully retain it on network error
+                        if (localBill) return;
                         const err = await response.json().catch(() => ({}));
                         const errorMsg = err.error || "Bill not found or share link has been revoked";
                         const customError: any = new Error(errorMsg);
@@ -863,25 +871,35 @@ export const useBillStore = create<BillState>()(
                     }
 
                     const result = await response.json();
-                    set({
-                        ...result.data,
-                        billName: result.data.name || '',
-                        location: result.data.location || '',
-                        qrCode: result.data.qrCode || null,
-                        currency: result.data.currency || 'VND',
-                        groupId: result.group_id || result.data.groupId || null,
-                        groupName: result.group_name || result.data.groupName || null,
-                        currentBillId: result.id,
-                        lastSaved: result.updated_at,
-                        isReadOnly: Boolean(isShare || result.isReadOnly),
-                        sharingStatus: result.isShared !== false ? 'shared' : 'local',
-                        visibility: result.visibility || 'restricted',
-                        shareToken: result.shareToken || null,
-                    });
+                    const serverTime = new Date(result.updated_at).getTime();
+                    const localTime = localBill ? new Date(localBill.updatedAt).getTime() : 0;
 
-                    // Save downloaded bill to local storage
-                    await get().saveToLocal();
+                    // Only update if server is newer or local is already in sync
+                    if (!localBill || serverTime > localTime || (localBill.sharingStatus === 'shared' && serverTime >= localTime)) {
+                        set({
+                            ...result.data,
+                            billName: result.data.name || '',
+                            location: result.data.location || '',
+                            qrCode: result.data.qrCode || null,
+                            currency: result.data.currency || 'VND',
+                            groupId: result.group_id || result.data.groupId || null,
+                            groupName: result.group_name || result.data.groupName || null,
+                            currentBillId: result.id,
+                            lastSaved: result.updated_at,
+                            isReadOnly: Boolean(isShare || result.isReadOnly),
+                            sharingStatus: result.isShared !== false ? 'shared' : 'local',
+                            visibility: result.visibility || 'restricted',
+                            shareToken: result.shareToken || null,
+                        });
+
+                        // Save downloaded bill to local storage
+                        await get().saveToLocal();
+                    }
                 } catch (error) {
+                    if (localBill) {
+                        // Suppress network error if local copy is already serving the user
+                        return;
+                    }
                     console.error("Failed to fetch bill:", error);
                     throw error;
                 }
@@ -926,11 +944,17 @@ export const useBillStore = create<BillState>()(
                         for (const sb of serverData) {
                             const existing = historyMap.get(sb.id);
                             if (existing) {
+                                const localTime = new Date(existing.updated_at).getTime();
+                                const serverTime = new Date(sb.updated_at).getTime();
+                                const isLocalNewer = localTime >= serverTime;
+
                                 historyMap.set(sb.id, {
                                     ...sb,
-                                    name: existing.name || sb.name,
-                                    group_id: existing.group_id,
-                                    group_name: existing.group_name,
+                                    name: isLocalNewer ? (existing.name || sb.name) : (sb.name || existing.name),
+                                    location: isLocalNewer ? (existing.location || sb.location) : (sb.location || existing.location),
+                                    totalAmount: isLocalNewer ? existing.totalAmount : (sb.totalAmount ?? existing.totalAmount),
+                                    group_id: isLocalNewer ? existing.group_id : (sb.group_id ?? existing.group_id),
+                                    group_name: isLocalNewer ? existing.group_name : (sb.group_name ?? existing.group_name),
                                     sharingStatus: existing.sharingStatus || 'shared',
                                     visibility: existing.visibility || sb.visibility || 'restricted',
                                     shareToken: existing.shareToken || sb.shareToken || null,
