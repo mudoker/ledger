@@ -1,8 +1,10 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { useGroupStore } from '../src/store/useGroupStore';
+import { setLocalDb, MemoryStorageEngine } from '../src/lib/local-db';
 
 describe('useGroupStore - Zustand Group State Management', () => {
   beforeEach(() => {
+    setLocalDb(new MemoryStorageEngine());
     // Reset store to initial state before each test
     useGroupStore.setState({
       groups: [],

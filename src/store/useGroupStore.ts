@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BillGroupSummary, BillGroupDetail } from '@/../db/types';
+import type { BillGroupSummary, BillGroupDetail, PersonData } from '@/../db/types';
 import { getLocalDb } from '@/lib/local-db';
 import type { LocalGroupRecord, LocalPerson, LocalBillRecord } from '@/lib/local-db/types';
 import {
@@ -88,25 +88,35 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const lg = await localDb.getGroup(id).catch(() => null);
     const localBills = await localDb.listBills().catch(() => []);
 
-    // 3. Resolve group metadata & participants
-    const participants = (serverGroup as any)?.participants?.length
-      ? (serverGroup as any).participants
-      : (lg as any)?.participants || [];
+    // 3. Resolve group metadata & participants by aggregating local and server
+    const serverParticipants: PersonData[] = (serverGroup as any)?.participants || [];
+    const localParticipants: PersonData[] = (lg as any)?.participants || [];
 
-    const baseGroup = serverGroup || (lg ? {
-      id: lg.id,
-      name: lg.name,
-      description: lg.description,
-      owner_id: lg.ownerId || 'local',
-      owner_name: null,
-      owner_email: null,
-      is_owner: true,
-      currency: lg.currency || 'VND',
-      created_at: lg.createdAt,
-      updated_at: lg.updatedAt,
-      bills: [],
-      participants,
-    } : null);
+    const participants = ensureGroupParticipantsSuperset(
+      serverParticipants,
+      [{ people: localParticipants }]
+    );
+
+    const isLocalNewer = lg && serverGroup
+      ? new Date(lg.updatedAt).getTime() > new Date(serverGroup.updated_at).getTime()
+      : Boolean(lg && !serverGroup);
+
+    const baseGroup = (serverGroup && !isLocalNewer)
+      ? { ...serverGroup, participants }
+      : (lg ? {
+          id: lg.id,
+          name: lg.name,
+          description: lg.description,
+          owner_id: lg.ownerId || serverGroup?.owner_id || 'local',
+          owner_name: serverGroup?.owner_name || null,
+          owner_email: serverGroup?.owner_email || null,
+          is_owner: serverGroup ? serverGroup.is_owner : true,
+          currency: lg.currency || serverGroup?.currency || 'VND',
+          created_at: serverGroup?.created_at || lg.createdAt,
+          updated_at: lg.updatedAt,
+          bills: serverGroup?.bills || [],
+          participants,
+        } : (serverGroup ? { ...serverGroup, participants } : null));
 
     if (!baseGroup) {
       set({ error: 'Group not found', isLoading: false, currentGroup: null });
@@ -146,6 +156,27 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       total_items: totalItems,
       participants: unifiedParticipants,
     };
+
+    // Persist aggregated group snapshot locally for offline resilience
+    const localParticipantsSnapshot: LocalPerson[] = (unifiedParticipants || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      sponsorAmount: p.sponsorAmount ?? 0,
+      paidAmount: p.paidAmount ?? 0,
+      userId: p.userId || null,
+      email: p.email || null,
+    }));
+
+    await localDb.saveGroup({
+      id: finalDetail.id,
+      name: finalDetail.name,
+      description: finalDetail.description,
+      currency: finalDetail.currency || 'VND',
+      ownerId: finalDetail.owner_id || null,
+      participants: localParticipantsSnapshot,
+      createdAt: finalDetail.created_at,
+      updatedAt: finalDetail.updated_at,
+    }).catch(() => {});
 
     // Update currentGroup and keep groups list in sync
     set((state) => {
@@ -368,9 +399,32 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     try {
       const localDb = getLocalDb();
       const lg = await localDb.getGroup(groupId).catch(() => null);
+      const localNextParticipants: LocalPerson[] = nextParticipants.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sponsorAmount: p.sponsorAmount ?? 0,
+        paidAmount: p.paidAmount ?? 0,
+        userId: p.userId || null,
+        email: p.email || null,
+      }));
+
       if (lg) {
-        (lg as any).participants = nextParticipants;
+        (lg as any).participants = localNextParticipants;
         await localDb.saveGroup(lg);
+      } else {
+        const cur = get().currentGroup || get().groups.find(g => g.id === groupId);
+        if (cur) {
+          await localDb.saveGroup({
+            id: cur.id,
+            name: cur.name,
+            description: cur.description,
+            currency: cur.currency || 'VND',
+            ownerId: cur.owner_id || null,
+            participants: localNextParticipants,
+            createdAt: cur.created_at || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
 
       await fetch(`/api/groups/${groupId}`, {
@@ -386,13 +440,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   removeGroupParticipant: async (groupId: string, participantId: string) => {
     const localDb = getLocalDb();
     const lg = await localDb.getGroup(groupId).catch(() => null);
-    if (lg) {
-      (lg as any).participants = ((lg as any).participants || []).filter((p: any) => p.id !== participantId);
-      await localDb.saveGroup(lg);
-    }
-
     const current = get().currentGroup;
     let nextParticipants: LocalPerson[] = [];
+
     if (current && current.id === groupId) {
       nextParticipants = ((current as any).participants || []).filter((p: any) => p.id !== participantId);
       set((state) => ({
@@ -402,6 +452,25 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         } as any,
         groups: state.groups.map(g => g.id === groupId ? { ...g, participants: nextParticipants as any } : g),
       }));
+    } else {
+      const existing = lg ? ((lg as any).participants || []) : [];
+      nextParticipants = existing.filter((p: any) => p.id !== participantId);
+    }
+
+    if (lg) {
+      (lg as any).participants = nextParticipants;
+      await localDb.saveGroup(lg);
+    } else if (current && current.id === groupId) {
+      await localDb.saveGroup({
+        id: current.id,
+        name: current.name,
+        description: current.description,
+        currency: current.currency || 'VND',
+        ownerId: current.owner_id || null,
+        participants: nextParticipants,
+        createdAt: current.created_at || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).catch(() => {});
     }
 
     try {
