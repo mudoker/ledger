@@ -1013,7 +1013,17 @@ export class PostgresAdapter implements DatabaseAdapter {
         throw new Error('Forbidden: Only the bill owner can link or unlink this bill');
       }
 
+      if (groupId) {
+        const groupRes = await client.query('SELECT id FROM bill_groups WHERE id = $1', [groupId]);
+        if (groupRes.rows.length === 0) throw new Error('Group not found');
+      }
+
+      await client.query('BEGIN');
       await client.query('UPDATE bills SET group_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [groupId, billId]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }

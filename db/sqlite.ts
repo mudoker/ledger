@@ -956,7 +956,19 @@ export class SqliteAdapter implements DatabaseAdapter {
       throw new Error('Forbidden: Only the bill owner can link or unlink this bill');
     }
 
-    this.db.prepare('UPDATE bills SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(groupId, billId);
+    if (groupId) {
+      const group = this.db.prepare('SELECT id FROM bill_groups WHERE id = ?').get(groupId);
+      if (!group) throw new Error('Group not found');
+    }
+
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      this.db.prepare('UPDATE bills SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(groupId, billId);
+      this.db.exec('COMMIT;');
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
+    }
   }
 
   async search(query: string, userId?: string | null): Promise<SearchResults> {
