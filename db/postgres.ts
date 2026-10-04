@@ -952,7 +952,12 @@ export class PostgresAdapter implements DatabaseAdapter {
       const targetUser = await this.getUserById(newOwnerId);
       if (!targetUser) throw new Error('New owner user not found');
 
+      await client.query('BEGIN');
       await client.query('UPDATE bill_groups SET owner_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [newOwnerId, id]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }

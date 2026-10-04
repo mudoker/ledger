@@ -905,7 +905,14 @@ export class SqliteAdapter implements DatabaseAdapter {
     const targetUser = await this.getUserById(newOwnerId);
     if (!targetUser) throw new Error('New owner user not found');
 
-    this.db.prepare('UPDATE bill_groups SET owner_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newOwnerId, id);
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      this.db.prepare('UPDATE bill_groups SET owner_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newOwnerId, id);
+      this.db.exec('COMMIT;');
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
+    }
   }
 
   async transferBillOwnership(billId: string, newOwnerId: string, userId?: string | null): Promise<void> {
