@@ -570,8 +570,13 @@ export class PostgresAdapter implements DatabaseAdapter {
         }
       }
 
+      await client.query('BEGIN');
       const res = await client.query('DELETE FROM bills WHERE id = $1', [billId]);
+      await client.query('COMMIT');
       return (res.rowCount ?? 0) > 0;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }
@@ -591,11 +596,16 @@ export class PostgresAdapter implements DatabaseAdapter {
         }
       }
 
+      await client.query('BEGIN');
       const res = await client.query(
         "UPDATE bills SET is_shared = 0, share_token = NULL, visibility = 'local', revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
         [billId]
       );
+      await client.query('COMMIT');
       return (res.rowCount ?? 0) > 0;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }

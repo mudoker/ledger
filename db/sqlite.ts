@@ -564,8 +564,15 @@ export class SqliteAdapter implements DatabaseAdapter {
         throw new Error('Forbidden: Only the bill owner can delete this bill');
       }
     }
-    const res = this.db.prepare('DELETE FROM bills WHERE id = ?').run(billId);
-    return Number(res.changes || 0) > 0;
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      const res = this.db.prepare('DELETE FROM bills WHERE id = ?').run(billId);
+      this.db.exec('COMMIT;');
+      return Number(res.changes || 0) > 0;
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
+    }
   }
 
   async revokeBillShare(billId: string, userId?: string | null): Promise<boolean> {
@@ -575,10 +582,17 @@ export class SqliteAdapter implements DatabaseAdapter {
         throw new Error('Forbidden: Only the bill owner can revoke sharing');
       }
     }
-    const res = this.db.prepare(
-      'UPDATE bills SET is_shared = 0, share_token = NULL, visibility = ?, revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).run('local', billId);
-    return Number(res.changes || 0) > 0;
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      const res = this.db.prepare(
+        'UPDATE bills SET is_shared = 0, share_token = NULL, visibility = ?, revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run('local', billId);
+      this.db.exec('COMMIT;');
+      return Number(res.changes || 0) > 0;
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
+    }
   }
 
   async listBills(userId?: string | null): Promise<BillSummary[]> {
