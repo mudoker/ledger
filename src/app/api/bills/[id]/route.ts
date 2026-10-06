@@ -20,6 +20,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      return NextResponse.json({ error: 'Invalid or missing bill ID' }, { status: 400, headers: corsHeaders });
+    }
+
     const url = new URL(req.url);
     const token = url.searchParams.get('token') || url.searchParams.get('shareToken');
     const isShare = url.searchParams.get('share') === '1' || url.searchParams.get('share') === 'true' || Boolean(token);

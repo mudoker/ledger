@@ -30,8 +30,23 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
-    const body = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400, headers: corsHeaders });
+    }
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid payload: expected an object' }, { status: 400, headers: corsHeaders });
+    }
+
     const { id, data, isShared, visibility, shareToken } = body;
+
+    if (visibility && !['local', 'restricted', 'public'].includes(visibility)) {
+      return NextResponse.json({ error: 'Invalid visibility parameter' }, { status: 400, headers: corsHeaders });
+    }
+
     const billId = id || crypto.randomUUID();
 
     const db = await getDb();
