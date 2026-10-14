@@ -17,11 +17,12 @@ export async function OPTIONS() {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const q = url.searchParams.get('q') || '';
+    const rawQ = url.searchParams.get('q') || '';
+    const q = rawQ.trim().slice(0, 100);
     const user = await getSessionUser();
     const db = await getDb();
 
-    if (!db.search) {
+    if (!db.search || !q) {
       return NextResponse.json({ results: { groups: [], bills: [], items: [] } }, { headers: corsHeaders });
     }
 

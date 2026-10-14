@@ -6,15 +6,16 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const q = url.searchParams.get('q') || '';
+    const rawQ = url.searchParams.get('q') || '';
+    const q = rawQ.trim().slice(0, 100);
 
-    if (!q || q.trim().length < 2) {
+    if (!q || q.length < 2) {
       return NextResponse.json({ users: [] });
     }
 
     const db = await getDb();
     if (db.searchUsers) {
-      const results = await db.searchUsers(q.trim());
+      const results = await db.searchUsers(q);
       return NextResponse.json({ users: results });
     }
 
