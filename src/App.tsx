@@ -206,6 +206,24 @@ function App() {
     }
   };
 
+  const handleOpenSettings = () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', 'app-settings');
+      window.history.pushState({ view: 'app-settings' }, '', url.toString());
+    }
+    setView('app-settings');
+  };
+
+  const handleCloseSettings = () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('view');
+      window.history.pushState({}, '', url.toString());
+    }
+    setView('landing');
+  };
+
   // Instantaneous back navigation with reliable background synchronization
   const handleBackToLanding = async (alreadySaved: boolean = false) => {
     // 1. Instantly switch view for 0-latency UI feedback
@@ -434,7 +452,7 @@ function App() {
     return (
       <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
         <TooltipProvider delayDuration={100} skipDelayDuration={0}>
-          <AppSettingsPage onBack={() => setView('landing')} />
+          <AppSettingsPage onBack={handleCloseSettings} />
         </TooltipProvider>
       </ThemeProvider>
     );
@@ -476,7 +494,7 @@ function App() {
                       <span className="hidden sm:inline">GitHub</span>
                     </Button>
                   </a>
-                  <AuthButton onOpenSettings={() => setView('app-settings')} />
+                  <AuthButton onOpenSettings={handleOpenSettings} />
                   <ModeToggle />
                 </div>
               </header>
@@ -485,7 +503,7 @@ function App() {
               onNewBill={handleStartNewBill}
               onSelectBill={handleSelectBill}
               onSelectGroup={handleSelectGroup}
-              onOpenSettings={() => setView('app-settings')}
+              onOpenSettings={handleOpenSettings}
               onLoadDemo={() => {
                 loadSeedData();
                 setView('editor');
@@ -629,7 +647,7 @@ function App() {
                         <Github className="w-4 h-4" />
                       </Button>
                     </a>
-                    <AuthButton onOpenSettings={() => setView('app-settings')} />
+                    <AuthButton onOpenSettings={handleOpenSettings} />
                     <ModeToggle />
                   </div>
                 </header>
