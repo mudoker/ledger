@@ -233,7 +233,14 @@ function App() {
       const params = new URLSearchParams(window.location.search);
       const id = params.get('id');
       const groupId = params.get('groupId');
-      const isShare = params.get('share') === '1' || params.get('share') === 'true';
+      const token = params.get('token') || params.get('shareToken');
+      const isShare = params.get('share') === '1' || params.get('share') === 'true' || Boolean(token);
+      const viewParam = params.get('view');
+
+      if (viewParam === 'app-settings') {
+        setView('app-settings');
+        return;
+      }
 
       if (id) {
         if (groupId) {
@@ -244,7 +251,15 @@ function App() {
           useGroupStore.getState().clearCurrentGroup();
         }
         setView('editor');
-        fetchBill(id, isShare);
+        fetchBill(id, isShare, token).catch((err) => {
+          setRequestedBillId(id);
+          if (err?.status === 403 || err?.isForbidden) {
+            setView('access-denied');
+          } else {
+            setNotFoundError(err?.message || 'Shared bill is unavailable');
+            setView('not-found');
+          }
+        });
       } else if (groupId) {
         setView('group');
         setReturnToGroupId(null);
