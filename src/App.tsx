@@ -295,6 +295,36 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [fetchBill, fetchGroup]);
 
+  // Global keyboard shortcuts for rapid navigation and search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K: Toggle Search
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsGroupSearchOpen((prev) => !prev);
+        return;
+      }
+
+      // Escape: Close search, modals, or return from settings
+      if (e.key === 'Escape') {
+        if (isGroupSearchOpen) {
+          setIsGroupSearchOpen(false);
+          return;
+        }
+        if (isReadOnlyModalOpen) {
+          setIsReadOnlyModalOpen(false);
+          return;
+        }
+        if (view === 'app-settings') {
+          handleCloseSettings();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isGroupSearchOpen, isReadOnlyModalOpen, view]);
+
   const handleStartNewBill = async (data?: CreateBillFormData) => {
     resetBill();
     if (data?.currency) {
