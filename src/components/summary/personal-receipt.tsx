@@ -454,101 +454,102 @@ export function PersonalReceipt() {
                     </div>
                 </div>
 
-                {/* Section 2: Proportional Taxes, Fees & Adjustments */}
-                {allocatedCharges.length > 0 && (
-                    <div className="py-3 border-t border-dashed border-border/80 space-y-2">
-                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                            <span className="flex items-center gap-1.5">
-                                <Percent className="w-3.5 h-3.5 text-amber-500" /> Proportional Extras & Charges
-                            </span>
-                            <span className="text-[10px] text-muted-foreground font-medium">
-                                {(personRatio * 100).toFixed(1)}% share
-                            </span>
-                        </div>
-
+                {/* Section 2: Proportional Taxes, Extras & Adjustments */}
+                <div className="py-2.5 border-t border-dashed border-border/80 space-y-2">
+                    {allocatedCharges.length > 0 && (
                         <div className="space-y-1">
-                            {allocatedCharges.map(charge => {
-                                const isPositive = charge.userPortion >= 0;
-                                return (
-                                    <div key={charge.id} className="flex items-center justify-between text-xs py-0.5 px-1 min-w-0">
-                                        <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1 truncate">
-                                            <span className="truncate">{charge.name}</span>
-                                            {charge.type === 'percent' && (
-                                                <span className="text-[9px] px-1 py-0.2 rounded bg-muted font-mono shrink-0">
-                                                    {charge.rate}%
-                                                </span>
-                                            )}
+                            <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                <span className="flex items-center gap-1.5">
+                                    <Percent className="w-3.5 h-3.5 text-amber-500" /> Extras & Charges
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-medium">
+                                    {(personRatio * 100).toFixed(1)}% share
+                                </span>
+                            </div>
+
+                            <div className="space-y-1 pt-0.5">
+                                {allocatedCharges.map(charge => {
+                                    const isPositive = charge.userPortion >= 0;
+                                    return (
+                                        <div key={charge.id} className="flex items-center justify-between text-xs py-0.5 px-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1 truncate">
+                                                <span className="truncate">{charge.name}</span>
+                                                {charge.type === 'percent' && (
+                                                    <span className="text-[9px] px-1 py-0.2 rounded bg-muted font-mono shrink-0">
+                                                        {charge.rate}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span className={cn("font-semibold tabular-nums shrink-0 ml-2 whitespace-nowrap", isPositive ? "text-foreground" : "text-emerald-600 dark:text-emerald-400")}>
+                                                {isPositive ? `+${formatCurrency(charge.userPortion)}` : formatCurrency(charge.userPortion)}
+                                            </span>
                                         </div>
-                                        <span className={cn("font-semibold tabular-nums shrink-0 ml-2 whitespace-nowrap", isPositive ? "text-foreground" : "text-emerald-600 dark:text-emerald-400")}>
-                                            {isPositive ? `+${formatCurrency(charge.userPortion)}` : formatCurrency(charge.userPortion)}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
 
-                        {/* Baseline Required Total */}
-                        <div className="flex items-center justify-between pt-1 px-1 text-xs font-bold border-t border-border/40">
-                            <span className="text-foreground">Required Baseline</span>
-                            <span className="text-foreground tabular-nums">{formatCurrency(totalCost)}</span>
-                        </div>
-                    </div>
-                )}
-
-                {/* Section 3: Sponsorship or Relief Impact */}
-                <div className="py-3 border-t border-dashed border-border/80 space-y-2">
-                    {isSponsor ? (
-                        <div className="p-2.5 sm:p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
-                                    <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" /> Generous Sponsor Contribution
-                                </span>
-                                <span className="text-xs font-black text-rose-700 dark:text-rose-400 tabular-nums">
-                                    +{formatCurrency(surplusAmount)} Gift
-                                </span>
+                            {/* Baseline Required Total */}
+                            <div className="flex items-center justify-between pt-1 px-1 text-xs font-semibold text-muted-foreground border-t border-border/40">
+                                <span>Required Baseline</span>
+                                <span className="tabular-nums font-bold text-foreground">{formatCurrency(totalCost)}</span>
                             </div>
-                            <p className="text-[11px] text-rose-900/80 dark:text-rose-200/80 leading-relaxed">
-                                Pledged <span className="font-bold">{formatCurrency(selectedPerson.sponsorAmount)}</span>, covering your own <span className="font-bold">{formatCurrency(totalCost)}</span> meal and gifting <span className="font-bold">{formatCurrency(surplusAmount)}</span> to relieve fellow diners. Liability is capped at pledge.
-                            </p>
-                        </div>
-                    ) : isUnderPledged ? (
-                        <div className="p-2.5 sm:p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-                                    <AlertCircle className="w-3.5 h-3.5 text-amber-500" /> Pledged Below Consumption
-                                </span>
-                                <span className="text-xs font-bold text-amber-700 dark:text-amber-400 tabular-nums">
-                                    {formatCurrency(selectedPerson.sponsorAmount)} / {formatCurrency(totalCost)}
-                                </span>
-                            </div>
-                            <p className="text-[11px] text-amber-900/80 dark:text-amber-200/80 leading-relaxed">
-                                Pledge is less than required baseline. Minimum pledge to sponsor is <span className="font-bold">{formatCurrency(totalCost)}</span>. Currently billed at baseline share.
-                            </p>
-                        </div>
-                    ) : reliefAmount > 0 ? (
-                        <div className="p-2.5 sm:p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                                    <Sparkles className="w-3.5 h-3.5 text-emerald-500" /> Sponsor Relief Received
-                                </span>
-                                <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
-                                    -{formatCurrency(reliefAmount)}
-                                </span>
-                            </div>
-                            <p className="text-[11px] text-emerald-900/80 dark:text-emerald-200/80 leading-relaxed">
-                                Thanks to group sponsors, you received flat relief of <span className="font-bold">-{formatCurrency(reliefAmount)}</span>, reducing your payable from <span className="line-through opacity-75">{formatCurrency(totalCost)}</span> down to <span className="font-bold">{formatCurrency(finalPay)}</span>.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-between text-xs py-0.5 px-1 text-muted-foreground">
-                            <span>Sponsorship Adjustments</span>
-                            <span className="font-medium">—</span>
                         </div>
                     )}
+
+                    {/* Section 3: Sponsorship Adjustment Lines */}
+                    {(isSponsor || reliefAmount > 0 || isUnderPledged) && (
+                        <div className={cn("space-y-1", allocatedCharges.length > 0 && "pt-1.5 border-t border-dashed border-border/60")}>
+                            {isSponsor && (
+                                <div className="flex items-center justify-between text-xs py-1 px-1 min-w-0 text-rose-600 dark:text-rose-400 font-bold">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <Heart className="w-3.5 h-3.5 fill-rose-500/30 text-rose-500 shrink-0" />
+                                        <span className="truncate">Sponsor Gift (Table Subsidy)</span>
+                                    </span>
+                                    <span className="tabular-nums shrink-0 ml-2 whitespace-nowrap">
+                                        +{formatCurrency(surplusAmount)}
+                                    </span>
+                                </div>
+                            )}
+
+                            {reliefAmount > 0 && (
+                                <div className="flex items-center justify-between text-xs py-1 px-1 min-w-0 text-emerald-600 dark:text-emerald-400 font-bold">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                        <span className="truncate">Sponsor Relief (Table Subsidy)</span>
+                                    </span>
+                                    <span className="tabular-nums shrink-0 ml-2 whitespace-nowrap">
+                                        -{formatCurrency(reliefAmount)}
+                                    </span>
+                                </div>
+                            )}
+
+                            {isUnderPledged && (
+                                <div className="flex items-center justify-between text-xs py-1 px-1 min-w-0 text-amber-600 dark:text-amber-400 font-medium">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                        <span className="truncate">Sponsor Pledge (Below Baseline)</span>
+                                    </span>
+                                    <span className="font-mono text-[11px] text-muted-foreground shrink-0 ml-2 whitespace-nowrap">
+                                        Min: {formatCurrency(totalCost)}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Final Total Line */}
+                    <div className="flex items-center justify-between pt-2 pb-0.5 px-1 border-t-2 border-border/80 min-w-0">
+                        <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-foreground">
+                            Total Payable
+                        </span>
+                        <span className="text-base sm:text-lg font-black text-primary tabular-nums shrink-0 ml-2 whitespace-nowrap">
+                            {finalPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(finalPay)}
+                        </span>
+                    </div>
                 </div>
 
-                {/* Section 4: Settlement Instructions (No redundant total amount) */}
-                <div className="pt-3 border-t border-dashed border-border/80">
+                {/* Section 4: Settlement Instructions */}
+                <div className="pt-2.5 border-t border-dashed border-border/80">
                     {isHost ? (
                         <div className="p-2.5 sm:p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col xs:flex-row xs:items-center justify-between gap-2 min-w-0">
                             <div className="flex items-center gap-2 min-w-0">
