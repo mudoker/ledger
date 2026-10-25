@@ -155,10 +155,10 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
                         if (dbStatus.type === 'neon') {
                             return (
                                 <span
-                                    className="inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider"
+                                    className="inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider"
                                     title="Connected to Neon PostgreSQL Database"
                                 >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Neon DB
+                                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> Neon DB
                                 </span>
                             );
                         }

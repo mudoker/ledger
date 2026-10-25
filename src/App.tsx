@@ -196,7 +196,7 @@ function App() {
   }
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+    <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
       <TooltipProvider delayDuration={100} skipDelayDuration={0}>
         <div className={cn(
         "bg-background font-sans text-foreground antialiased selection:bg-foreground/20 flex flex-col items-stretch",

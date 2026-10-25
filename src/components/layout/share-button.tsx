@@ -46,7 +46,7 @@ export function ShareButton() {
                             size="sm"
                             className={cn(
                                 "flex-1 h-9 text-xs gap-2 font-bold",
-                                copiedView ? "bg-emerald-600 hover:bg-emerald-600 text-white" : "bg-foreground text-background"
+                                copiedView ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "bg-foreground text-background"
                             )}
                             onClick={handleCopyShare}
                         >

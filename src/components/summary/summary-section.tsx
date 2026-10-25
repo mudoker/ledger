@@ -117,10 +117,10 @@ export function SummarySection() {
                                     <div className="overflow-x-auto w-full">
                                         <Table className="w-full min-w-[280px]">
                                             <TableHeader>
-                                                <TableRow className="bg-muted/30 border-b border-foreground/5">
-                                                    <TableHead className="px-2 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-muted-foreground">Participant</TableHead>
-                                                    <TableHead className="text-right px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-muted-foreground whitespace-nowrap">Subtotal</TableHead>
-                                                    <TableHead className="text-right px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-muted-foreground whitespace-nowrap">Sponsor / Relief</TableHead>
+                                                <TableRow className="bg-muted/40 border-b border-border/80">
+                                                    <TableHead className="px-2 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-foreground/75 dark:text-muted-foreground">Participant</TableHead>
+                                                    <TableHead className="text-right px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-foreground/75 dark:text-muted-foreground whitespace-nowrap">Subtotal</TableHead>
+                                                    <TableHead className="text-right px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-foreground/75 dark:text-muted-foreground whitespace-nowrap">Sponsor / Relief</TableHead>
                                                     <TableHead className="text-right px-2 xs:px-2.5 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest text-primary whitespace-nowrap">Final Pay</TableHead>
                                                 </TableRow>
                                             </TableHeader>
@@ -137,7 +137,7 @@ export function SummarySection() {
                                                     const pay = finalPayables[p.id] || 0;
                                                     const isAppMember = Boolean(p.userId || p.email);
                                                     return (
-                                                        <TableRow key={p.id} className="hover:bg-primary/[0.02] transition-colors border-b border-foreground/5 last:border-0">
+                                                        <TableRow key={p.id} className="hover:bg-primary/[0.02] transition-colors border-b border-border/40 last:border-0">
                                                             <TableCell className="font-bold px-2 xs:px-2.5 sm:px-4 py-2 sm:py-2.5">
                                                                 <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
                                                                     <span className="truncate max-w-[70px] xs:max-w-[100px] sm:max-w-[160px] block text-xs sm:text-sm" title={p.name}>{p.name}</span>
@@ -152,7 +152,7 @@ export function SummarySection() {
                                                                     )}
                                                                 </div>
                                                             </TableCell>
-                                                            <TableCell className="text-right text-muted-foreground px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs tabular-nums">
+                                                            <TableCell className="text-right text-foreground/85 dark:text-muted-foreground px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs font-semibold tabular-nums">
                                                                 {formatCurrency(total)}
                                                             </TableCell>
                                                             <TableCell className="text-right px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs tabular-nums">
@@ -161,7 +161,7 @@ export function SummarySection() {
                                                                         +{formatCurrency(sponsorSurpluses[p.id])}
                                                                     </span>
                                                                 ) : sponsorReliefs && sponsorReliefs[p.id] > 0 ? (
-                                                                    <span className="text-emerald-700 dark:text-emerald-400 font-bold" title={`Equal relief discount received: -${formatCurrency(sponsorReliefs[p.id])}`}>
+                                                                    <span className="text-primary font-bold" title={`Equal relief discount received: -${formatCurrency(sponsorReliefs[p.id])}`}>
                                                                         -{formatCurrency(sponsorReliefs[p.id])}
                                                                     </span>
                                                                 ) : (
@@ -203,7 +203,7 @@ export function SummarySection() {
                                                     <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.15em] sm:tracking-[0.3em] text-primary">Settlement Flows</h4>
                                                     <p className="text-[8px] sm:text-[10px] font-bold text-muted-foreground uppercase">Optimized Peer-to-Peer Payments</p>
                                                 </div>
-                                                <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-primary text-black rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 shrink-0">
+                                                <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-primary text-primary-foreground rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 shrink-0">
                                                     Plan Ready
                                                 </div>
                                             </div>
@@ -236,7 +236,7 @@ export function SummarySection() {
                                                                 </div>
 
                                                                 <div className="flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14">
-                                                                    <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-primary text-black flex items-center justify-center font-black text-xs shadow-lg shadow-primary/20 shrink-0">
+                                                                    <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-black text-xs shadow-lg shadow-primary/20 shrink-0">
                                                                         {creditor.name[0]}
                                                                     </div>
                                                                     <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-tighter truncate max-w-[44px] xs:max-w-[48px] sm:max-w-[56px] text-center">{creditor.name}</span>
@@ -267,9 +267,9 @@ export function SummarySection() {
                                                         <h5 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2 sm:mb-3 opacity-60">Already Settled</h5>
                                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                                                             {settledPeople.map(p => (
-                                                                <div key={p.id} className="flex items-center gap-2 bg-foreground/[0.02] p-2 rounded-xl border border-transparent hover:border-emerald-500/20 transition-colors">
-                                                                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                                                                        <CheckCircle2 className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-emerald-500" />
+                                                                <div key={p.id} className="flex items-center gap-2 bg-foreground/[0.02] p-2 rounded-xl border border-transparent hover:border-primary/20 transition-colors">
+                                                                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                                                        <CheckCircle2 className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-primary" />
                                                                     </div>
                                                                     <span className="text-[10px] font-bold text-muted-foreground/80 truncate">{p.name}</span>
                                                                 </div>

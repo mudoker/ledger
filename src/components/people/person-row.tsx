@@ -115,7 +115,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
 
                 <div className="person-edit-grid">
                     <div className="space-y-1 min-w-0">
-                        <Label className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 pl-1 flex items-center gap-1.5">
+                        <Label className="text-[11px] font-semibold text-primary pl-1 flex items-center gap-1.5">
                             <Banknote className="w-3.5 h-3.5" /> Amount Paid
                         </Label>
                         <CurrencyInput
@@ -144,7 +144,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                             </p>
                         )}
                         {editSponsor >= baselineCost && editSponsor > 0 && baselineCost > 0 && (
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium pl-1 leading-tight">
+                            <p className="text-[10px] text-primary font-medium pl-1 leading-tight">
                                 Subsidizes {formatCurrency(editSponsor - baselineCost)} to table
                             </p>
                         )}
@@ -219,7 +219,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                         )}
 
                         {!isHost && person.paidAmount > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 rounded-full border border-primary/20 text-[10px] font-semibold text-primary tabular-nums">
                                 <Banknote className="w-3 h-3 shrink-0" />
                                 <span>{formatCurrency(person.paidAmount)} paid</span>
                             </div>

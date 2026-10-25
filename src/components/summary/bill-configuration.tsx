@@ -109,7 +109,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                         </div>
                     ) : saved ? (
                         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-foreground/10 rounded-full border border-foreground/20">
-                            <Check className="w-3 h-3 text-emerald-500" />
+                            <Check className="w-3 h-3 text-primary" />
                             <span className="text-[9px] font-black uppercase text-foreground tracking-widest">Saved</span>
                         </div>
                     ) : (
