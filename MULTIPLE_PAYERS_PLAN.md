@@ -151,6 +151,7 @@ export interface Person {
   id: string;
   name: string;
   paidAmount: bigint; // Direct merchant payment in integer minor units
+  sponsorAmount?: bigint; // Pledged sponsor amount in integer minor units (>= baseline cost when active)
   userId?: string | null;
   email?: string | null;
 }
@@ -397,23 +398,18 @@ RawCost(p) = (Sum of Share(p, i) across all items i)
 
 ---
 
-### 4.2 Proportional Extras & Final Liabilities (Separate Discount Allocation)
-
-> [!NOTE]
-> **Sponsor Feature Removal**:
-> Per user specification, the **Sponsorship** feature (sponsor amounts, sponsor subsidies, and discount ratio adjustments) has been **completely removed**.
-> Liabilities are calculated directly and transparently from consumed items plus proportional taxes, fees, and discounts.
+### 4.2 Proportional Extras, Discounts & Sponsorship Integration
 
 #### Global Charges & Adjustments Sign Convention:
-- **Positive Charges (`PositiveExtras`)**: Taxes, service charges, venue fees, and gratuity/tips ($\ge 0$).
-- **Discounts (`Discounts`)**: Bill-wide coupons, merchant vouchers, or promotional discounts ($\ge 0$).
+- **Positive Charges (`PositiveExtras`)**: Taxes, service charges, venue fees, and gratuity/tips (≥ 0).
+- **Discounts (`Discounts`)**: Bill-wide coupons, merchant vouchers, or promotional discounts (≥ 0).
 - **Total Bill**:
   ```
   TotalBill = TotalItemCosts + PositiveExtras - Discounts
   ```
 
-#### Separate Nonnegative Two-Pass Allocation:
-Passing negative totals into integer allocation algorithms introduces truncation errors. Therefore, positive charges and discounts are allocated in two separate, nonnegative integer passes:
+#### Nonnegative Multi-Pass Integer Allocation:
+Passing negative totals into integer allocation algorithms introduces truncation errors. Therefore, positive charges, merchant discounts, and sponsor subsidies are allocated in dedicated, nonnegative integer passes:
 
 1. **Pass 1: Allocate Positive Extras**:
    Using each participant's `RawCost(p)` as integer weights:
@@ -429,13 +425,55 @@ Passing negative totals into integer allocation algorithms introduces truncation
    ```
    *(If `TotalRawCosts === 0`, discounts apply against positive extras or are rejected).*
 
-3. **Net Liability per Participant**:
+3. **Baseline Liability per Participant**:
    ```
-   FinalPayable(p) = RawCost(p) + AllocatedPositiveExtras(p) - AllocatedDiscounts(p)
+   BaselinePayable(p) = RawCost(p) + AllocatedPositiveExtras(p) - AllocatedDiscounts(p)
    ```
-   *Validation Guard*: An individual discount allocation cannot produce a negative liability (`FinalPayable(p) >= 0`) unless a negative balance is explicitly supported.
-   > **Total Liabilities Invariant**:
-   > `Sum of FinalPayable(p) across all p == TotalBill` strictly holds.
+   *Validation Guard*: An individual discount allocation cannot produce a negative liability (`BaselinePayable(p) >= 0n`).
+
+4. **Pass 3: Multi-Sponsor Integration & Liability Cap**:
+   > Formalized in [`SPONSOR_MECHANISM.md`](file:///home/mudoker/mudoker/projects/ledger/SPONSOR_MECHANISM.md).
+   
+   A sponsor is a participant who voluntarily commits to paying more than their required consumption share to reduce what others pay:
+   - **Sponsor Invariant & Validation**: For any participant `p` with `sponsorAmount > 0n`:
+     ```text
+     sponsorAmount >= BaselinePayable(p)
+     ```
+     *(If `sponsorAmount < BaselinePayable(p)`, the input is rejected with a validation error; sponsoring less than one's share is invalid).*
+   - **Absolute Liability Cap (Nothing More to Pay)**:
+     ```text
+     FinalPayable(p) = sponsorAmount
+     ```
+     Because the sponsor is already paying more than required, their payment obligation is strictly capped at `sponsorAmount`.
+     - Their meal cost `BaselinePayable(p)` is already subsumed within `sponsorAmount`. They are **never** billed `BaselinePayable(p) + sponsorAmount`.
+     - They can **never be required to pay anything more**—they are immune to unassigned residuals, host discrepancy deductions, or others underpaying.
+     - Once `sponsorAmount` is satisfied (either disbursed upfront or paid in final settlement), their remaining balance is `0n`.
+   - **Multi-Sponsor Surplus Pooling**:
+     Multiple participants can sponsor in the same session (`Sponsors = { p | sponsorAmount_p > 0n }`).
+     Each sponsor generates an individual surplus:
+     ```text
+     Surplus(p) = sponsorAmount_p - BaselinePayable(p) >= 0n
+     TotalSurplus = sum(Surplus(p) across all p in Sponsors)
+     ```
+     *Independence Rule*: Sponsors do **not** discount each other; both have pledged fixed amounts. The pooled surplus exclusively benefits non-sponsoring guests.
+   - **Equitable Equal Relief Allocation**:
+     Define non-sponsor beneficiaries as `B = { i | sponsorAmount_i == 0n and BaselinePayable(i) > 0n }`.
+     The surplus is distributed **equally** among all non-sponsors using the integer Hamilton method with equal weights (`weight = 1n` for all `i in B`):
+     ```text
+     AllocatedRelief(i) = HamiltonAllocate(min(TotalSurplus, sum(BaselinePayable(B))), { i: 1n for all i in B })[i]
+     FinalPayable(i) = max(0n, BaselinePayable(i) - AllocatedRelief(i))
+     ```
+     *(Capping & Cascade Rule: If an individual's baseline cost is less than `AllocatedRelief(i)`, relief is capped at `BaselinePayable(i)` and any unabsorbed residual cascades equally to the remaining non-sponsors. This guarantees every guest gets the exact same dollar relief rather than rewarding higher spenders).*
+   - **Multi-Sponsor Oversubsidy Refund**:
+     If `TotalSurplus > sum(BaselinePayable(B))`, every non-sponsor pays `0n`. The unspent excess surplus is refunded pro-rata to the contributing sponsors using the integer Hamilton method:
+     ```text
+     SponsorRefund(p) = HamiltonAllocate(TotalSurplus - sum(BaselinePayable(B)), { p: Surplus(p) })[p]
+     FinalPayable(p) = sponsorAmount_p - SponsorRefund(p)
+     ```
+     *(In an oversubsidy, sponsors share the excess savings and pay even less than their pledge; under no circumstances do they ever pay more).*
+
+> **Total Liabilities Invariant**:
+> `Sum of FinalPayable(p) across all p == TotalBill` strictly holds under pure integer arithmetic with zero floating-point loss.
 
 ---
 
@@ -930,13 +968,14 @@ flowchart TD
 - Add `hostCoverageEnabled: boolean` to `BillDetail` and `useBillStore`.
 - Update `item_payers` schema: `INTEGER` in SQLite and `BIGINT` in PostgreSQL.
 
-### Phase 2: Pure Integer Allocation Engine
+### Phase 2: Pure Integer Allocation Engine & Sponsorship Integration
 - Implement `distributeIntegerMinorUnits` with:
   - Rejection of negative amounts, negative weights, empty participants.
   - Deterministic tie-breaking by `participantId`.
   - Bounded remainder assertions.
 - Implement per-item whole-line allocation (`P_i` and `Q_i`).
 - Implement separate nonnegative discount allocation pass.
+- Implement sponsorship invariant validation (`sponsorAmount >= BaselinePayable`) and integer Hamilton surplus relief distribution according to [`SPONSOR_MECHANISM.md`](file:///home/mudoker/mudoker/projects/ledger/SPONSOR_MECHANISM.md).
 
 ### Phase 3: Merchant Payment Accounting
 - Implement 5-step order of operations for payment validation.
@@ -948,11 +987,12 @@ flowchart TD
 - Implement `validateBalances` guard verifying safe integers and `sum === 0n`.
 - Implement `computeGreedyTransfers` with postcondition transfer replay verification.
 - Update `item-row.tsx`: "Paid By" popover with real-time overpayment and oversubscription alerts.
-- Update `summary-section.tsx`: Reconciled table (`Subtotal | Extras | Item Paid | Direct Paid | Total Paid | Net Balance`).
+- Update `summary-section.tsx`: Reconciled table (`Subtotal | Extras | Sponsor Pledge/Relief | Item Paid | Direct Paid | Total Paid | Net Balance`).
 
 ### Phase 5: Verification & Automated Tests
 - Write automated tests in `tests/multi-payer.test.ts` covering:
   - **Reconciled multi-payer fixture**: Exact 350k bill fixture from Section 5.3 verifying zero overpayment and zero residual balances.
+  - **Sponsor surplus conservation**: Verifies that sponsor surplus allocated across non-sponsors strictly satisfies `sum(FinalPayable) === TotalBill`.
   - **Host coverage with explicit direct merchant payments**: Verifies direct payments are credited properly without double-counting.
   - **Item overpayment guard**: Verifies settlement is blocked when $A_i > P_i$.
   - **Unpaid merchant balance guard**: Verifies settlement is blocked when no host exists and merchant bill is partially paid.
