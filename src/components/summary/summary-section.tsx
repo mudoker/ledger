@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, TableIcon, BarChart3, PieChartIcon, CheckCircle2, AlertTriangle, Share2, Eye, Copy, Receipt, Tag, TrendingUp, Wallet, LayoutGrid, ArrowRight, QrCode, MapPin, ExternalLink, Check } from "lucide-react";
+import { Download, TableIcon, PieChartIcon, CheckCircle2, AlertTriangle, Share2, Eye, Copy, Receipt, TrendingUp, LayoutGrid, ArrowRight, QrCode, MapPin, ExternalLink, Check } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -16,7 +16,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import html2canvas from 'html2canvas';
-import { CostPieChart, CompareBarChart, buildChartData } from "./summary-charts";
+import { CostPieChart, buildChartData } from "./summary-charts";
+import { PersonalReceipt } from "./personal-receipt";
 import { generateShareUrl } from "@/lib/share";
 import { useState } from "react";
 
@@ -36,7 +37,7 @@ export function SummarySection() {
     const [copiedView, setCopiedView] = useState(false);
 
     const { totalCosts, finalPayables, sponsorSurpluses, sponsorReliefs, totalBill, totalExtras, totalSurplus, totalItemCost, settlementFlows } = calculate();
-    const { pieData, barData, itemCostData } = buildChartData(people, items, totalCosts, finalPayables);
+    const { pieData, itemCostData } = buildChartData(people, items, totalCosts, finalPayables);
 
     // Verification: sum of all final payables should strictly equal total bill
     const sumFinalPayables = Object.values(finalPayables).reduce((a, b) => a + b, 0);
@@ -205,8 +206,8 @@ export function SummarySection() {
                                 <TabsTrigger value="pie" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1">
                                     <PieChartIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> Charts
                                 </TabsTrigger>
-                                <TabsTrigger value="bar" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1">
-                                    <BarChart3 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> Compare
+                                <TabsTrigger value="receipt" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1">
+                                    <Receipt className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> Breakdown
                                 </TabsTrigger>
                             </TabsList>
 
@@ -431,42 +432,9 @@ export function SummarySection() {
                                 </div>
                             </TabsContent>
 
-                            {/* BAR CHART TAB */}
-                            <TabsContent value="bar" className="mt-4 space-y-4 sm:space-y-6">
-                                <div className="rounded-2xl sm:rounded-3xl border border-foreground/5 bg-card/30 p-4 sm:p-8 shadow-sm">
-                                    <div className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-8">
-                                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shrink-0">
-                                            <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-xs sm:text-sm font-black uppercase tracking-[0.1em]">Value Comparison</h4>
-                                            <p className="text-[10px] sm:text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Ordered vs Sponsored vs Pay</p>
-                                        </div>
-                                    </div>
-                                    <CompareBarChart data={barData} />
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                                    <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-foreground/[0.02] border border-foreground/5 hover:border-primary/20 transition-all">
-                                        <div className="flex items-center gap-2 mb-2 sm:mb-4">
-                                            <Wallet className="w-4 h-4 text-primary" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-primary">Fiscal Relief</span>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground leading-relaxed">
-                                            Total sponsorship surplus of <span className="font-bold text-foreground">{formatCurrency(totalSurplus)}</span> provided an equitable flat relief reduction for non-sponsoring participants.
-                                        </p>
-                                    </div>
-                                    <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-foreground/[0.02] border border-foreground/5 hover:border-amber-500/20 transition-all">
-                                        <div className="flex items-center gap-2 mb-2 sm:mb-4">
-                                            <Tag className="w-4 h-4 text-amber-500" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">Density Metric</span>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground leading-relaxed">
-                                            Session density: <span className="font-bold text-foreground">{people.length}</span> members sharing <span className="font-bold text-foreground">{items.length}</span> items.
-                                            Average commitment: <span className="font-bold text-primary">{formatCurrency(totalBill / (people.length || 1))}</span>.
-                                        </p>
-                                    </div>
-                                </div>
+                            {/* ITEMIZED PERSONAL RECEIPT BREAKDOWN TAB */}
+                            <TabsContent value="receipt" className="mt-3 sm:mt-4">
+                                <PersonalReceipt />
                             </TabsContent>
                         </Tabs>
                     </div>

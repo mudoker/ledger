@@ -8,15 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { LogOut, Copy, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { LogOut, Sparkles } from 'lucide-react';
 import { IS_DEV } from '@/lib/env';
 import { DevLoginModal } from '@/components/layout/dev-login-modal';
 
@@ -26,26 +18,7 @@ interface AuthButtonProps {
 
 export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
   const { user, isLoading, signOut } = useAuthStore();
-  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isDevLoginOpen, setIsDevLoginOpen] = useState(false);
-  const [copiedOrigin, setCopiedOrigin] = useState(false);
-  const [copiedRedirect, setCopiedRedirect] = useState(false);
-
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || 'https://ledger.mudoker.com');
-  const prodOrigin = process.env.NEXT_PUBLIC_APP_URL || 'https://ledger.mudoker.com';
-  const prodRedirect = `${prodOrigin}/api/auth/callback/google`;
-  const localRedirect = `${currentOrigin}/api/auth/callback/google`;
-
-  const copyToClipboard = (text: string, type: 'origin' | 'redirect') => {
-    navigator.clipboard.writeText(text);
-    if (type === 'origin') {
-      setCopiedOrigin(true);
-      setTimeout(() => setCopiedOrigin(false), 2000);
-    } else {
-      setCopiedRedirect(true);
-      setTimeout(() => setCopiedRedirect(false), 2000);
-    }
-  };
 
   // Do not render anything in header when loading or when user is not logged in
   if (isLoading || !user) {
@@ -108,16 +81,6 @@ export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
             </div>
 
             <div className="space-y-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start text-xs font-bold gap-2 text-muted-foreground hover:text-foreground h-8"
-                onClick={() => setIsSetupModalOpen(true)}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                OAuth Setup Details
-              </Button>
-
               {IS_DEV && (
                 <Button
                   variant="ghost"
@@ -143,59 +106,6 @@ export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
           </div>
         </PopoverContent>
       </Popover>
-
-      {/* OAuth Setup Info Modal */}
-      <Dialog open={isSetupModalOpen} onOpenChange={setIsSetupModalOpen}>
-        <DialogContent className="max-w-lg p-5 rounded-2xl bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-black flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-primary" /> Google OAuth 2.0 Configuration
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Configure these in Google Cloud Console &gt; APIs &amp; Services &gt; Credentials.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 pt-2 text-xs">
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Authorized JavaScript Origins
-              </Label>
-              <div className="flex items-center justify-between p-2 rounded-xl bg-muted font-mono text-[11px] border border-border">
-                <span className="truncate">{prodOrigin}</span>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0 ml-2"
-                  onClick={() => copyToClipboard(prodOrigin, 'origin')}
-                >
-                  {copiedOrigin ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Authorized Redirect URIs
-              </Label>
-              <div className="flex items-center justify-between p-2 rounded-xl bg-muted font-mono text-[11px] border border-border">
-                <span className="truncate">{prodRedirect}</span>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0 ml-2"
-                  onClick={() => copyToClipboard(prodRedirect, 'redirect')}
-                >
-                  {copiedRedirect ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground italic">
-                For local dev: <code className="bg-muted px-1 py-0.5 rounded">{localRedirect}</code>
-              </p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Dev Login Modal */}
       {IS_DEV && (
