@@ -20,7 +20,11 @@ import { LogOut, Copy, Check, ShieldCheck, Sparkles } from 'lucide-react';
 import { IS_DEV } from '@/lib/env';
 import { DevLoginModal } from '@/components/layout/dev-login-modal';
 
-export function AuthButton() {
+interface AuthButtonProps {
+  avatarOnly?: boolean;
+}
+
+export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
   const { user, isLoading, signOut } = useAuthStore();
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isDevLoginOpen, setIsDevLoginOpen] = useState(false);
@@ -59,22 +63,28 @@ export function AuthButton() {
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 px-2.5 sm:px-3 rounded-xl border-foreground/15 hover:bg-foreground/5 font-bold transition-all text-xs"
+            className={avatarOnly
+              ? "h-8 w-8 sm:h-9 sm:w-9 p-0 rounded-xl border-foreground/15 hover:bg-foreground/5 font-bold transition-all text-xs shrink-0"
+              : "h-8 sm:h-9 gap-2 px-2.5 sm:px-3 rounded-xl border-foreground/15 hover:bg-foreground/5 font-bold transition-all text-xs shrink-0"
+            }
+            title={user.name || user.email}
           >
             {user.avatar_url ? (
               <img
                 src={user.avatar_url}
                 alt={user.name || user.email}
-                className="w-5 h-5 rounded-full object-cover border border-foreground/10"
+                className={avatarOnly ? "w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-full object-cover border border-foreground/10" : "w-5 h-5 rounded-full object-cover border border-foreground/10"}
               />
             ) : (
-              <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-black">
+              <div className={avatarOnly ? "w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-black" : "w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-black"}>
                 {initials}
               </div>
             )}
-            <span className="max-w-[100px] sm:max-w-[140px] truncate">
-              {user.name || user.email.split('@')[0]}
-            </span>
+            {!avatarOnly && (
+              <span className="hidden sm:inline max-w-[100px] sm:max-w-[140px] truncate">
+                {user.name || user.email.split('@')[0]}
+              </span>
+            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-72 p-3 bg-card/95 backdrop-blur-xl border-border rounded-2xl shadow-xl" align="end">

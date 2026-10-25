@@ -21,7 +21,6 @@ import { ResizableSplit } from "@/components/layout/resizable-split";
 import { AuthButton } from "@/components/layout/auth-button";
 import { useAuthStore } from "@/store/useAuthStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 
 function App() {
   const [view, setView] = useState<'landing' | 'editor' | 'summary'>(() => {
@@ -284,7 +283,7 @@ function App() {
                         <AppLogo className="w-4 h-4 sm:w-5 sm:h-5 text-background" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 sm:gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                           <h1 className="text-sm sm:text-lg md:text-xl font-black tracking-tight text-foreground truncate" title={billName || "Untitled Bill"}>
                             {billName || "Untitled Bill"}
                           </h1>
@@ -293,7 +292,7 @@ function App() {
                           </span>
                         </div>
                         {location && (
-                          <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 font-medium truncate mt-0.5">
+                          <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 font-medium truncate mt-0.5" title={location}>
                             <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
                             <span className="truncate">{location}</span>
                           </p>
@@ -302,10 +301,6 @@ function App() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                    {/* Currency Selector */}
-                    <CurrencyDropdown variant="compact" className="sm:hidden" />
-                    <CurrencyDropdown variant="pill" className="hidden sm:flex" />
-
                     <Button
                       variant={view === 'editor' ? 'secondary' : 'outline'}
                       size="sm"
