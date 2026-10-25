@@ -12,7 +12,6 @@ export function QuickInsights() {
     if (people.length === 0 && items.length === 0) return null;
 
     const avgCommitment = totalBill / (people.length || 1);
-    const itemVolume = items.length;
 
     return (
         <div className="insights-grid animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -23,19 +22,21 @@ export function QuickInsights() {
                         <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
                             <Receipt className="w-3.5 h-3.5 text-primary" /> Total Session Bill
                         </span>
-                        {totalExtras > 0 && (
-                            <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded-md">
-                                +{formatCurrency(totalExtras)} charges
-                            </span>
-                        )}
+                        <ArrowUpRight className="w-3 h-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                     </div>
                     <div className="flex items-baseline gap-1.5">
                         <span className="text-base sm:text-lg font-bold text-foreground tabular-nums truncate max-w-full">
                             {formatCurrency(totalBill)}
                         </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground/75 mt-0.5">
-                        {itemVolume} {itemVolume === 1 ? 'item' : 'items'} documented
+                    <p className="text-[10px] text-muted-foreground/75 mt-0.5 truncate" title={totalExtras > 0 ? `Includes +${formatCurrency(totalExtras)} charges` : 'No extra charges'}>
+                        {totalExtras > 0 ? (
+                            <>
+                                Includes <span className="font-semibold text-amber-600 dark:text-amber-400">+{formatCurrency(totalExtras)}</span> charges
+                            </>
+                        ) : (
+                            'No extra charges'
+                        )}
                     </p>
                 </CardContent>
             </Card>
@@ -54,7 +55,7 @@ export function QuickInsights() {
                             {formatCurrency(avgCommitment)}
                         </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground/75 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground/75 mt-0.5 truncate">
                         {people.length} active {people.length === 1 ? 'member' : 'members'}
                     </p>
                 </CardContent>
