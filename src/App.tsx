@@ -6,7 +6,7 @@ import { PeopleSection } from "@/components/people/people-section";
 import { SummarySection } from "@/components/summary/summary-section";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { Users, Receipt, CreditCard, ArrowLeft, MapPin, Github } from "lucide-react";
+import { Users, Receipt, CreditCard, ArrowLeft, MapPin, Github, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useBillStore } from "@/store/useBillStore";
@@ -19,11 +19,12 @@ import { AppLogo } from "@/components/shared/app-logo";
 import { CreateBillModal, type CreateBillFormData } from "@/components/shared/create-bill-modal";
 import { ResizableSplit } from "@/components/layout/resizable-split";
 import { AuthButton } from "@/components/layout/auth-button";
+import { ShareButton } from "@/components/layout/share-button";
 import { useAuthStore } from "@/store/useAuthStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 function App() {
-  const [view, setView] = useState<'landing' | 'editor' | 'summary'>(() => {
+  const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('id') || params.get('v') || params.get('e')) {
@@ -32,7 +33,7 @@ function App() {
     }
     return 'landing';
   });
-  const [mobileTab, setMobileTab] = useState<'people' | 'items' | 'summary'>('items');
+  const [mobileTab, setMobileTab] = useState<'people' | 'items' | 'summary' | 'settings'>('items');
   const [isReadOnlyModalOpen, setIsReadOnlyModalOpen] = useState(false);
   const { user, fetchUser, signOut } = useAuthStore();
   const {
@@ -317,24 +318,15 @@ function App() {
                     >
                       <CreditCard className="w-4 h-4" /> Summary
                     </Button>
-                    <BillConfiguration
-                      people={people}
-                      items={items}
-                      hostId={hostId}
-                      globalCharges={globalCharges}
-                      billName={billName}
-                      location={location}
-                      setHostId={setHostId}
-                      addGlobalCharge={addGlobalCharge}
-                      updateGlobalCharge={updateGlobalCharge}
-                      removeGlobalCharge={removeGlobalCharge}
-                      setBillName={setBillName}
-                      setLocation={setLocation}
-                      updatePerson={updatePerson}
-                      onSave={saveToDb}
-                      qrCode={qrCode}
-                      setQrCode={setQrCode}
-                    />
+                    <Button
+                      variant={view === 'settings' ? 'secondary' : 'outline'}
+                      size="sm"
+                      onClick={() => setView('settings')}
+                      className="hidden md:flex gap-2 rounded-xl h-9"
+                    >
+                      <Settings className="w-4 h-4" /> Settings
+                    </Button>
+                    <ShareButton />
                     <a
                       href="https://github.com/mudoker/ledger"
                       target="_blank"
@@ -362,7 +354,7 @@ function App() {
               <main className="flex-1 w-full mx-auto max-w-full md:max-w-[94%] 2xl:max-w-[2000px] px-1 sm:px-6 md:px-8 lg:px-10 md:pt-0 overflow-hidden relative flex flex-col min-h-0">
                 {/* Desktop Grid Layout */}
                 <div className="hidden md:flex flex-1 min-h-0 h-full overflow-hidden">
-                  {view === 'editor' ? (
+                  {view === 'editor' && (
                     <ResizableSplit
                       left={<PeopleSection />}
                       right={<ItemsSection />}
@@ -370,9 +362,15 @@ function App() {
                       minLeftPercent={22}
                       maxLeftPercent={50}
                     />
-                  ) : (
+                  )}
+                  {view === 'summary' && (
                     <div className="h-full overflow-hidden max-w-5xl xl:max-w-6xl mx-auto w-full flex flex-col min-h-0">
                       <SummarySection />
+                    </div>
+                  )}
+                  {view === 'settings' && (
+                    <div className="h-full overflow-hidden max-w-4xl mx-auto w-full flex flex-col min-h-0">
+                      <BillConfiguration />
                     </div>
                   )}
                 </div>
@@ -393,6 +391,11 @@ function App() {
                     {mobileTab === 'summary' && (
                       <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
                         <SummarySection />
+                      </div>
+                    )}
+                    {mobileTab === 'settings' && (
+                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                        <BillConfiguration />
                       </div>
                     )}
                   </div>
@@ -515,6 +518,37 @@ function App() {
                       Summary
                     </span>
                     {mobileTab === 'summary' && (
+                      <span className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "group flex flex-1 flex-col items-center justify-center py-1 touch-manipulation transition-all duration-150 active:scale-95 relative",
+                      mobileTab === 'settings'
+                        ? "text-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setMobileTab('settings')}
+                  >
+                    <div className="relative flex items-center justify-center">
+                      <div className={cn(
+                        "p-1 rounded-xl transition-all",
+                        mobileTab === 'settings' ? "bg-primary/10 text-primary" : "text-muted-foreground group-hover:text-foreground"
+                      )}>
+                        <Settings
+                          className="w-5 h-5 transition-colors duration-150"
+                          strokeWidth={mobileTab === 'settings' ? 2.5 : 2}
+                        />
+                      </div>
+                    </div>
+                    <span className={cn(
+                      "mt-0.5 text-[10px] leading-tight tracking-tight transition-colors duration-150",
+                      mobileTab === 'settings' ? "font-black text-primary" : "font-semibold text-muted-foreground group-hover:text-foreground"
+                    )}>
+                      Settings
+                    </span>
+                    {mobileTab === 'settings' && (
                       <span className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
                     )}
                   </button>

@@ -1,10 +1,10 @@
 import { useBillState } from "@/hooks/useBillState";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, TableIcon, PieChartIcon, CheckCircle2, AlertTriangle, Share2, Eye, Copy, Receipt, TrendingUp, LayoutGrid, ArrowRight, QrCode, MapPin, ExternalLink, Check } from "lucide-react";
+import { TableIcon, PieChartIcon, CheckCircle2, AlertTriangle, Receipt, TrendingUp, LayoutGrid, ArrowRight, QrCode } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -12,29 +12,18 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatCurrency } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import html2canvas from 'html2canvas';
 import { CostPieChart, buildChartData } from "./summary-charts";
 import { PersonalReceipt } from "./personal-receipt";
-import { generateShareUrl } from "@/lib/share";
-import { useState } from "react";
 
 export function SummarySection() {
     const {
         people,
         items,
-        hostId,
         globalCharges,
         calculate,
-        currentBillId,
         qrCode,
-        billName,
-        location,
     } = useBillState();
-
-    const [copiedView, setCopiedView] = useState(false);
 
     const { totalCosts, finalPayables, sponsorSurpluses, sponsorReliefs, totalBill, totalExtras, totalSurplus, totalItemCost, settlementFlows } = calculate();
     const { pieData, itemCostData } = buildChartData(people, items, totalCosts, finalPayables);
@@ -44,142 +33,44 @@ export function SummarySection() {
     const verificationDiff = Math.abs(totalBill - sumFinalPayables);
     const isBalanced = verificationDiff < 1; // within 1 dong rounding tolerance
 
-    const handleDownload = async () => {
-        const element = document.getElementById('summary-card');
-        if (element) {
-            const exportHeader = document.getElementById('summary-export-header');
-            if (exportHeader) exportHeader.style.display = 'block';
-            try {
-                const canvas = await html2canvas(element, { scale: 2 });
-                const link = document.createElement('a');
-                const sanitizedName = billName ? billName.trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-') : 'bill';
-                link.download = `${sanitizedName}-summary.png`;
-                link.href = canvas.toDataURL();
-                link.click();
-            } finally {
-                if (exportHeader) exportHeader.style.display = 'none';
-            }
-        }
-    };
-
-    const handleCopyShare = () => {
-        const url = generateShareUrl({ people, items, globalCharges, hostId, currentBillId }, true);
-        navigator.clipboard.writeText(url);
-        setCopiedView(true);
-        setTimeout(() => setCopiedView(false), 2000);
-    };
-
     return (
         <Card id="summary-card" className="w-full h-full flex flex-col min-h-0 border-none shadow-none md:border md:shadow-sm bg-background overflow-hidden">
-            {/* Export-only bill title header for downloaded summary PNG */}
-            <div id="summary-export-header" style={{ display: 'none' }} className="p-4 sm:p-6 pb-2 border-b border-border/40">
-                <div className="flex items-center gap-2">
-                    <Receipt className="w-5 h-5 text-primary shrink-0" />
-                    <h2 className="text-lg sm:text-xl font-black uppercase tracking-widest text-foreground">
-                        {billName || "Summary"}
-                    </h2>
-                </div>
-                {location && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 font-medium pl-7 mt-0.5">
-                        <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <span>{location}</span>
-                    </p>
-                )}
-            </div>
-
-            <CardHeader className="flex flex-row items-center justify-end pb-1.5 pt-1 sm:pt-3 px-2 xs:px-3 sm:px-4 md:px-6 shrink-0 gap-1 sm:gap-1.5 print:hidden" data-html2canvas-ignore>
-                {qrCode && (
-                        <Dialog>
-                            <DialogTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 gap-1.5 text-foreground font-bold hover:bg-primary/10 hover:text-primary transition-all border-foreground/10 px-2 sm:px-3 text-xs"
-                                    title="Show Host Payment QR"
-                                >
-                                    <QrCode className="w-3.5 h-3.5" />
-                                    <span className="hidden sm:inline">Pay Host</span>
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="w-[calc(100vw-28px)] sm:w-full max-w-sm rounded-2xl border-border bg-card shadow-2xl p-4 sm:p-6">
-                                <DialogHeader>
-                                    <DialogTitle className="text-lg sm:text-xl font-black uppercase tracking-widest flex items-center gap-2 text-primary">
-                                        <QrCode className="w-5 h-5" /> Host Payment
-                                    </DialogTitle>
-                                </DialogHeader>
-                                <div className="flex flex-col items-center justify-center p-4 sm:p-6 gap-4">
-                                    <div className="w-full aspect-square max-w-[260px] sm:max-w-[300px] bg-white rounded-xl overflow-hidden border border-foreground/10 p-2 shadow-sm">
-                                        <img src={qrCode} alt="Host Payment QR" className="w-full h-full object-contain" />
-                                    </div>
-                                    <p className="text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                        Scan to pay the host directly
-                                    </p>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-                    )}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1.5 text-foreground font-bold hover:bg-primary/10 hover:text-primary transition-all border-foreground/10 px-2 sm:px-3 text-xs"
-                            >
-                                <Share2 className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Share</span>
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80 p-3 bg-card/95 backdrop-blur-xl border-border rounded-2xl shadow-2xl" align="end">
-                            <div className="space-y-2.5">
-                                <div className="space-y-0.5">
-                                    <div className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                                        <Eye className="w-3.5 h-3.5 text-primary" /> Read-Only Share Link
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground leading-tight">
-                                        Anyone with this link can view the bill without logging in. Editing is strictly disabled.
-                                    </p>
-                                </div>
-                                <div className="flex gap-1.5">
-                                    <Button
-                                        size="sm"
-                                        className={cn("flex-1 h-9 text-xs gap-2 font-bold", copiedView ? "bg-emerald-600 hover:bg-emerald-600 text-white" : "bg-foreground text-background")}
-                                        onClick={handleCopyShare}
-                                    >
-                                        {copiedView ? (
-                                            <>
-                                                <Check className="w-3.5 h-3.5" /> Link Copied!
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Copy className="w-3.5 h-3.5" /> Copy Share Link
-                                            </>
-                                        )}
-                                    </Button>
-                                    {currentBillId && (
+            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col pt-1 sm:pt-3">
+                <ScrollArea className="flex-1 min-h-0 h-full px-1.5 xs:px-2.5 sm:px-4 md:px-6">
+                    <div className="space-y-2.5 sm:space-y-5 pt-1 pb-4 sm:py-5 pr-0.5 sm:pr-2">
+                        {/* Optional Host QR Pay Trigger */}
+                        {qrCode && (
+                            <div className="flex justify-end pb-0.5">
+                                <Dialog>
+                                    <DialogTrigger asChild>
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="h-9 px-2.5 text-xs font-bold"
-                                            onClick={() => {
-                                                const url = generateShareUrl({ people, items, globalCharges, hostId, currentBillId }, true);
-                                                window.open(url, '_blank');
-                                            }}
-                                            title="Open shared view in new tab"
+                                            className="h-7 text-xs font-bold gap-1.5 text-foreground hover:bg-primary/10 hover:text-primary transition-all border-foreground/10 px-2.5 rounded-xl"
+                                            title="Show Host Payment QR"
                                         >
-                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            <QrCode className="w-3.5 h-3.5 text-primary" />
+                                            <span>Pay Host QR</span>
                                         </Button>
-                                    )}
-                                </div>
+                                    </DialogTrigger>
+                                    <DialogContent className="w-[calc(100vw-28px)] sm:w-full max-w-sm rounded-2xl border-border bg-card shadow-2xl p-4 sm:p-6">
+                                        <DialogHeader>
+                                            <DialogTitle className="text-base sm:text-lg font-black uppercase tracking-wider flex items-center gap-2 text-primary">
+                                                <QrCode className="w-5 h-5" /> Host Payment
+                                            </DialogTitle>
+                                        </DialogHeader>
+                                        <div className="flex flex-col items-center justify-center p-4 gap-3">
+                                            <div className="w-full aspect-square max-w-[260px] bg-white rounded-xl overflow-hidden border border-foreground/10 p-2 shadow-sm">
+                                                <img src={qrCode} alt="Host Payment QR" className="w-full h-full object-contain" />
+                                            </div>
+                                            <p className="text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                Scan to pay the host directly
+                                            </p>
+                                        </div>
+                                    </DialogContent>
+                                </Dialog>
                             </div>
-                        </PopoverContent>
-                    </Popover>
-                    <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-primary/10 hover:text-primary border-foreground/10 shrink-0" onClick={handleDownload} title="Download Summary">
-                        <Download className="w-4 h-4" />
-                    </Button>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
-                <ScrollArea className="flex-1 min-h-0 h-full px-1.5 xs:px-2.5 sm:px-4 md:px-6">
-                    <div className="space-y-2.5 sm:space-y-6 pt-1 pb-2 sm:py-6 pr-0.5 sm:pr-2">
+                        )}
                         {/* Summary Stats */}
                         <div className="grid grid-cols-3 gap-1 xs:gap-1.5 sm:gap-3">
                             <div className="bg-card/30 rounded-xl sm:rounded-2xl p-1.5 xs:p-2 sm:p-4 border border-foreground/5 transition-all hover:border-primary/20 group min-w-0" title={`Items Subtotal: ${formatCurrency(totalItemCost)}`}>
