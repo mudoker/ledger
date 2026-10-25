@@ -11,10 +11,8 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue
 } from "@/components/ui/select";
 import {
-    Receipt,
     User,
     Crown,
     Heart,
@@ -55,7 +53,7 @@ export function PersonalReceipt() {
         totalBill
     } = calculate();
 
-    // Default to the first person or host
+    // Default to the host or first person
     const [selectedPersonId, setSelectedPersonId] = useState<string>(() => {
         if (hostId && people.some(p => p.id === hostId)) return hostId;
         return people[0]?.id || '';
@@ -132,7 +130,7 @@ export function PersonalReceipt() {
                         shareDesc = `100% (${cappedUserQty}/${itemQty} qty)`;
                     } else {
                         const pct = Math.round((cappedUserQty / totalClaimedQty) * 100);
-                        shareDesc = `Split ${participantCount} ways (${pct}% share)`;
+                        shareDesc = `Split ${participantCount} ways (${pct}%)`;
                     }
                 } else {
                     userShare = (cappedUserQty / itemQty) * itemPrice;
@@ -268,164 +266,134 @@ export function PersonalReceipt() {
     };
 
     return (
-        <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-300">
-            {/* Header Controls: Participant Selector & Quick Nav */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-4 bg-muted/20 p-2.5 sm:p-3 rounded-2xl border border-foreground/5 shadow-2xs">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                        <Receipt className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-foreground truncate">
-                            Itemized Receipt
-                        </h4>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                            Line-by-line consumption, proportional extras, and sponsor subsidies
-                        </p>
-                    </div>
-                </div>
+        <div className="w-full min-w-0 max-w-full overflow-hidden animate-in fade-in duration-300">
+            {/* Integrated Receipt Card */}
+            <div className="relative w-full min-w-0 max-w-full rounded-2xl sm:rounded-3xl border border-foreground/10 bg-gradient-to-b from-card via-card/90 to-card/70 backdrop-blur-md p-3.5 sm:p-6 shadow-md shadow-black/5 overflow-hidden">
+                {/* Decorative Background Glow */}
+                <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-primary/5 pointer-events-none blur-3xl" />
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-xl hover:bg-muted/60 text-muted-foreground hover:text-foreground shrink-0"
-                        onClick={handlePrev}
-                        title="Previous participant"
-                    >
-                        <ChevronLeft className="w-4 h-4" />
-                    </Button>
+                {/* Card Header: Dropdown selector, Steppers, Copy Action & Final Payable */}
+                <div className="pb-3 sm:pb-4 border-b border-dashed border-border/80 space-y-2">
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                        {/* Left Group: Participant Select Dropdown + Navigation Steppers + Copy */}
+                        <div className="flex items-center gap-1 min-w-0 flex-1">
+                            <div className="min-w-0 flex-1 max-w-[170px] xs:max-w-[210px] sm:max-w-[260px]">
+                                <Select value={selectedPerson.id} onValueChange={setSelectedPersonId}>
+                                    <SelectTrigger className="h-8 sm:h-9 px-2 sm:px-2.5 bg-muted/40 hover:bg-muted/60 border border-foreground/10 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 min-w-0 shadow-2xs">
+                                        <div className={cn(
+                                            "w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg flex items-center justify-center text-white font-black text-[9px] sm:text-[10px] shrink-0",
+                                            getAvatarColor(selectedPerson.name)
+                                        )}>
+                                            {getInitials(selectedPerson.name)}
+                                        </div>
+                                        <span className="truncate">{selectedPerson.name}</span>
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-64 rounded-xl">
+                                        {people.map(p => {
+                                            const pFinal = finalPayables[p.id] || 0;
+                                            const isPHost = p.id === hostId;
+                                            const isPSponsor = (sponsorSurpluses && sponsorSurpluses[p.id] > 0) || ((p.sponsorAmount || 0) >= (totalCosts[p.id] || 0) && (p.sponsorAmount || 0) > 0);
+                                            const isPRelief = sponsorReliefs && sponsorReliefs[p.id] > 0;
 
-                    <div className="w-44 xs:w-52 sm:w-60 shrink-0">
-                        <Select value={selectedPerson.id} onValueChange={setSelectedPersonId}>
-                            <SelectTrigger className="h-8 text-xs font-semibold rounded-xl bg-card border-border shadow-2xs">
-                                <SelectValue placeholder="Select participant" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-64 rounded-xl">
-                                {people.map(p => {
-                                    const pFinal = finalPayables[p.id] || 0;
-                                    const isPHost = p.id === hostId;
-                                    const isPSponsor = (sponsorSurpluses && sponsorSurpluses[p.id] > 0) || ((p.sponsorAmount || 0) >= (totalCosts[p.id] || 0) && (p.sponsorAmount || 0) > 0);
-                                    const isPRelief = sponsorReliefs && sponsorReliefs[p.id] > 0;
-
-                                    return (
-                                        <SelectItem key={p.id} value={p.id} className="text-xs font-medium py-1.5 cursor-pointer">
-                                            <div className="flex items-center justify-between w-full gap-2 min-w-0">
-                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    <div className={cn(
-                                                        "w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0",
-                                                        getAvatarColor(p.name)
-                                                    )}>
-                                                        {getInitials(p.name)}
+                                            return (
+                                                <SelectItem key={p.id} value={p.id} className="text-xs font-medium py-1.5 cursor-pointer">
+                                                    <div className="flex items-center justify-between w-full gap-2 min-w-0">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <div className={cn(
+                                                                "w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0",
+                                                                getAvatarColor(p.name)
+                                                            )}>
+                                                                {getInitials(p.name)}
+                                                            </div>
+                                                            <span className="truncate">{p.name}</span>
+                                                            {isPHost && <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
+                                                            {isPSponsor && <Heart className="w-2.5 h-2.5 text-rose-500 fill-rose-500/40 shrink-0" />}
+                                                            {isPRelief && !isPSponsor && <Sparkles className="w-2.5 h-2.5 text-emerald-500 shrink-0" />}
+                                                        </div>
+                                                        <span className="font-mono text-[11px] font-bold text-muted-foreground tabular-nums shrink-0 ml-1">
+                                                            {pFinal < 0.01 ? "✓ 0 ₫" : formatCurrency(pFinal)}
+                                                        </span>
                                                     </div>
-                                                    <span className="truncate">{p.name}</span>
-                                                    {isPHost && (
-                                                        <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
-                                                    )}
-                                                    {isPSponsor && (
-                                                        <Heart className="w-2.5 h-2.5 text-rose-500 fill-rose-500/40 shrink-0" />
-                                                    )}
-                                                    {isPRelief && !isPSponsor && (
-                                                        <Sparkles className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
-                                                    )}
-                                                </div>
-                                                <span className="font-mono text-[11px] font-bold text-muted-foreground tabular-nums shrink-0 ml-1">
-                                                    {pFinal < 0.01 ? "✓ 0 ₫" : formatCurrency(pFinal)}
-                                                </span>
-                                            </div>
-                                        </SelectItem>
-                                    );
-                                })}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-xl hover:bg-muted/60 text-muted-foreground hover:text-foreground shrink-0"
-                        onClick={handleNext}
-                        title="Next participant"
-                    >
-                        <ChevronRight className="w-4 h-4" />
-                    </Button>
-
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 text-xs font-bold rounded-xl border-foreground/10 hover:bg-primary/10 hover:text-primary shrink-0 px-2 sm:px-3"
-                        onClick={handleCopyReceipt}
-                        title="Copy participant breakdown to clipboard"
-                    >
-                        {copiedReceipt ? (
-                            <>
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                <span className="hidden xs:inline">Copied</span>
-                            </>
-                        ) : (
-                            <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span className="hidden xs:inline">Copy Text</span>
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </div>
-
-            {/* Receipt Card Design */}
-            <div className="relative rounded-3xl border border-foreground/10 bg-gradient-to-b from-card via-card/90 to-card/70 backdrop-blur-md p-4 sm:p-7 shadow-lg shadow-black/5 overflow-hidden">
-                {/* Decorative Background Stamp */}
-                <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-primary/5 pointer-events-none blur-3xl" />
-
-                {/* Participant Identity Header */}
-                <div className="flex items-start justify-between gap-3 pb-4 border-b border-dashed border-border/80">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <div className={cn(
-                            "w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-white font-black text-sm sm:text-base shadow-sm border border-white/20 shrink-0",
-                            getAvatarColor(selectedPerson.name)
-                        )}>
-                            {getInitials(selectedPerson.name)}
-                        </div>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                                <h3 className="font-black text-base sm:text-lg text-foreground truncate" title={selectedPerson.name}>
-                                    {selectedPerson.name}
-                                </h3>
-                                {isHost && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold shrink-0">
-                                        <Crown className="w-3 h-3" /> Host
-                                    </span>
-                                )}
-                                {isSponsor && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25 text-[10px] font-bold shrink-0">
-                                        <Heart className="w-3 h-3 fill-rose-500/30" /> Sponsor
-                                    </span>
-                                )}
-                                {reliefAmount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 text-[10px] font-bold shrink-0">
-                                        <Sparkles className="w-3 h-3" /> Relief Beneficiary
-                                    </span>
-                                )}
+                                                </SelectItem>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                                {selectedPerson.email || (billName ? `Session: ${billName}` : 'Session Member')}
-                            </p>
+
+                            {/* Prev / Next Steppers */}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0"
+                                onClick={handlePrev}
+                                title="Previous participant"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0"
+                                onClick={handleNext}
+                                title="Next participant"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </Button>
+
+                            {/* Copy Action */}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 shrink-0"
+                                onClick={handleCopyReceipt}
+                                title="Copy breakdown text"
+                            >
+                                {copiedReceipt ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                )}
+                            </Button>
+                        </div>
+
+                        {/* Right: Final Payable Header */}
+                        <div className="text-right shrink-0">
+                            <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-muted-foreground block">
+                                Final Payable
+                            </span>
+                            <span className="text-sm xs:text-base sm:text-lg font-black text-primary tabular-nums block">
+                                {finalPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(finalPay)}
+                            </span>
                         </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                            Final Payable
-                        </span>
-                        <span className="text-base sm:text-xl font-black text-primary tabular-nums block">
-                            {finalPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(finalPay)}
+                    {/* Subheader: Badges & Participant Identifier */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0 pt-0.5">
+                        {isHost && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold shrink-0">
+                                <Crown className="w-3 h-3" /> Host
+                            </span>
+                        )}
+                        {isSponsor && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25 text-[10px] font-bold shrink-0">
+                                <Heart className="w-3 h-3 fill-rose-500/30" /> Sponsor
+                            </span>
+                        )}
+                        {reliefAmount > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 text-[10px] font-bold shrink-0">
+                                <Sparkles className="w-3 h-3" /> Relief Beneficiary
+                            </span>
+                        )}
+                        <span className="text-[11px] text-muted-foreground font-medium truncate max-w-[200px] xs:max-w-[280px]">
+                            {selectedPerson.email || (billName ? `Session: ${billName}` : 'Session Member')}
                         </span>
                     </div>
                 </div>
 
                 {/* Section 1: Itemized Consumption Breakdown */}
-                <div className="py-4 space-y-2.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <div className="py-3 sm:py-3.5 space-y-2">
+                    <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                         <span className="flex items-center gap-1.5">
                             <Utensils className="w-3.5 h-3.5 text-primary" /> Consumed Items ({claimedItems.length})
                         </span>
@@ -433,7 +401,7 @@ export function PersonalReceipt() {
                     </div>
 
                     {claimedItems.length === 0 ? (
-                        <div className="py-3 px-3.5 rounded-xl bg-muted/20 border border-border/40 text-xs text-muted-foreground italic flex items-center gap-2">
+                        <div className="py-2.5 px-3 rounded-xl bg-muted/20 border border-border/40 text-xs text-muted-foreground italic flex items-center gap-2">
                             <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             No individual items assigned to this participant.
                         </div>
@@ -442,19 +410,19 @@ export function PersonalReceipt() {
                             {claimedItems.map((item) => (
                                 <div
                                     key={item.id}
-                                    className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-muted/20 hover:bg-muted/30 transition-colors border border-border/40 text-xs"
+                                    className="flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-xl bg-muted/20 hover:bg-muted/30 transition-colors border border-border/40 text-xs min-w-0"
                                 >
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5">
+                                        <div className="flex items-center gap-1.5 min-w-0">
                                             <span className="font-semibold text-foreground truncate">{item.name}</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
-                                            <span className="font-mono">{formatCurrency(item.itemPrice)}</span>
+                                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-wrap">
+                                            <span className="font-mono shrink-0">{formatCurrency(item.itemPrice)}</span>
                                             <span>•</span>
-                                            <span className="text-primary/90 font-medium">{item.shareDesc}</span>
+                                            <span className="text-primary/90 font-medium truncate">{item.shareDesc}</span>
                                         </div>
                                     </div>
-                                    <div className="font-bold text-foreground tabular-nums shrink-0 text-right">
+                                    <div className="font-bold text-foreground tabular-nums shrink-0 text-right whitespace-nowrap ml-2">
                                         {formatCurrency(item.userShare)}
                                     </div>
                                 </div>
@@ -464,16 +432,16 @@ export function PersonalReceipt() {
 
                     {/* Communal Unassigned Share (if any) */}
                     {communalShare > 0 && (
-                        <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-primary/[0.03] border border-primary/15 text-xs">
+                        <div className="flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-xl bg-primary/[0.03] border border-primary/15 text-xs min-w-0">
                             <div className="min-w-0 flex-1">
-                                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                                    <Coins className="w-3 h-3 text-primary" /> Communal & Unassigned Items Split
+                                <span className="font-semibold text-foreground flex items-center gap-1.5 truncate">
+                                    <Coins className="w-3 h-3 text-primary shrink-0" /> Communal Items Split
                                 </span>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">
-                                    Split equally among {effectiveSplitterIds.length} active dining members
+                                <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                                    Split equally among {effectiveSplitterIds.length} diners
                                 </p>
                             </div>
-                            <div className="font-bold text-foreground tabular-nums shrink-0 text-right">
+                            <div className="font-bold text-foreground tabular-nums shrink-0 text-right whitespace-nowrap ml-2">
                                 +{formatCurrency(communalShare)}
                             </div>
                         </div>
@@ -488,13 +456,13 @@ export function PersonalReceipt() {
 
                 {/* Section 2: Proportional Taxes, Fees & Adjustments */}
                 {allocatedCharges.length > 0 && (
-                    <div className="py-3.5 border-t border-dashed border-border/80 space-y-2">
-                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <div className="py-3 border-t border-dashed border-border/80 space-y-2">
+                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                             <span className="flex items-center gap-1.5">
                                 <Percent className="w-3.5 h-3.5 text-amber-500" /> Proportional Extras & Charges
                             </span>
                             <span className="text-[10px] text-muted-foreground font-medium">
-                                Based on {(personRatio * 100).toFixed(1)}% meal share
+                                {(personRatio * 100).toFixed(1)}% share
                             </span>
                         </div>
 
@@ -502,16 +470,16 @@ export function PersonalReceipt() {
                             {allocatedCharges.map(charge => {
                                 const isPositive = charge.userPortion >= 0;
                                 return (
-                                    <div key={charge.id} className="flex items-center justify-between text-xs py-1 px-1">
-                                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                                            <span>{charge.name}</span>
+                                    <div key={charge.id} className="flex items-center justify-between text-xs py-0.5 px-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1 truncate">
+                                            <span className="truncate">{charge.name}</span>
                                             {charge.type === 'percent' && (
-                                                <span className="text-[10px] px-1 py-0.2 rounded bg-muted font-mono">
+                                                <span className="text-[9px] px-1 py-0.2 rounded bg-muted font-mono shrink-0">
                                                     {charge.rate}%
                                                 </span>
                                             )}
                                         </div>
-                                        <span className={cn("font-semibold tabular-nums", isPositive ? "text-foreground" : "text-emerald-600 dark:text-emerald-400")}>
+                                        <span className={cn("font-semibold tabular-nums shrink-0 ml-2 whitespace-nowrap", isPositive ? "text-foreground" : "text-emerald-600 dark:text-emerald-400")}>
                                             {isPositive ? `+${formatCurrency(charge.userPortion)}` : formatCurrency(charge.userPortion)}
                                         </span>
                                     </div>
@@ -520,17 +488,17 @@ export function PersonalReceipt() {
                         </div>
 
                         {/* Baseline Required Total */}
-                        <div className="flex items-center justify-between pt-1.5 px-1 text-xs font-bold border-t border-border/40">
-                            <span className="text-foreground">Required Baseline (Before Sponsorship)</span>
+                        <div className="flex items-center justify-between pt-1 px-1 text-xs font-bold border-t border-border/40">
+                            <span className="text-foreground">Required Baseline</span>
                             <span className="text-foreground tabular-nums">{formatCurrency(totalCost)}</span>
                         </div>
                     </div>
                 )}
 
                 {/* Section 3: Sponsorship or Relief Impact */}
-                <div className="py-3.5 border-t border-dashed border-border/80 space-y-2">
+                <div className="py-3 border-t border-dashed border-border/80 space-y-2">
                     {isSponsor ? (
-                        <div className="p-3 sm:p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-2">
+                        <div className="p-2.5 sm:p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
                                     <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" /> Generous Sponsor Contribution
@@ -540,11 +508,11 @@ export function PersonalReceipt() {
                                 </span>
                             </div>
                             <p className="text-[11px] text-rose-900/80 dark:text-rose-200/80 leading-relaxed">
-                                You pledged <span className="font-bold">{formatCurrency(selectedPerson.sponsorAmount)}</span>, covering your own <span className="font-bold">{formatCurrency(totalCost)}</span> meal and gifting <span className="font-bold">{formatCurrency(surplusAmount)}</span> to relieve fellow diners. Your liability is capped at your pledge.
+                                Pledged <span className="font-bold">{formatCurrency(selectedPerson.sponsorAmount)}</span>, covering your own <span className="font-bold">{formatCurrency(totalCost)}</span> meal and gifting <span className="font-bold">{formatCurrency(surplusAmount)}</span> to relieve fellow diners. Liability is capped at pledge.
                             </p>
                         </div>
                     ) : isUnderPledged ? (
-                        <div className="p-3 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-1.5">
+                        <div className="p-2.5 sm:p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                                     <AlertCircle className="w-3.5 h-3.5 text-amber-500" /> Pledged Below Consumption
@@ -554,11 +522,11 @@ export function PersonalReceipt() {
                                 </span>
                             </div>
                             <p className="text-[11px] text-amber-900/80 dark:text-amber-200/80 leading-relaxed">
-                                Pledge is less than your required baseline. Minimum sponsor pledge required to activate table subsidy is <span className="font-bold">{formatCurrency(totalCost)}</span>. Currently billed at baseline share.
+                                Pledge is less than required baseline. Minimum pledge to sponsor is <span className="font-bold">{formatCurrency(totalCost)}</span>. Currently billed at baseline share.
                             </p>
                         </div>
                     ) : reliefAmount > 0 ? (
-                        <div className="p-3 sm:p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
+                        <div className="p-2.5 sm:p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                                     <Sparkles className="w-3.5 h-3.5 text-emerald-500" /> Sponsor Relief Received
@@ -568,67 +536,81 @@ export function PersonalReceipt() {
                                 </span>
                             </div>
                             <p className="text-[11px] text-emerald-900/80 dark:text-emerald-200/80 leading-relaxed">
-                                Thanks to our group sponsors, you received an equitable flat relief of <span className="font-bold">-{formatCurrency(reliefAmount)}</span>, reducing your payable from <span className="line-through opacity-75">{formatCurrency(totalCost)}</span> down to <span className="font-bold">{formatCurrency(finalPay)}</span>.
+                                Thanks to group sponsors, you received flat relief of <span className="font-bold">-{formatCurrency(reliefAmount)}</span>, reducing your payable from <span className="line-through opacity-75">{formatCurrency(totalCost)}</span> down to <span className="font-bold">{formatCurrency(finalPay)}</span>.
                             </p>
                         </div>
                     ) : (
-                        <div className="flex items-center justify-between text-xs py-1 px-1 text-muted-foreground">
+                        <div className="flex items-center justify-between text-xs py-0.5 px-1 text-muted-foreground">
                             <span>Sponsorship Adjustments</span>
                             <span className="font-medium">—</span>
                         </div>
                     )}
                 </div>
 
-                {/* Section 4: Final Settlement Summary & Peer Instructions */}
-                <div className="pt-4 border-t-2 border-border/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-muted/20 -mx-4 -mb-4 sm:-mx-7 sm:-mb-7 p-4 sm:p-6 rounded-b-3xl">
-                    <div className="space-y-0.5">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                            Total Payment Due
-                        </span>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-2xl sm:text-3xl font-black text-foreground tabular-nums">
-                                {formatCurrency(finalPay)}
-                            </span>
-                            {finalPay < 0.01 && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> Covered
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col sm:items-end justify-center">
-                        {isHost ? (
-                            <div className="flex flex-col items-start sm:items-end gap-1">
-                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-600 dark:text-amber-400">
-                                    <Crown className="w-3.5 h-3.5" />
-                                    <span>Host: Settles Venue Total ({formatCurrency(totalBill)})</span>
+                {/* Section 4: Settlement Instructions (No redundant total amount) */}
+                <div className="pt-3 border-t border-dashed border-border/80">
+                    {isHost ? (
+                        <div className="p-2.5 sm:p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col xs:flex-row xs:items-center justify-between gap-2 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                                    <Crown className="w-4 h-4" />
                                 </div>
-                                {incomingFromGuests.length > 0 && (
-                                    <span className="text-[11px] font-semibold text-muted-foreground">
-                                        Collects <span className="font-bold text-foreground">{formatCurrency(totalToCollect)}</span> from {incomingFromGuests.length} members
+                                <div className="min-w-0">
+                                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400 block truncate">
+                                        Host: Settles Venue Total ({formatCurrency(totalBill)})
                                     </span>
-                                )}
+                                    {incomingFromGuests.length > 0 ? (
+                                        <span className="text-[11px] text-amber-900/80 dark:text-amber-300/80 block truncate">
+                                            Collects <span className="font-bold">{formatCurrency(totalToCollect)}</span> from {incomingFromGuests.length} members
+                                        </span>
+                                    ) : (
+                                        <span className="text-[11px] text-amber-900/80 dark:text-amber-300/80 block truncate">
+                                            All members settled
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                        ) : transferFlow ? (
-                            transferFlow.from === selectedPerson.id ? (
-                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs font-bold text-primary">
-                                    <ArrowRight className="w-3.5 h-3.5" />
-                                    <span>Pay {formatCurrency(transferFlow.amount)} to {hostPerson?.name || 'Host'}</span>
+                        </div>
+                    ) : transferFlow ? (
+                        transferFlow.from === selectedPerson.id ? (
+                            <div className="p-2.5 sm:p-3 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-2 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                                        <ArrowRight className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <span className="text-[9px] uppercase font-bold text-muted-foreground block">
+                                            Settlement Transfer
+                                        </span>
+                                        <span className="text-xs font-bold text-foreground truncate block">
+                                            Pay <span className="text-primary font-black">{formatCurrency(transferFlow.amount)}</span> to {hostPerson?.name || 'Host'}
+                                        </span>
+                                    </div>
                                 </div>
-                            ) : (
-                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                    <ArrowDownLeft className="w-3.5 h-3.5" />
-                                    <span>Host will reimburse {formatCurrency(transferFlow.amount)}</span>
-                                </div>
-                            )
+                            </div>
                         ) : (
-                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted text-xs font-semibold text-muted-foreground">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>No transfers required</span>
+                            <div className="p-2.5 sm:p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-2 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                                        <ArrowDownLeft className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <span className="text-[9px] uppercase font-bold text-muted-foreground block">
+                                            Settlement Transfer
+                                        </span>
+                                        <span className="text-xs font-bold text-foreground truncate block">
+                                            Host will reimburse <span className="text-emerald-600 dark:text-emerald-400 font-black">{formatCurrency(transferFlow.amount)}</span>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                        )}
-                    </div>
+                        )
+                    ) : (
+                        <div className="p-2 rounded-xl bg-muted/30 border border-border/40 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                            <span className="truncate">No settlement transfers needed. Fully balanced!</span>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

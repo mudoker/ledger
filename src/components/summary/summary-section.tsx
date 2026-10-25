@@ -1,5 +1,5 @@
 import { useBillState } from "@/hooks/useBillState";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,12 +47,18 @@ export function SummarySection() {
     const handleDownload = async () => {
         const element = document.getElementById('summary-card');
         if (element) {
-            const canvas = await html2canvas(element, { scale: 2 });
-            const link = document.createElement('a');
-            const sanitizedName = billName ? billName.trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-') : 'bill';
-            link.download = `${sanitizedName}-summary.png`;
-            link.href = canvas.toDataURL();
-            link.click();
+            const exportHeader = document.getElementById('summary-export-header');
+            if (exportHeader) exportHeader.style.display = 'block';
+            try {
+                const canvas = await html2canvas(element, { scale: 2 });
+                const link = document.createElement('a');
+                const sanitizedName = billName ? billName.trim().toLowerCase().replace(/[^a-z0-9_-]+/gi, '-') : 'bill';
+                link.download = `${sanitizedName}-summary.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+            } finally {
+                if (exportHeader) exportHeader.style.display = 'none';
+            }
         }
     };
 
@@ -65,20 +71,24 @@ export function SummarySection() {
 
     return (
         <Card id="summary-card" className="w-full h-full flex flex-col min-h-0 border-none shadow-none md:border md:shadow-sm bg-background overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between pb-1.5 pt-1 sm:pt-4 px-2 xs:px-3 sm:px-4 md:px-6 md:pt-6 shrink-0 gap-1.5 sm:gap-2">
-                <div className="space-y-0.5 min-w-0 flex-1">
-                    <CardTitle className="text-sm xs:text-base sm:text-xl font-black uppercase tracking-widest flex items-center gap-1.5 sm:gap-2 text-foreground min-w-0">
-                        <Receipt className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> <span className="truncate" title={billName || "Summary"}>{billName || "Summary"}</span>
-                    </CardTitle>
-                    {location && (
-                        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 font-medium pl-5 sm:pl-7 min-w-0" title={location}>
-                            <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
-                            <span className="truncate">{location}</span>
-                        </p>
-                    )}
+            {/* Export-only bill title header for downloaded summary PNG */}
+            <div id="summary-export-header" style={{ display: 'none' }} className="p-4 sm:p-6 pb-2 border-b border-border/40">
+                <div className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-primary shrink-0" />
+                    <h2 className="text-lg sm:text-xl font-black uppercase tracking-widest text-foreground">
+                        {billName || "Summary"}
+                    </h2>
                 </div>
-                <div className="flex items-center gap-1 sm:gap-1.5 print:hidden shrink-0" data-html2canvas-ignore>
-                    {qrCode && (
+                {location && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 font-medium pl-7 mt-0.5">
+                        <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span>{location}</span>
+                    </p>
+                )}
+            </div>
+
+            <CardHeader className="flex flex-row items-center justify-end pb-1.5 pt-1 sm:pt-3 px-2 xs:px-3 sm:px-4 md:px-6 shrink-0 gap-1 sm:gap-1.5 print:hidden" data-html2canvas-ignore>
+                {qrCode && (
                         <Dialog>
                             <DialogTrigger asChild>
                                 <Button
@@ -166,7 +176,6 @@ export function SummarySection() {
                     <Button variant="outline" size="icon" className="h-8 w-8 hover:bg-primary/10 hover:text-primary border-foreground/10 shrink-0" onClick={handleDownload} title="Download Summary">
                         <Download className="w-4 h-4" />
                     </Button>
-                </div>
             </CardHeader>
             <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
                 <ScrollArea className="flex-1 min-h-0 h-full px-1.5 xs:px-2.5 sm:px-4 md:px-6">
@@ -200,14 +209,14 @@ export function SummarySection() {
                         {/* Tabbed Content */}
                         <Tabs defaultValue="table" className="w-full">
                             <TabsList className="grid w-full grid-cols-3 h-8 sm:h-10 bg-muted/20 p-0.5 sm:p-1 border border-foreground/5 rounded-xl">
-                                <TabsTrigger value="table" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1">
-                                    <TableIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> Splits
+                                <TabsTrigger value="table" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1 min-w-0">
+                                    <TableIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> <span className="truncate">Splits</span>
                                 </TabsTrigger>
-                                <TabsTrigger value="pie" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1">
-                                    <PieChartIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> Charts
+                                <TabsTrigger value="pie" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1 min-w-0">
+                                    <PieChartIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> <span className="truncate">Charts</span>
                                 </TabsTrigger>
-                                <TabsTrigger value="receipt" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1">
-                                    <Receipt className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> Breakdown
+                                <TabsTrigger value="receipt" className="text-[10px] xs:text-[11px] sm:text-xs px-1 sm:px-2 gap-1 sm:gap-1.5 font-bold uppercase transition-all data-[state=active]:bg-background data-[state=active]:text-primary py-1 min-w-0">
+                                    <Receipt className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" /> <span className="truncate">Breakdown</span>
                                 </TabsTrigger>
                             </TabsList>
 
@@ -433,7 +442,7 @@ export function SummarySection() {
                             </TabsContent>
 
                             {/* ITEMIZED PERSONAL RECEIPT BREAKDOWN TAB */}
-                            <TabsContent value="receipt" className="mt-3 sm:mt-4">
+                            <TabsContent value="receipt" className="mt-3 sm:mt-4 w-full min-w-0 max-w-full overflow-hidden">
                                 <PersonalReceipt />
                             </TabsContent>
                         </Tabs>
