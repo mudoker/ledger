@@ -375,7 +375,7 @@ The splits summary table should clearly show the progression:
 
 ## 7. Relationship to Multi-Payer Architecture
 
-In the upcoming Multi-Payer Architecture documented in [`MULTIPLE_PAYERS_PLAN.md`](file:///home/mudoker/mudoker/projects/ledger/MULTIPLE_PAYERS_PLAN.md):
+In the upcoming Multi-Payer Architecture documented in [`MULTIPLE_PAYERS_PLAN.md`](./MULTIPLE_PAYERS_PLAN.md):
 1. **Direct Item Sponsorship**: If a participant wants to sponsor a specific item (e.g. Charlie pays for the 1,200,000 ₫ Wagyu beef so everyone else eats it for free), Charlie simply registers as the 100% payer for that item while adding everyone else as consumers.
 2. **Bill-Wide Sponsorship**: Uses the mathematical formulation defined in Section 3 of this document.
 

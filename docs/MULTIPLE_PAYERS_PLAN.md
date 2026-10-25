@@ -432,7 +432,7 @@ Passing negative totals into integer allocation algorithms introduces truncation
    *Validation Guard*: An individual discount allocation cannot produce a negative liability (`BaselinePayable(p) >= 0n`).
 
 4. **Pass 3: Multi-Sponsor Integration & Liability Cap**:
-   > Formalized in [`SPONSOR_MECHANISM.md`](file:///home/mudoker/mudoker/projects/ledger/SPONSOR_MECHANISM.md).
+   > Formalized in [`SPONSOR_MECHANISM.md`](./SPONSOR_MECHANISM.md).
    
    A sponsor is a participant who voluntarily commits to paying more than their required consumption share to reduce what others pay:
    - **Sponsor Invariant & Validation**: For any participant `p` with `sponsorAmount > 0n`:
@@ -975,7 +975,7 @@ flowchart TD
   - Bounded remainder assertions.
 - Implement per-item whole-line allocation (`P_i` and `Q_i`).
 - Implement separate nonnegative discount allocation pass.
-- Implement sponsorship invariant validation (`sponsorAmount >= BaselinePayable`) and integer Hamilton surplus relief distribution according to [`SPONSOR_MECHANISM.md`](file:///home/mudoker/mudoker/projects/ledger/SPONSOR_MECHANISM.md).
+- Implement sponsorship invariant validation (`sponsorAmount >= BaselinePayable`) and integer Hamilton surplus relief distribution according to [`SPONSOR_MECHANISM.md`](./SPONSOR_MECHANISM.md).
 
 ### Phase 3: Merchant Payment Accounting
 - Implement 5-step order of operations for payment validation.

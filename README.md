@@ -47,3 +47,11 @@ Smart group expense ledger with multi-currency exchange rates, Google OAuth auth
    ```
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## Documentation
+
+- [Multi-Payer Architecture Specification](docs/MULTIPLE_PAYERS_PLAN.md)
+- [Sponsor & Multi-Sponsor Mechanism](docs/SPONSOR_MECHANISM.md)
+
