@@ -14,11 +14,12 @@ import { getAvatarColor, getInitials } from "@/constants/colors";
 interface PersonRowProps {
     person: Person;
     index: number;
+    baselineCost?: number;
     onUpdate: (id: string, data: Partial<Person>) => void;
     onRemove: (id: string) => void;
 }
 
-export function PersonRow({ person, index, onUpdate, onRemove }: PersonRowProps) {
+export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove }: PersonRowProps) {
     const { isReadOnly, hostId } = useBillStore();
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(person.name);
@@ -131,9 +132,22 @@ export function PersonRow({ person, index, onUpdate, onRemove }: PersonRowProps)
                         <CurrencyInput
                             value={editSponsor}
                             onChange={(val) => setEditSponsor(val)}
-                            className="h-9 bg-background/80 border-border/80 rounded-xl text-xs font-mono font-bold"
+                            className={cn(
+                                "h-9 bg-background/80 border-border/80 rounded-xl text-xs font-mono font-bold",
+                                editSponsor > 0 && baselineCost > 0 && editSponsor < baselineCost && "border-amber-500/60 focus-visible:ring-amber-500/40 text-amber-600 dark:text-amber-400"
+                            )}
                             showCurrencySymbol={true}
                         />
+                        {editSponsor > 0 && baselineCost > 0 && editSponsor < baselineCost && (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium pl-1 leading-tight">
+                                Min required: {formatCurrency(baselineCost)} (covers own meal)
+                            </p>
+                        )}
+                        {editSponsor >= baselineCost && editSponsor > 0 && baselineCost > 0 && (
+                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium pl-1 leading-tight">
+                                Subsidizes {formatCurrency(editSponsor - baselineCost)} to table
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -212,9 +226,17 @@ export function PersonRow({ person, index, onUpdate, onRemove }: PersonRowProps)
                         )}
 
                         {person.sponsorAmount > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-500/10 rounded-full border border-rose-500/20 text-[10px] font-semibold text-rose-600 dark:text-rose-400 tabular-nums">
-                                <Heart className="w-3 h-3 fill-rose-500/30 text-rose-500 shrink-0" />
-                                <span>{formatCurrency(person.sponsorAmount)} spon.</span>
+                            <div
+                                className={cn(
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold tabular-nums",
+                                    baselineCost > 0 && person.sponsorAmount < baselineCost
+                                        ? "bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400"
+                                        : "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
+                                )}
+                                title={baselineCost > 0 && person.sponsorAmount < baselineCost ? `Must be at least ${formatCurrency(baselineCost)} to sponsor others` : `Sponsor pledge of ${formatCurrency(person.sponsorAmount)}`}
+                            >
+                                <Heart className={cn("w-3 h-3 shrink-0", baselineCost > 0 && person.sponsorAmount < baselineCost ? "text-amber-500" : "fill-rose-500/30 text-rose-500")} />
+                                <span>{formatCurrency(person.sponsorAmount)} {baselineCost > 0 && person.sponsorAmount < baselineCost ? "(< min)" : "spon."}</span>
                             </div>
                         )}
 

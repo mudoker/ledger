@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Users, UserPlus, Sparkles, UserCheck, Plus } from "lucide-react";
 import { useBillStore } from "@/store/useBillStore";
+import { useBillState } from "@/hooks/useBillState";
 import { PersonRow } from "./person-row";
 import { QuickInsights } from "../summary/quick-insights";
 
@@ -19,6 +20,8 @@ interface UserSuggestion {
 
 export function PeopleSection() {
     const { people, addPerson, updatePerson, removePerson, isReadOnly, loadSeedData, hostId } = useBillStore();
+    const { calculate } = useBillState();
+    const { totalCosts } = calculate();
     const [newName, setNewName] = useState("");
     const [suggestions, setSuggestions] = useState<UserSuggestion[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -169,6 +172,7 @@ export function PeopleSection() {
                                     key={person.id}
                                     person={person}
                                     index={index}
+                                    baselineCost={totalCosts[person.id] || 0}
                                     onUpdate={updatePerson}
                                     onRemove={removePerson}
                                 />
