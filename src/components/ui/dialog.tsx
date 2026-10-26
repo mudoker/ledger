@@ -32,27 +32,77 @@ const DialogContent = React.forwardRef<
     React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
         showClose?: boolean
     }
->(({ className, children, showClose = true, ...props }, ref) => (
-    <DialogPortal>
-        <DialogOverlay />
-        <DialogPrimitive.Content
-            ref={ref}
-            className={cn(
-                "fixed left-1/2 top-1/2 z-[100] grid w-[calc(100vw-28px)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl sm:rounded-3xl border border-border bg-card p-4 sm:p-6 text-foreground shadow-2xl max-h-[88vh] max-h-[88dvh] overflow-y-auto overflow-x-hidden box-border duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
-                className
-            )}
-            {...props}
-        >
-            {children}
-            {showClose && (
-                <DialogPrimitive.Close className="absolute right-3.5 top-3.5 sm:right-5 sm:top-5 rounded-full p-1.5 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground touch-manipulation active:scale-95 z-20">
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Close</span>
-                </DialogPrimitive.Close>
-            )}
-        </DialogPrimitive.Content>
-    </DialogPortal>
-))
+>(({ className, children, showClose = false, style, onFocusCapture, ...props }, ref) => {
+    const [viewportStyle, setViewportStyle] = React.useState<React.CSSProperties>({});
+
+    React.useEffect(() => {
+        if (typeof window === 'undefined' || !window.visualViewport) return;
+        const vv = window.visualViewport;
+
+        const handleViewport = () => {
+            if (window.innerWidth >= 640) {
+                setViewportStyle({});
+                return;
+            }
+            // Check if keyboard is open (visual viewport height significantly reduced)
+            const isKeyboard = vv.height < window.innerHeight - 50;
+            if (isKeyboard) {
+                setViewportStyle({
+                    top: `${Math.max(8, vv.offsetTop + 6)}px`,
+                    transform: 'translateX(-50%)',
+                    maxHeight: `${Math.max(160, vv.height - 12)}px`,
+                });
+            } else {
+                setViewportStyle({});
+            }
+        };
+
+        vv.addEventListener('resize', handleViewport);
+        vv.addEventListener('scroll', handleViewport);
+        return () => {
+            vv.removeEventListener('resize', handleViewport);
+            vv.removeEventListener('scroll', handleViewport);
+        };
+    }, []);
+
+    const handleFocus = (e: React.FocusEvent<HTMLDivElement>) => {
+        onFocusCapture?.(e);
+        if (
+            typeof window !== 'undefined' &&
+            window.innerWidth < 640 &&
+            (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+        ) {
+            const target = e.target;
+            setTimeout(() => {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+        }
+    };
+
+    return (
+        <DialogPortal>
+            <DialogOverlay />
+            <DialogPrimitive.Content
+                ref={ref}
+                onFocusCapture={handleFocus}
+                style={{ ...style, ...viewportStyle }}
+                className={cn(
+                    "fixed left-1/2 top-1/2 z-[100] grid w-[calc(100vw-28px)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl sm:rounded-3xl border border-border bg-card p-4 sm:p-6 text-foreground shadow-2xl max-h-[88vh] max-h-[88dvh] overflow-y-auto overflow-x-hidden box-border duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+                    className
+                )}
+                {...props}
+            >
+                {children}
+                {showClose && (
+                    <DialogPrimitive.Close className="absolute right-3.5 top-3.5 sm:right-5 sm:top-5 rounded-full p-1.5 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground touch-manipulation active:scale-95 z-20">
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Close</span>
+                    </DialogPrimitive.Close>
+                )}
+            </DialogPrimitive.Content>
+        </DialogPortal>
+    );
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({
