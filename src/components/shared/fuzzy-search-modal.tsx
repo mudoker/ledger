@@ -176,6 +176,7 @@ export function FuzzySearchModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        showClose={false}
         onKeyDown={handleKeyDown}
         className="w-[calc(100vw-24px)] sm:w-full max-w-xl max-h-[85vh] max-h-[85dvh] flex flex-col p-0 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card"
       >
@@ -386,8 +387,9 @@ export function FuzzySearchModal({
                                   {b.name || `Bill ${b.id.slice(0, 8)}`}
                                 </h4>
                                 {b.group_name && (
-                                  <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded shrink-0">
-                                    📁 {b.group_name}
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded shrink-0">
+                                    <Folder className="w-2.5 h-2.5 text-primary shrink-0" />
+                                    <span>{b.group_name}</span>
                                   </span>
                                 )}
                               </div>

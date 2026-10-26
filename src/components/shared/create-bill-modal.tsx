@@ -74,8 +74,8 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border bg-card">
-        <DialogHeader className="space-y-1 text-left pr-8 pb-3 border-b border-border/60 shrink-0">
+      <DialogContent showClose={false} className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border bg-card">
+        <DialogHeader className="space-y-1 text-left pb-3 border-b border-border/60 shrink-0">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-border flex items-center justify-center text-foreground mb-0.5">
             <ReceiptText className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
@@ -160,7 +160,10 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                   <SelectItem value="none">No Group (Standalone Bill)</SelectItem>
                   {groups.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
-                      📁 {g.name}
+                      <div className="flex items-center gap-2">
+                        <Folder className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span>{g.name}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>

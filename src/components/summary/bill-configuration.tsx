@@ -197,7 +197,10 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                     <SelectItem value="none">No Group (Standalone Bill)</SelectItem>
                                     {groups.map((g) => (
                                         <SelectItem key={g.id} value={g.id}>
-                                            📁 {g.name}
+                                            <div className="flex items-center gap-2">
+                                                <Folder className="w-3.5 h-3.5 text-primary shrink-0" />
+                                                <span>{g.name}</span>
+                                            </div>
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

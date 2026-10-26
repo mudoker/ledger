@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FolderPlus, Tag, AlignLeft, ArrowRight, Coins, Sparkles } from "lucide-react";
+import { FolderPlus, Tag, AlignLeft, ArrowRight, Coins, Sparkles, Palmtree, UtensilsCrossed, Home, Plane, PartyPopper } from "lucide-react";
 import { useGroupStore } from "@/store/useGroupStore";
 import type { BillGroupDetail } from '@/../db/types';
 
@@ -23,11 +23,11 @@ interface CreateGroupModalProps {
 }
 
 const TEMPLATE_SUGGESTIONS = [
-  '🌴 Summer Vacation',
-  '🍕 Food & Dinners',
-  '🏠 Roommates / Rent',
-  '✈️ Roadtrip 2026',
-  '🎉 Party Expenses',
+  { name: 'Summer Vacation', icon: Palmtree },
+  { name: 'Food & Dinners', icon: UtensilsCrossed },
+  { name: 'Roommates / Rent', icon: Home },
+  { name: 'Roadtrip 2026', icon: Plane },
+  { name: 'Party Expenses', icon: PartyPopper },
 ];
 
 const CURRENCIES = ['VND', 'USD', 'EUR', 'SGD', 'JPY'];
@@ -64,8 +64,8 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
-        <DialogHeader className="space-y-1.5 text-left pr-8 pb-3.5 border-b border-border/60 shrink-0">
+      <DialogContent showClose={false} className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
+        <DialogHeader className="space-y-1.5 text-left pb-3.5 border-b border-border/60 shrink-0">
           <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-1">
             <FolderPlus className="w-5 h-5" />
           </div>
@@ -85,19 +85,23 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
                 <Sparkles className="w-3 h-3 text-primary" /> Quick Suggestions
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {TEMPLATE_SUGGESTIONS.map((template) => (
-                  <button
-                    key={template}
-                    type="button"
-                    onClick={() => {
-                      setName(template);
-                      setError('');
-                    }}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-all border border-border/50 cursor-pointer active:scale-95"
-                  >
-                    {template}
-                  </button>
-                ))}
+                {TEMPLATE_SUGGESTIONS.map((template) => {
+                  const Icon = template.icon;
+                  return (
+                    <button
+                      key={template.name}
+                      type="button"
+                      onClick={() => {
+                        setName(template.name);
+                        setError('');
+                      }}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-all border border-border/50 cursor-pointer active:scale-95"
+                    >
+                      <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span>{template.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

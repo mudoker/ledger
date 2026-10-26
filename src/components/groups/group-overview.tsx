@@ -25,7 +25,8 @@ import {
   Share2,
   Check,
   Sparkles,
-  Settings2
+  Settings2,
+  X
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
@@ -281,9 +282,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               <button
                 type="button"
                 onClick={() => setFilterQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground font-mono"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded"
               >
-                ✕
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>

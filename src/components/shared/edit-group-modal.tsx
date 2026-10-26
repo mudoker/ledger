@@ -69,8 +69,8 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
-        <DialogHeader className="space-y-1.5 text-left pr-8 pb-3.5 border-b border-border/60 shrink-0">
+      <DialogContent showClose={false} className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
+        <DialogHeader className="space-y-1.5 text-left pb-3.5 border-b border-border/60 shrink-0">
           <div className="w-10 h-10 rounded-2xl bg-foreground/5 border border-border flex items-center justify-center text-foreground mb-1">
             <Settings2 className="w-5 h-5" />
           </div>
