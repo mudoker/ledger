@@ -43,6 +43,7 @@ function App() {
   const [mobileTab, setMobileTab] = useState<'people' | 'items' | 'summary' | 'settings'>('items');
   const [isReadOnlyModalOpen, setIsReadOnlyModalOpen] = useState(false);
   const [isGroupSearchOpen, setIsGroupSearchOpen] = useState(false);
+  const [returnToGroupId, setReturnToGroupId] = useState<string | null>(null);
   const { user, fetchUser, signOut } = useAuthStore();
   const { currentGroup, fetchGroup } = useGroupStore();
   const {
@@ -89,7 +90,13 @@ function App() {
     const editData = params.get('e');
     const isShare = params.get('share') === '1' || params.get('share') === 'true' || Boolean(viewData);
 
-    if (groupId) {
+    if (id && groupId) {
+      setReturnToGroupId(groupId);
+      fetchGroup(groupId);
+      fetchBill(id, isShare).catch((err) => {
+        console.error("Fetch bill error:", err);
+      });
+    } else if (groupId) {
       fetchGroup(groupId).then((g) => {
         if (g) setView('group');
       });
@@ -144,10 +151,33 @@ function App() {
     };
   }, [view]);
 
+  // Stacked navigation back handler:
+  // If the bill was opened from a group, going back returns to that group view.
+  // Otherwise, it returns to the landing page.
+  const handleBackFromEditor = () => {
+    if (!isReadOnly && (people.length > 0 || items.length > 0)) {
+      saveToDb().catch(console.error);
+    }
+
+    const targetGroupId = returnToGroupId || currentGroup?.id;
+    if (targetGroupId) {
+      setReturnToGroupId(null);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('id');
+      url.searchParams.set('groupId', targetGroupId);
+      window.history.pushState({}, '', url.toString());
+      setView('group');
+      fetchGroup(targetGroupId);
+    } else {
+      handleBackToLanding();
+    }
+  };
+
   // Instantaneous back navigation with non-blocking background synchronization
   const handleBackToLanding = () => {
     // 1. Instantly switch view for 0-latency UI feedback
     setView('landing');
+    setReturnToGroupId(null);
 
     // 2. Clear URL params without reload
     const cleanUrl = window.location.origin + window.location.pathname;
@@ -170,14 +200,19 @@ function App() {
       const groupId = params.get('groupId');
       const isShare = params.get('share') === '1' || params.get('share') === 'true';
 
-      if (groupId) {
-        setView('group');
-        fetchGroup(groupId);
-      } else if (id) {
+      if (id) {
+        if (groupId) {
+          setReturnToGroupId(groupId);
+        }
         setView('editor');
         fetchBill(id, isShare);
+      } else if (groupId) {
+        setView('group');
+        setReturnToGroupId(null);
+        fetchGroup(groupId);
       } else {
         setView('landing');
+        setReturnToGroupId(null);
         useGroupStore.getState().clearCurrentGroup();
       }
     };
@@ -224,8 +259,16 @@ function App() {
       setView('editor');
       return;
     }
+    const currentGroupId = view === 'group' ? (currentGroup?.id || null) : returnToGroupId;
+    if (currentGroupId) {
+      setReturnToGroupId(currentGroupId);
+    }
     const url = new URL(window.location.href);
-    url.searchParams.delete('groupId');
+    if (currentGroupId) {
+      url.searchParams.set('groupId', currentGroupId);
+    } else {
+      url.searchParams.delete('groupId');
+    }
     url.searchParams.set('id', id);
     window.history.pushState({}, '', url.toString());
     setView('editor');
@@ -233,6 +276,7 @@ function App() {
   };
 
   const handleSelectGroup = (groupId: string) => {
+    setReturnToGroupId(null);
     const url = new URL(window.location.href);
     url.searchParams.delete('id');
     url.searchParams.set('groupId', groupId);
@@ -361,7 +405,13 @@ function App() {
               <div className="flex-none px-2.5 sm:px-6 md:px-8 lg:px-10 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] sm:pt-4 md:pt-6 w-full max-w-full md:max-w-[94%] 2xl:max-w-[2000px] mx-auto">
                 <header className="flex justify-between items-center mb-1.5 sm:mb-3 md:mb-5 gap-1.5 sm:gap-3">
                   <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
-                    <Button variant="ghost" size="icon" onClick={handleBackToLanding} className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl shrink-0 touch-manipulation active:scale-95" title="Back to Bills">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleBackFromEditor}
+                      className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl shrink-0 touch-manipulation active:scale-95"
+                      title={returnToGroupId || currentGroup ? "Back to Group" : "Back to Bills"}
+                    >
                       <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                     </Button>
                     <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
