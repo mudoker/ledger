@@ -31,11 +31,11 @@ function App() {
   const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('groupId')) {
-        return 'group';
-      }
       if (params.get('id') || params.get('v') || params.get('e')) {
         return 'editor';
+      }
+      if (params.get('groupId')) {
+        return 'group';
       }
     }
     return 'landing';
@@ -91,6 +91,7 @@ function App() {
     const isShare = params.get('share') === '1' || params.get('share') === 'true' || Boolean(viewData);
 
     if (id && groupId) {
+      setView('editor');
       setReturnToGroupId(groupId);
       fetchGroup(groupId);
       fetchBill(id, isShare).catch((err) => {
@@ -102,8 +103,10 @@ function App() {
       });
     } else if (id || viewData || editData) {
       if (id) {
+        setView('editor');
         fetchBill(id, isShare).catch((err) => {
           console.error("Fetch bill error:", err);
+          setView('landing');
         });
       } else if (viewData || editData) {
         const state = deserializeState(viewData || editData || '');
@@ -115,6 +118,9 @@ function App() {
   }, [isHydrated, loadState, fetchBill, fetchGroup]);
 
   // Auto-save logic
+  const billGroupId = useBillStore((state) => state.groupId);
+  const billCurrency = useBillStore((state) => state.currency);
+
   useEffect(() => {
     if (!isHydrated || isReadOnly) return;
 
@@ -126,7 +132,7 @@ function App() {
     }, 2000); // 2 second delay for debounced auto-save
 
     return () => clearTimeout(timer);
-  }, [people, items, globalCharges, hostId, isHydrated, isReadOnly, saveToDb, view]);
+  }, [people, items, globalCharges, hostId, billName, location, billCurrency, billGroupId, isHydrated, isReadOnly, saveToDb, view]);
 
   // Lock body/window scrolling when viewing/editing a bill (bill details page)
   // Ensures the outer page is 100% static, and only the active tab subpage scrolls
@@ -152,14 +158,15 @@ function App() {
   }, [view]);
 
   // Stacked navigation back handler:
-  // If the bill was opened from a group, going back returns to that group view.
+  // If the bill was opened from a group or belongs to a group, going back returns to that group view.
   // Otherwise, it returns to the landing page.
-  const handleBackFromEditor = () => {
+  const handleBackFromEditor = async () => {
     if (!isReadOnly && (people.length > 0 || items.length > 0)) {
-      saveToDb().catch(console.error);
+      await saveToDb();
     }
 
-    const targetGroupId = returnToGroupId || currentGroup?.id;
+    const currentBillGroupId = useBillStore.getState().groupId;
+    const targetGroupId = returnToGroupId || currentGroup?.id || currentBillGroupId;
     if (targetGroupId) {
       setReturnToGroupId(null);
       const url = new URL(window.location.href);
@@ -167,14 +174,15 @@ function App() {
       url.searchParams.set('groupId', targetGroupId);
       window.history.pushState({}, '', url.toString());
       setView('group');
-      fetchGroup(targetGroupId);
+      await fetchGroup(targetGroupId);
+      useGroupStore.getState().fetchGroups();
     } else {
-      handleBackToLanding();
+      await handleBackToLanding();
     }
   };
 
-  // Instantaneous back navigation with non-blocking background synchronization
-  const handleBackToLanding = () => {
+  // Instantaneous back navigation with reliable background synchronization
+  const handleBackToLanding = async () => {
     // 1. Instantly switch view for 0-latency UI feedback
     setView('landing');
     setReturnToGroupId(null);
@@ -186,10 +194,12 @@ function App() {
     // 3. Reset active group in store
     useGroupStore.getState().clearCurrentGroup();
 
-    // 4. Non-blocking background save if bill had unsaved changes
+    // 4. Save and sync history if bill had unsaved changes
     if (view === 'editor' && !isReadOnly && (people.length > 0 || items.length > 0)) {
-      saveToDb().catch(console.error);
+      await saveToDb();
     }
+    fetchHistory();
+    useGroupStore.getState().fetchGroups();
   };
 
   // Support native browser and mobile back/forward gestures
@@ -221,7 +231,7 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [fetchBill, fetchGroup]);
 
-  const handleStartNewBill = (data?: CreateBillFormData) => {
+  const handleStartNewBill = async (data?: CreateBillFormData) => {
     resetBill();
     if (data?.currency) {
       setCurrency(data.currency);
@@ -232,10 +242,21 @@ function App() {
       setLocation(data.location.trim());
     }
 
+    const targetGroupId = data?.groupId || (view === 'group' && currentGroup?.id ? currentGroup.id : null);
+    if (targetGroupId) {
+      setReturnToGroupId(targetGroupId);
+    }
+
     const hostName = data?.hostName?.trim() || user?.name || (user?.email ? user.email.split('@')[0] : 'Me');
     const hostId = crypto.randomUUID();
+    const newBillId = crypto.randomUUID();
+
+    const matchedGroup = targetGroupId ? useGroupStore.getState().groups.find(g => g.id === targetGroupId) : null;
+
     useBillStore.setState({
-      groupId: data?.groupId || null,
+      currentBillId: newBillId,
+      groupId: targetGroupId || null,
+      groupName: matchedGroup?.name || null,
       people: [
         {
           id: hostId,
@@ -250,7 +271,28 @@ function App() {
     });
 
     useBillStore.getState().setHydrated(true);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('id', newBillId);
+    if (targetGroupId) {
+      url.searchParams.set('groupId', targetGroupId);
+    } else {
+      url.searchParams.delete('groupId');
+    }
+    window.history.pushState({}, '', url.toString());
+
     setView('editor');
+
+    // Immediately persist to database so the link between bill and group is stored at creation time
+    try {
+      await useBillStore.getState().saveToDb();
+      if (targetGroupId) {
+        await useGroupStore.getState().fetchGroup(targetGroupId);
+        useGroupStore.getState().fetchGroups();
+      }
+    } catch (e) {
+      console.error('Error saving new bill:', e);
+    }
   };
 
   const handleSelectBill = (id: string | 'current') => {

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { fetchExchangeRate, convertCurrency } from '@/lib/currency';
+import { useGroupStore } from './useGroupStore';
 
 export interface Person {
     id: string;
@@ -129,9 +130,47 @@ export const useBillStore = create<BillState>()(
             groupId: null,
             groupName: null,
 
-            setGroupId: (groupId: string | null) => {
-                set({ groupId });
-                get().saveToDb();
+            setGroupId: async (groupId: string | null) => {
+                const groupStore = useGroupStore.getState();
+                const matchedGroup = groupId ? groupStore.groups.find(g => g.id === groupId) : null;
+                const oldGroupId = get().groupId;
+
+                set({
+                    groupId,
+                    groupName: matchedGroup?.name || null
+                });
+
+                // Fetch group detail asynchronously if name wasn't in cache
+                if (groupId && !matchedGroup) {
+                    groupStore.fetchGroup(groupId).then((g) => {
+                        if (g && get().groupId === groupId) {
+                            set({ groupName: g.name });
+                        }
+                    }).catch(() => {});
+                }
+
+                // Update URL params
+                if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    if (groupId) {
+                        url.searchParams.set('groupId', groupId);
+                    } else {
+                        url.searchParams.delete('groupId');
+                    }
+                    window.history.replaceState({}, '', url.toString());
+                }
+
+                // Persist change to database immediately
+                await get().saveToDb();
+
+                // Refresh group store so groups list & details update immediately
+                await groupStore.fetchGroups();
+                if (groupId) {
+                    await groupStore.fetchGroup(groupId);
+                }
+                if (oldGroupId && oldGroupId !== groupId) {
+                    await groupStore.fetchGroup(oldGroupId);
+                }
             },
 
             transferBillOwnership: async (newOwnerId: string) => {
@@ -346,6 +385,16 @@ export const useBillStore = create<BillState>()(
                             lastSaved: new Date().toISOString(),
                         });
                         get().fetchHistory();
+                        if (typeof window !== 'undefined') {
+                            const url = new URL(window.location.href);
+                            if (url.searchParams.get('id') !== result.id) {
+                                url.searchParams.set('id', result.id);
+                                if (state.groupId) {
+                                    url.searchParams.set('groupId', state.groupId);
+                                }
+                                window.history.replaceState({}, '', url.toString());
+                            }
+                        }
                         return result.id;
                     }
                 } catch (error) {
@@ -497,6 +546,8 @@ export const useBillStore = create<BillState>()(
                 location: state.location,
                 qrCode: state.qrCode,
                 currency: state.currency,
+                groupId: state.groupId,
+                groupName: state.groupName,
             }),
             onRehydrateStorage: () => (state) => {
                 if (state) state.setHydrated(true);

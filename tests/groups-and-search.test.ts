@@ -178,6 +178,85 @@ describe('Bill Groups, Aggregation, and Search Feature', () => {
       expect(groupDetail!.total_bills).toBe(0);
     });
 
+    it('persistently retains group link across repeated saves, edits, and list operations', async () => {
+      const groupA = await adapter.createGroup('Vacation Group A', 'user_alice');
+      const groupB = await adapter.createGroup('Vacation Group B', 'user_alice');
+
+      // 1. Initial save of bill linked to Group A
+      await adapter.saveBill(
+        'bill_persistent',
+        {
+          name: 'Resort Booking',
+          currency: 'VND',
+          groupId: groupA.id,
+          people: [{ id: 'p1', name: 'Alice', sponsorAmount: 0, paidAmount: 500000 }],
+          items: [{ id: 'item_1', name: 'Night 1', price: 500000, quantity: 1, assignments: {} }],
+        },
+        'user_alice'
+      );
+
+      // Verify bill has group_id in getBill
+      let bill = await adapter.getBill('bill_persistent', 'user_alice');
+      expect(bill?.group_id).toBe(groupA.id);
+      expect(bill?.data.groupId).toBe(groupA.id);
+      expect(bill?.group_name).toBe('Vacation Group A');
+
+      // Verify group detail has bill
+      let detailA = await adapter.getGroup(groupA.id, 'user_alice');
+      expect(detailA?.total_bills).toBe(1);
+      expect(detailA?.bills[0].id).toBe('bill_persistent');
+
+      // 2. Perform repeated save/edit (like debounced auto-save)
+      await adapter.saveBill(
+        'bill_persistent',
+        {
+          name: 'Resort Booking Updated',
+          currency: 'VND',
+          groupId: bill?.data.groupId,
+          people: bill?.data.people,
+          items: [
+            { id: 'item_1', name: 'Night 1', price: 500000, quantity: 1, assignments: {} },
+            { id: 'item_2', name: 'Night 2', price: 500000, quantity: 1, assignments: {} },
+          ],
+        },
+        'user_alice'
+      );
+
+      // Verify group link is still persistent
+      detailA = await adapter.getGroup(groupA.id, 'user_alice');
+      expect(detailA?.total_bills).toBe(1);
+      expect(detailA?.total_amount).toBe(1000000);
+
+      // Verify listBills retains group_id and group_name
+      const bills = await adapter.listBills('user_alice');
+      const listedBill = bills.find(b => b.id === 'bill_persistent');
+      expect(listedBill?.group_id).toBe(groupA.id);
+      expect(listedBill?.group_name).toBe('Vacation Group A');
+
+      // 3. Reassign to Group B
+      await adapter.saveBill(
+        'bill_persistent',
+        {
+          name: 'Resort Booking Moved',
+          currency: 'VND',
+          groupId: groupB.id,
+          people: bill?.data.people,
+          items: [
+            { id: 'item_1', name: 'Night 1', price: 500000, quantity: 1, assignments: {} },
+          ],
+        },
+        'user_alice'
+      );
+
+      // Group A now has 0 bills, Group B has 1 bill
+      detailA = await adapter.getGroup(groupA.id, 'user_alice');
+      expect(detailA?.total_bills).toBe(0);
+
+      const detailB = await adapter.getGroup(groupB.id, 'user_alice');
+      expect(detailB?.total_bills).toBe(1);
+      expect(detailB?.bills[0].id).toBe('bill_persistent');
+    });
+
     it('preserves bills when a group is deleted (ON DELETE SET NULL)', async () => {
       const group = await adapter.createGroup('Temporary Group', 'user_alice');
 

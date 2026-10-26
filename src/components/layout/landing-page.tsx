@@ -470,6 +470,12 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                                         <h3 className="font-bold text-base sm:text-lg truncate text-foreground">
                                                             {bill.name || `Bill ${bill.id.slice(0, 8)}`}
                                                         </h3>
+                                                        {bill.group_name && (
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shrink-0 inline-flex items-center gap-1">
+                                                                <Folder className="w-2.5 h-2.5" />
+                                                                <span className="truncate max-w-[100px]">{bill.group_name}</span>
+                                                            </span>
+                                                        )}
                                                         {bill.role && (
                                                             <span className={bill.role === 'owner'
                                                                 ? "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-foreground/10 text-foreground border border-foreground/20 shrink-0"

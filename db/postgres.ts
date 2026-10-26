@@ -733,7 +733,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         WHERE g.owner_id = $1
            OR EXISTS (
              SELECT 1 FROM bills b
-             JOIN people p ON p.bill_id = b.id
+             LEFT JOIN people p ON p.bill_id = b.id
              WHERE b.group_id = g.id
                AND (b.owner_id = $1 OR p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2)))
            )
