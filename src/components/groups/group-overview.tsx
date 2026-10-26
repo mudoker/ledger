@@ -232,17 +232,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
           )}
         </div>
 
-        {/* Aggregated Overview Cards with subtle gradients */}
+        {/* Aggregated Overview Cards with colored active borders */}
         <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mt-5">
-          <div
-            onClick={() => setActiveMainTab('summary')}
-            className={`p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border shadow-xs relative overflow-hidden cursor-pointer transition-all ${
-              activeMainTab === 'summary'
-                ? 'border-primary ring-1 ring-primary/40'
-                : 'border-primary/20 hover:border-primary/40'
-            }`}
-            title="Click to view group expenses & settlement summary"
-          >
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border border-primary ring-1 ring-primary/40 shadow-xs relative overflow-hidden">
             <div className="flex items-center gap-1.5 text-primary text-[10px] font-bold uppercase tracking-wider mb-1">
               <Coins className="w-3.5 h-3.5" />
               <span>Expenses</span>
@@ -253,15 +245,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">across all bills</div>
           </div>
 
-          <div
-            onClick={() => setActiveMainTab('bills')}
-            className={`p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-card to-card border shadow-xs relative overflow-hidden cursor-pointer transition-all ${
-              activeMainTab === 'bills'
-                ? 'border-blue-500 ring-1 ring-blue-500/40'
-                : 'border-blue-500/20 hover:border-blue-500/40'
-            }`}
-            title="Click to view bills list"
-          >
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-card to-card border border-blue-500 ring-1 ring-blue-500/40 shadow-xs relative overflow-hidden">
             <div className="flex items-center gap-1.5 text-blue-500 text-[10px] font-bold uppercase tracking-wider mb-1">
               <Layers className="w-3.5 h-3.5" />
               <span>Bills</span>
