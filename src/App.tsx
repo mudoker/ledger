@@ -144,16 +144,47 @@ function App() {
     };
   }, [view]);
 
-  const handleBackToLanding = async () => {
-    if (!isReadOnly && (people.length > 0 || items.length > 0)) {
-      await saveToDb();
-    }
-    // Clear URL params without reload
-    window.history.pushState({}, '', window.location.origin);
-    await fetchHistory();
-    await useGroupStore.getState().fetchGroups();
+  // Instantaneous back navigation with non-blocking background synchronization
+  const handleBackToLanding = () => {
+    // 1. Instantly switch view for 0-latency UI feedback
     setView('landing');
+
+    // 2. Clear URL params without reload
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.pushState({}, '', cleanUrl);
+
+    // 3. Reset active group in store
+    useGroupStore.getState().clearCurrentGroup();
+
+    // 4. Non-blocking background save if bill had unsaved changes
+    if (view === 'editor' && !isReadOnly && (people.length > 0 || items.length > 0)) {
+      saveToDb().catch(console.error);
+    }
   };
+
+  // Support native browser and mobile back/forward gestures
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      const groupId = params.get('groupId');
+      const isShare = params.get('share') === '1' || params.get('share') === 'true';
+
+      if (groupId) {
+        setView('group');
+        fetchGroup(groupId);
+      } else if (id) {
+        setView('editor');
+        fetchBill(id, isShare);
+      } else {
+        setView('landing');
+        useGroupStore.getState().clearCurrentGroup();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [fetchBill, fetchGroup]);
 
   const handleStartNewBill = (data?: CreateBillFormData) => {
     resetBill();
@@ -197,17 +228,17 @@ function App() {
     url.searchParams.delete('groupId');
     url.searchParams.set('id', id);
     window.history.pushState({}, '', url.toString());
-    fetchBill(id);
     setView('editor');
+    fetchBill(id);
   };
 
-  const handleSelectGroup = async (groupId: string) => {
+  const handleSelectGroup = (groupId: string) => {
     const url = new URL(window.location.href);
     url.searchParams.delete('id');
     url.searchParams.set('groupId', groupId);
     window.history.pushState({}, '', url.toString());
-    await fetchGroup(groupId);
     setView('group');
+    fetchGroup(groupId);
   };
 
   if (!isHydrated) {
