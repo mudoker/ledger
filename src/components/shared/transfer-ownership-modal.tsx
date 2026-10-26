@@ -160,7 +160,7 @@ export function TransferOwnershipModal({
                   setQuery(e.target.value);
                   if (error) setError('');
                 }}
-                className="h-10 pl-8 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-base sm:text-xs"
+                className="h-10 pl-8 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
                 autoFocus
               />
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
