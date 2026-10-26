@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useBillStore } from "@/store/useBillStore";
+import { useGroupStore } from "@/store/useGroupStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Clock, ChevronRight, Receipt, Users as UsersIcon, Play, History, MapPin, Shield, LogIn, Sparkles } from "lucide-react";
+import { Plus, Clock, ChevronRight, Receipt, Users as UsersIcon, Play, History, MapPin, Shield, LogIn, Sparkles, FolderPlus, Folder } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import { motion } from 'framer-motion';
@@ -12,24 +13,35 @@ import { AppLogo } from '@/components/shared/app-logo';
 import { GoogleIcon } from '@/components/shared/google-icon';
 import { DevLoginModal } from '@/components/layout/dev-login-modal';
 import { CreateBillModal, type CreateBillFormData } from '@/components/shared/create-bill-modal';
+import { CreateGroupModal } from '@/components/shared/create-group-modal';
+import { BottomSearchBar } from '@/components/shared/bottom-search-bar';
+import { FuzzySearchModal } from '@/components/shared/fuzzy-search-modal';
 
 interface LandingPageProps {
     onNewBill: (data: CreateBillFormData) => void;
     onSelectBill: (id: string | 'current') => void;
+    onSelectGroup?: (id: string) => void;
     onLoadDemo?: () => void;
 }
 
-export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPageProps) {
+export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo }: LandingPageProps) {
     const { billHistory, fetchHistory, isHydrated, people, items, dbStatus } = useBillStore();
+    const { groups, fetchGroups } = useGroupStore();
     const { user, signInWithGoogle, signOut } = useAuthStore();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
+    const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [isDevLoginOpen, setIsDevLoginOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'bills' | 'groups'>('bills');
 
     useEffect(() => {
         if (isHydrated) {
             fetchHistory();
+            if (user) {
+                fetchGroups();
+            }
         }
-    }, [isHydrated, fetchHistory, user]);
+    }, [isHydrated, fetchHistory, fetchGroups, user]);
 
     const hasActiveLocalData = Boolean(user) && (people.length > 0 || items.length > 0);
 
@@ -68,27 +80,24 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
                     className="flex flex-col items-center gap-3 sm:gap-4 pt-2 sm:pt-4 w-full"
                 >
                     <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4 justify-center w-full max-w-sm sm:max-w-none">
-                        {hasActiveLocalData && (
-                            <Button
-                                onClick={() => {
-                                    if (!user) return;
-                                    onSelectBill('current');
-                                }}
-                                variant="outline"
-                                size="lg"
-                                className="h-11 sm:h-14 px-5 sm:px-8 text-sm sm:text-lg font-bold gap-2 rounded-xl sm:rounded-2xl border-2 transition-all hover:bg-foreground/5 w-full sm:w-auto touch-manipulation active:scale-95"
-                            >
-                                <Play className="w-4 h-4 sm:w-6 sm:h-6" /> Resume Last
-                            </Button>
-                        )}
                         {user ? (
-                            <Button
-                                onClick={() => setIsCreateModalOpen(true)}
-                                size="lg"
-                                className="h-11 sm:h-14 px-5 sm:px-8 text-sm sm:text-lg font-bold gap-2 rounded-xl sm:rounded-2xl shadow-xl shadow-foreground/10 transition-all hover:scale-105 active:scale-95 bg-foreground text-background hover:bg-foreground/90 w-full sm:w-auto touch-manipulation"
-                            >
-                                <Plus className="w-4 h-4 sm:w-6 sm:h-6" /> Start New
-                            </Button>
+                            <>
+                                <Button
+                                    onClick={() => setIsCreateGroupModalOpen(true)}
+                                    variant="outline"
+                                    size="lg"
+                                    className="h-11 sm:h-14 px-5 sm:px-8 text-sm sm:text-lg font-bold gap-2 rounded-xl sm:rounded-2xl border-2 transition-all hover:bg-foreground/5 w-full sm:w-auto touch-manipulation active:scale-95"
+                                >
+                                    <FolderPlus className="w-4 h-4 sm:w-6 sm:h-6 text-primary" /> Create Group
+                                </Button>
+                                <Button
+                                    onClick={() => setIsCreateModalOpen(true)}
+                                    size="lg"
+                                    className="h-11 sm:h-14 px-5 sm:px-8 text-sm sm:text-lg font-bold gap-2 rounded-xl sm:rounded-2xl shadow-xl shadow-foreground/10 transition-all hover:scale-105 active:scale-95 bg-foreground text-background hover:bg-foreground/90 w-full sm:w-auto touch-manipulation"
+                                >
+                                    <Plus className="w-4 h-4 sm:w-6 sm:h-6" /> Start New
+                                </Button>
+                            </>
                         ) : (
                             <Button
                                 onClick={signInWithGoogle}
@@ -101,10 +110,31 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
                         )}
                     </div>
 
+                    {hasActiveLocalData && (
+                        <div className="pt-1">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!user) return;
+                                    onSelectBill('current');
+                                }}
+                                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-semibold underline underline-offset-4 cursor-pointer"
+                            >
+                                <Play className="w-3 h-3 text-primary" /> Resume unsaved draft bill
+                            </button>
+                        </div>
+                    )}
+
                     <CreateBillModal
                         open={isCreateModalOpen}
                         onOpenChange={setIsCreateModalOpen}
                         onSubmit={onNewBill}
+                    />
+
+                    <CreateGroupModal
+                        open={isCreateGroupModalOpen}
+                        onOpenChange={setIsCreateGroupModalOpen}
+                        onCreated={(g) => onSelectGroup?.(g.id)}
                     />
 
                     <div className="flex flex-wrap items-center justify-center gap-2 mt-1 sm:mt-2">
@@ -133,13 +163,42 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
             </div>
 
             {/* Recent History Section */}
-            <div className="flex-1 px-4 sm:px-6 max-w-2xl mx-auto w-full flex flex-col">
+            <div className="flex-1 px-4 sm:px-6 max-w-2xl mx-auto w-full flex flex-col pb-16">
                 <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
-                        <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                            {user ? 'My Bills & Shared Bills' : 'Recent Transactions'}
-                        </h2>
+                        {user ? (
+                            <div className="flex items-center p-0.5 bg-muted rounded-xl border border-border/60">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('bills')}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                        activeTab === 'bills'
+                                            ? 'bg-card text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Bills ({billHistory.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('groups')}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                        activeTab === 'groups'
+                                            ? 'bg-card text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Groups ({groups.length})
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-muted-foreground" />
+                                <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                                    Recent Transactions
+                                </h2>
+                            </div>
+                        )}
                     </div>
                     {(() => {
                         if (!dbStatus.isOnline) {
@@ -199,7 +258,7 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
                                 <div className="space-y-1 max-w-sm">
                                     <p className="text-foreground font-bold text-sm">Protected User Workspace</p>
                                     <p className="text-xs text-muted-foreground leading-relaxed">
-                                        Sign in with Google to view and sync your bills. Only participants added to a bill have access.
+                                        Sign in with Google to view and sync your bills and groups.
                                     </p>
                                 </div>
                                 <Button
@@ -210,6 +269,86 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
                                     <LogIn className="w-3.5 h-3.5" /> Sign In with Google
                                 </Button>
                             </div>
+                        ) : activeTab === 'groups' ? (
+                            groups.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
+                                    <Folder className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
+                                    <div className="space-y-1">
+                                        <p className="text-muted-foreground font-medium italic text-sm">No bill groups found.</p>
+                                        <p className="text-xs text-muted-foreground/60">Create a group to track multi-bill vacations, events, or shared living expenses!</p>
+                                    </div>
+                                    <Button
+                                        onClick={() => setIsCreateGroupModalOpen(true)}
+                                        size="sm"
+                                        variant="outline"
+                                        className="rounded-xl font-bold text-xs gap-1.5"
+                                    >
+                                        <FolderPlus className="w-3.5 h-3.5 text-primary" /> Create First Group
+                                    </Button>
+                                </div>
+                            ) : (
+                                groups.map((group) => (
+                                    <Card
+                                        key={group.id}
+                                        className="group overflow-hidden border border-border/70 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 cursor-pointer rounded-2xl touch-manipulation active:scale-[0.99] bg-card"
+                                        onClick={() => onSelectGroup?.(group.id)}
+                                    >
+                                        <CardContent className="p-0">
+                                            <div className="flex items-center gap-3.5 sm:gap-4 p-4 sm:p-5">
+                                                <div className="p-3 bg-primary/10 text-primary rounded-2xl group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300 shrink-0 group-hover:scale-105 shadow-2xs">
+                                                    <Folder className="w-5 h-5 sm:w-6 sm:h-6 transition-colors group-hover:text-inherit" />
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                            <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-primary transition-colors">
+                                                                {group.name}
+                                                            </h3>
+                                                            <span className={group.is_owner
+                                                                ? "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-foreground/10 text-foreground border border-foreground/20 shrink-0 shadow-2xs"
+                                                                : "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0 shadow-2xs"
+                                                            }>
+                                                                {group.is_owner ? 'Owner' : 'Participant'}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-lg tracking-tight shrink-0">
+                                                            {formatCurrency(group.total_amount)}
+                                                        </span>
+                                                    </div>
+
+                                                    {group.description && (
+                                                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                                                            {group.description}
+                                                        </p>
+                                                    )}
+
+                                                    <div className="flex items-center gap-3 sm:gap-4 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock className="w-3 h-3" />
+                                                            {formatDistanceToNow(new Date(group.updated_at), { addSuffix: true })}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 font-bold">
+                                                            <span className="text-blue-500 bg-blue-500/10 px-1.5 py-0.2 rounded">
+                                                                {group.total_bills} bill{group.total_bills === 1 ? '' : 's'}
+                                                            </span>
+                                                            <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.2 rounded">
+                                                                {group.total_items} item{group.total_items === 1 ? '' : 's'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-muted/60 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
+                                                        <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))
+                            )
                         ) : billHistory.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
                                 <Receipt className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
@@ -279,6 +418,17 @@ export function LandingPage({ onNewBill, onSelectBill, onLoadDemo }: LandingPage
                     </motion.div>
                 </div>
             </div>
+
+            {/* Bottom Search Bar Trigger */}
+            <BottomSearchBar onClick={() => setIsSearchModalOpen(true)} />
+
+            {/* Fuzzy Search Modal */}
+            <FuzzySearchModal
+                open={isSearchModalOpen}
+                onOpenChange={setIsSearchModalOpen}
+                onSelectBill={onSelectBill}
+                onSelectGroup={(gid) => onSelectGroup?.(gid)}
+            />
 
             {/* Feature Pills & Bottom Bar */}
             <div className="flex-none pt-6 sm:pt-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8 px-4 sm:px-6 border-t bg-muted/30">

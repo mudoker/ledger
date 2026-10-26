@@ -21,12 +21,19 @@ import { ResizableSplit } from "@/components/layout/resizable-split";
 import { AuthButton } from "@/components/layout/auth-button";
 import { ShareButton } from "@/components/layout/share-button";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useGroupStore } from "@/store/useGroupStore";
+import { GroupOverview } from "@/components/groups/group-overview";
+import { BottomSearchBar } from "@/components/shared/bottom-search-bar";
+import { FuzzySearchModal } from "@/components/shared/fuzzy-search-modal";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 function App() {
-  const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings'>(() => {
+  const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      if (params.get('groupId')) {
+        return 'group';
+      }
       if (params.get('id') || params.get('v') || params.get('e')) {
         return 'editor';
       }
@@ -35,7 +42,9 @@ function App() {
   });
   const [mobileTab, setMobileTab] = useState<'people' | 'items' | 'summary' | 'settings'>('items');
   const [isReadOnlyModalOpen, setIsReadOnlyModalOpen] = useState(false);
+  const [isGroupSearchOpen, setIsGroupSearchOpen] = useState(false);
   const { user, fetchUser, signOut } = useAuthStore();
+  const { currentGroup, fetchGroup } = useGroupStore();
   const {
     isReadOnly,
     isHydrated,
@@ -75,11 +84,16 @@ function App() {
 
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
+    const groupId = params.get('groupId');
     const viewData = params.get('v');
     const editData = params.get('e');
     const isShare = params.get('share') === '1' || params.get('share') === 'true' || Boolean(viewData);
 
-    if (id || viewData || editData) {
+    if (groupId) {
+      fetchGroup(groupId).then((g) => {
+        if (g) setView('group');
+      });
+    } else if (id || viewData || editData) {
       if (id) {
         fetchBill(id, isShare).catch((err) => {
           console.error("Fetch bill error:", err);
@@ -91,7 +105,7 @@ function App() {
         }
       }
     }
-  }, [isHydrated, loadState, fetchBill]);
+  }, [isHydrated, loadState, fetchBill, fetchGroup]);
 
   // Auto-save logic
   useEffect(() => {
@@ -111,7 +125,7 @@ function App() {
   // Ensures the outer page is 100% static, and only the active tab subpage scrolls
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    if (view === 'landing') {
+    if (view === 'landing' || view === 'group') {
       document.documentElement.classList.remove('fixed-app');
       document.body.classList.remove('fixed-app');
       document.body.style.overflow = '';
@@ -137,6 +151,7 @@ function App() {
     // Clear URL params without reload
     window.history.pushState({}, '', window.location.origin);
     await fetchHistory();
+    await useGroupStore.getState().fetchGroups();
     setView('landing');
   };
 
@@ -154,6 +169,7 @@ function App() {
     const hostName = data?.hostName?.trim() || user?.name || (user?.email ? user.email.split('@')[0] : 'Me');
     const hostId = crypto.randomUUID();
     useBillStore.setState({
+      groupId: data?.groupId || null,
       people: [
         {
           id: hostId,
@@ -178,10 +194,20 @@ function App() {
       return;
     }
     const url = new URL(window.location.href);
+    url.searchParams.delete('groupId');
     url.searchParams.set('id', id);
     window.history.pushState({}, '', url.toString());
     fetchBill(id);
     setView('editor');
+  };
+
+  const handleSelectGroup = async (groupId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('id');
+    url.searchParams.set('groupId', groupId);
+    window.history.pushState({}, '', url.toString());
+    await fetchGroup(groupId);
+    setView('group');
   };
 
   if (!isHydrated) {
@@ -200,7 +226,7 @@ function App() {
       <TooltipProvider delayDuration={100} skipDelayDuration={0}>
         <div className={cn(
         "bg-background font-sans text-foreground antialiased selection:bg-foreground/20 flex flex-col items-stretch",
-        view === 'landing' ? "min-h-[100dvh] overflow-y-auto" : "h-[100dvh] max-h-[100dvh] overflow-hidden fixed inset-0"
+        view === 'landing' || view === 'group' ? "min-h-[100dvh] overflow-y-auto" : "h-[100dvh] max-h-[100dvh] overflow-hidden fixed inset-0"
       )}>
 
         {view === 'landing' ? (
@@ -239,12 +265,38 @@ function App() {
             <LandingPage
               onNewBill={handleStartNewBill}
               onSelectBill={handleSelectBill}
+              onSelectGroup={handleSelectGroup}
               onLoadDemo={() => {
                 loadSeedData();
                 setView('editor');
               }}
             />
           </>
+        ) : view === 'group' ? (
+          currentGroup ? (
+            <>
+              <GroupOverview
+                group={currentGroup}
+                onBack={handleBackToLanding}
+                onSelectBill={handleSelectBill}
+                onNewBill={handleStartNewBill}
+              />
+              <BottomSearchBar onClick={() => setIsGroupSearchOpen(true)} />
+              <FuzzySearchModal
+                open={isGroupSearchOpen}
+                onOpenChange={setIsGroupSearchOpen}
+                onSelectBill={handleSelectBill}
+                onSelectGroup={handleSelectGroup}
+              />
+            </>
+          ) : (
+            <div className="h-screen w-screen flex items-center justify-center bg-background">
+              <div className="animate-pulse flex flex-col items-center gap-4">
+                <AppLogo className="w-12 h-12 text-primary/40" />
+                <div className="h-2 w-32 bg-muted rounded"></div>
+              </div>
+            </div>
+          )
         ) : (
           <>
             {isReadOnly && (
@@ -252,7 +304,9 @@ function App() {
                 <div className="flex items-center gap-2 min-w-0">
                   <Eye className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-bold text-foreground truncate">
-                    Shared Bill (Read-Only) — No login required to view. Editing is disabled.
+                    {user
+                      ? "Read-Only Mode — Only the bill owner can edit this bill."
+                      : "Shared Bill (Read-Only) — Viewing mode only. Editing is disabled."}
                   </span>
                 </div>
                 <Button
