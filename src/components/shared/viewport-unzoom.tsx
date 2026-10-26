@@ -10,6 +10,11 @@ export function unzoomViewport() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
   try {
+    // Only perform unzoom if viewport is actually zoomed in or offset
+    if (window.visualViewport && window.visualViewport.scale <= 1.01 && window.scrollX === 0) {
+      return;
+    }
+
     // 1. Reset any horizontal panning offset caused by auto-zoom
     if (window.scrollX !== 0) {
       window.scrollTo({ left: 0, top: window.scrollY, behavior: "auto" });

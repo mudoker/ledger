@@ -101,7 +101,7 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                   setName(e.target.value);
                   if (error) setError('');
                 }}
-                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-xs"
+                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-base sm:text-xs"
               />
               {error && (
                 <p className="text-[11px] font-bold text-destructive pl-1">{error}</p>
@@ -117,7 +117,7 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                 placeholder="e.g. Gyu-Kaku, District 1"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-xs"
+                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-base sm:text-xs"
               />
             </div>
 
@@ -130,7 +130,7 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                 placeholder="e.g. Alex"
                 value={hostName}
                 onChange={(e) => setHostName(e.target.value)}
-                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-xs"
+                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-base sm:text-xs"
               />
               <p className="text-[10px] text-muted-foreground/70 pl-1">
                 Creates the first participant and sets them as the primary payer.

@@ -96,7 +96,7 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
                   setName(e.target.value);
                   if (error) setError('');
                 }}
-                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
+                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-base sm:text-xs"
                 autoFocus
               />
               {error && (
@@ -114,7 +114,7 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
                 placeholder="Optional description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
+                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-base sm:text-xs"
               />
             </div>
 

@@ -191,7 +191,7 @@ export function FuzzySearchModal({
               setSelectedIndex(0);
             }}
             placeholder="Search bills, groups & items with fuzzy match..."
-            className="h-9 border-none bg-transparent shadow-none focus-visible:ring-0 text-sm font-medium px-0 placeholder:text-muted-foreground/50"
+            className="h-9 border-none bg-transparent shadow-none focus-visible:ring-0 text-base sm:text-sm font-medium px-0 placeholder:text-muted-foreground/50"
             autoFocus
           />
           {isApiLoading ? (
