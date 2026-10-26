@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useBillStore } from "@/store/useBillStore";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Clock, ChevronRight, Receipt, Users as UsersIcon, Play, History, MapPin, Shield, LogIn, Sparkles, FolderPlus, Folder } from "lucide-react";
+import { Plus, Clock, ChevronRight, Receipt, Play, History, MapPin, Shield, LogIn, Sparkles, FolderPlus, Folder } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import { motion } from 'framer-motion';
@@ -25,7 +25,19 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo }: LandingPageProps) {
-    const { billHistory, fetchHistory, isHydrated, people, items, dbStatus } = useBillStore();
+    const {
+        billHistory,
+        fetchHistory,
+        isHydrated,
+        people,
+        items,
+        billName,
+        location,
+        currentBillId,
+        lastSaved,
+        globalCharges,
+        dbStatus,
+    } = useBillStore();
     const { groups, fetchGroups } = useGroupStore();
     const { user, signInWithGoogle, signOut } = useAuthStore();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -33,6 +45,30 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [isDevLoginOpen, setIsDevLoginOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'bills' | 'groups'>('bills');
+
+    const [hasCreatedSample, setHasCreatedSample] = useState<boolean>(() => {
+        if (typeof window === 'undefined') return false;
+        const userKey = user?.id ? `ledger_sample_bill_${user.id}` : 'ledger_sample_bill_guest';
+        return localStorage.getItem(userKey) === 'true' || localStorage.getItem('ledger_sample_bill_clicked') === 'true';
+    });
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const userKey = user?.id ? `ledger_sample_bill_${user.id}` : 'ledger_sample_bill_guest';
+        if (localStorage.getItem(userKey) === 'true' || localStorage.getItem('ledger_sample_bill_clicked') === 'true') {
+            setHasCreatedSample(true);
+        }
+    }, [user]);
+
+    const handleLoadDemo = () => {
+        if (typeof window !== 'undefined') {
+            const userKey = user?.id ? `ledger_sample_bill_${user.id}` : 'ledger_sample_bill_guest';
+            localStorage.setItem(userKey, 'true');
+            localStorage.setItem('ledger_sample_bill_clicked', 'true');
+            setHasCreatedSample(true);
+        }
+        onLoadDemo?.();
+    };
 
     useEffect(() => {
         if (isHydrated) {
@@ -43,7 +79,20 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
         }
     }, [isHydrated, fetchHistory, fetchGroups, user]);
 
-    const hasActiveLocalData = Boolean(user) && (people.length > 0 || items.length > 0);
+    const hasActiveDraft = Boolean(user) && (people.length > 0 || items.length > 0) && (!currentBillId || !billHistory.some((b) => b.id === currentBillId));
+
+    const draftTotal = useMemo(() => {
+        const rawSubtotal = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        let total = rawSubtotal;
+        for (const charge of globalCharges) {
+            if (charge.type === 'percent') {
+                total += (rawSubtotal * charge.amount) / 100;
+            } else {
+                total += charge.amount;
+            }
+        }
+        return total;
+    }, [items, globalCharges]);
 
     return (
         <div className="flex-1 flex flex-col min-h-0 bg-background">
@@ -110,21 +159,6 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                         )}
                     </div>
 
-                    {hasActiveLocalData && (
-                        <div className="pt-1">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (!user) return;
-                                    onSelectBill('current');
-                                }}
-                                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-semibold underline underline-offset-4 cursor-pointer"
-                            >
-                                <Play className="w-3 h-3 text-primary" /> Resume unsaved draft bill
-                            </button>
-                        </div>
-                    )}
-
                     <CreateBillModal
                         open={isCreateModalOpen}
                         onOpenChange={setIsCreateModalOpen}
@@ -138,9 +172,9 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                     />
 
                     <div className="flex flex-wrap items-center justify-center gap-2 mt-1 sm:mt-2">
-                        {onLoadDemo && (
+                        {!hasCreatedSample && onLoadDemo && (
                             <Button
-                                onClick={onLoadDemo}
+                                onClick={handleLoadDemo}
                                 variant="ghost"
                                 size="sm"
                                 className="text-xs font-bold text-muted-foreground hover:text-foreground gap-1.5 touch-manipulation active:scale-95"
@@ -163,7 +197,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
             </div>
 
             {/* Recent History Section */}
-            <div className="flex-1 px-4 sm:px-6 max-w-2xl mx-auto w-full flex flex-col pb-16">
+            <div className="flex-1 px-4 sm:px-6 max-w-2xl mx-auto w-full flex flex-col pb-32 sm:pb-36">
                 <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                         {user ? (
@@ -177,7 +211,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                             : 'text-muted-foreground hover:text-foreground'
                                     }`}
                                 >
-                                    Bills ({billHistory.length})
+                                    Bills ({billHistory.length + (hasActiveDraft ? 1 : 0)})
                                 </button>
                                 <button
                                     type="button"
@@ -349,7 +383,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                     </Card>
                                 ))
                             )
-                        ) : billHistory.length === 0 ? (
+                        ) : billHistory.length === 0 && !hasActiveDraft ? (
                             <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
                                 <Receipt className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
                                 <div className="space-y-1">
@@ -358,7 +392,67 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                 </div>
                             </div>
                         ) : (
-                            billHistory.map((bill) => (
+                            <>
+                                {hasActiveDraft && (
+                                    <Card
+                                        className="group overflow-hidden border-amber-500/40 bg-amber-500/[0.04] hover:border-amber-500/70 hover:shadow-2xl hover:shadow-black/5 transition-all duration-300 cursor-pointer rounded-2xl touch-manipulation active:scale-[0.99]"
+                                        onClick={() => onSelectBill('current')}
+                                    >
+                                        <CardContent className="p-0">
+                                            <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-5">
+                                                <div className="p-2.5 sm:p-3 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl group-hover:bg-amber-500 group-hover:text-white transition-colors shrink-0">
+                                                    <Receipt className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                            <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                                                                {billName || 'Untitled Draft Bill'}
+                                                            </h3>
+                                                            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                                                                Draft
+                                                            </span>
+                                                        </div>
+                                                        {draftTotal > 0 && (
+                                                            <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0">
+                                                                {formatCurrency(draftTotal)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-3 sm:gap-4 mt-1 text-[10px] text-muted-foreground font-medium flex-wrap">
+                                                        <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                                            <Clock className="w-3 h-3 shrink-0" />
+                                                            <span>{lastSaved ? formatDistanceToNow(new Date(lastSaved), { addSuffix: true }) : 'Unsaved local draft'}</span>
+                                                        </div>
+                                                        {location && (
+                                                            <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none">
+                                                                <MapPin className="w-3 h-3 shrink-0" />
+                                                                <span className="truncate">{location}</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex items-center gap-1.5 font-bold">
+                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.2 rounded">
+                                                                {items.length} item{items.length === 1 ? '' : 's'}
+                                                            </span>
+                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.2 rounded">
+                                                                {people.length} member{people.length === 1 ? '' : 's'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
+                                                        <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {billHistory.map((bill) => (
                                 <Card
                                     key={bill.id}
                                     className="group overflow-hidden border-border/50 hover:border-foreground/20 hover:shadow-2xl hover:shadow-black/5 transition-all duration-300 cursor-pointer rounded-2xl touch-manipulation active:scale-[0.99]"
@@ -413,14 +507,32 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         </div>
                                     </CardContent>
                                 </Card>
-                            ))
+                            ))}
+                            </>
                         )}
                     </motion.div>
                 </div>
             </div>
 
-            {/* Bottom Search Bar Trigger */}
-            <BottomSearchBar onClick={() => setIsSearchModalOpen(true)} />
+            {/* Bottom Search Bar Dock with User Status */}
+            <BottomSearchBar
+                onClick={() => setIsSearchModalOpen(true)}
+                footer={
+                    user ? (
+                        <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
+                            <span>Signed in as <strong className="text-foreground font-semibold">{user.name || user.email}</strong></span>
+                            <span>•</span>
+                            <button
+                                type="button"
+                                onClick={signOut}
+                                className="text-[11px] text-muted-foreground hover:text-foreground font-semibold underline-offset-4 hover:underline cursor-pointer"
+                            >
+                                Log out
+                            </button>
+                        </div>
+                    ) : null
+                }
+            />
 
             {/* Fuzzy Search Modal */}
             <FuzzySearchModal
@@ -430,55 +542,9 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                 onSelectGroup={(gid) => onSelectGroup?.(gid)}
             />
 
-            {/* Feature Pills & Bottom Bar */}
-            <div className="flex-none pt-6 sm:pt-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8 px-4 sm:px-6 border-t bg-muted/30">
-                <div className="max-w-2xl mx-auto flex flex-col items-center gap-3.5 text-center">
-                    <div className="flex flex-wrap justify-center gap-x-6 sm:gap-x-8 gap-y-3 sm:gap-y-4 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                            <UsersIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-foreground/40" />
-                            <span>Group Splitting</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                            <ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-foreground/40" />
-                            <span>Receipt Scanning</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                            <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-foreground/40" />
-                            <span>RBAC &amp; Cloud Sync</span>
-                        </div>
-                    </div>
-
-                    {user && (
-                        <div className="flex items-center justify-center gap-2 pt-1 text-xs text-muted-foreground">
-                            <span>Signed in as <strong className="text-foreground font-bold">{user.name || user.email}</strong></span>
-                            <span>•</span>
-                            <Button
-                                variant="link"
-                                onClick={signOut}
-                                className="text-xs text-muted-foreground hover:text-foreground font-semibold p-0 h-auto underline-offset-4 hover:underline"
-                            >
-                                Log out
-                            </Button>
-                        </div>
-                    )}
-                </div>
-            </div>
-
             {IS_DEV && (
                 <DevLoginModal open={isDevLoginOpen} onOpenChange={setIsDevLoginOpen} />
             )}
         </div>
-    );
-}
-
-function ScanLine({ className }: { className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-            <path d="M3 17v2a2 2 0 0 1 2 2h2" />
-            <line x1="7" x2="17" y1="12" y2="12" />
-        </svg>
     );
 }
