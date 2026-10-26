@@ -34,6 +34,8 @@ export interface BillHistoryItem {
     location?: string;
     totalAmount?: number;
     owner_id?: string | null;
+    group_id?: string | null;
+    group_name?: string | null;
     role?: 'owner' | 'participant' | 'viewer';
     is_owner?: boolean;
 }
@@ -65,12 +67,16 @@ interface BillState {
     location: string;
     qrCode: string | null;
     currency: CurrencyCode;
+    groupId: string | null;
+    groupName: string | null;
 
     // Actions
     setCurrency: (currency: CurrencyCode) => Promise<void>;
     setBillName: (name: string) => void;
     setLocation: (location: string) => void;
     setQrCode: (url: string) => void;
+    setGroupId: (groupId: string | null) => void;
+    transferBillOwnership: (newOwnerId: string) => Promise<boolean>;
     addPerson: (name: string, email?: string | null, userId?: string | null) => void;
     updatePerson: (id: string, data: Partial<Person>) => void;
     removePerson: (id: string) => void;
@@ -120,6 +126,35 @@ export const useBillStore = create<BillState>()(
             location: '',
             qrCode: null,
             currency: 'VND',
+            groupId: null,
+            groupName: null,
+
+            setGroupId: (groupId: string | null) => {
+                set({ groupId });
+                get().saveToDb();
+            },
+
+            transferBillOwnership: async (newOwnerId: string) => {
+                const billId = get().currentBillId;
+                if (!billId) return false;
+                try {
+                    const res = await fetch(`/api/bills/${billId}/transfer`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ new_owner_id: newOwnerId }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.error || 'Failed to transfer bill ownership');
+                    }
+                    await get().fetchBill(billId);
+                    await get().fetchHistory();
+                    return true;
+                } catch (e) {
+                    console.error('Transfer bill ownership error:', e);
+                    throw e;
+                }
+            },
 
             setCurrency: async (newCurrency) => {
                 const currentCurrency = get().currency;
@@ -262,7 +297,9 @@ export const useBillStore = create<BillState>()(
                 billHistory: state.billHistory,
                 billName: '',
                 location: '',
-                qrCode: null
+                qrCode: null,
+                groupId: null,
+                groupName: null,
             })),
 
             loadState: (data, readonly) => set((state) => ({
@@ -296,7 +333,8 @@ export const useBillStore = create<BillState>()(
                                 globalCharges: state.globalCharges,
                                 hostId: state.hostId,
                                 qrCode: state.qrCode,
-                                currency: state.currency
+                                currency: state.currency,
+                                groupId: state.groupId,
                             }
                         })
                     });
@@ -334,6 +372,8 @@ export const useBillStore = create<BillState>()(
                         location: result.data.location || '',
                         qrCode: result.data.qrCode || null,
                         currency: result.data.currency || 'VND',
+                        groupId: result.group_id || result.data.groupId || null,
+                        groupName: result.group_name || result.data.groupName || null,
                         currentBillId: result.id,
                         lastSaved: result.updated_at,
                         isReadOnly: Boolean(isShare || result.isReadOnly),
