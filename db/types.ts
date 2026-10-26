@@ -52,6 +52,7 @@ export interface GroupItemOverview {
   price: number;
   quantity: number;
   totalPrice: number;
+  assignments?: Record<string, number>;
 }
 
 export interface GroupBillOverview {
@@ -60,9 +61,13 @@ export interface GroupBillOverview {
   location: string | null;
   currency: string;
   totalAmount: number;
+  host_id?: string | null;
+  host_name?: string | null;
   created_at: string;
   updated_at: string;
   items: GroupItemOverview[];
+  people?: PersonData[];
+  globalCharges?: GlobalChargeData[];
 }
 
 export interface BillGroupDetail {

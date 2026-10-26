@@ -594,7 +594,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       const isOwner = Boolean(userId && group.owner_id === userId);
 
       const billsRes = await client.query(`
-        SELECT id, name, location, currency, created_at, updated_at
+        SELECT id, name, location, currency, host_id, created_at, updated_at
         FROM bills
         WHERE group_id = $1
         ORDER BY updated_at DESC
@@ -605,23 +605,57 @@ export class PostgresAdapter implements DatabaseAdapter {
       const bills: GroupBillOverview[] = [];
 
       for (const b of billsRes.rows) {
+        const peopleRes = await client.query(
+          'SELECT id, name, sponsor_amount as "sponsorAmount", paid_amount as "paidAmount", user_id as "userId", email FROM people WHERE bill_id = $1',
+          [b.id]
+        );
+        const people: PersonData[] = peopleRes.rows.map(p => ({
+          id: String(p.id),
+          name: String(p.name),
+          sponsorAmount: Number(p.sponsorAmount || 0),
+          paidAmount: Number(p.paidAmount || 0),
+          userId: p.userId ? String(p.userId) : null,
+          email: p.email ? String(p.email) : null,
+        }));
+
+        const hostPerson = people.find(p => p.id === b.host_id);
+        const hostName = hostPerson?.name || null;
+
+        const chargesRes = await client.query(
+          'SELECT id, name, type, amount FROM global_charges WHERE bill_id = $1',
+          [b.id]
+        );
+        const globalCharges: GlobalChargeData[] = chargesRes.rows.map(gc => ({
+          id: String(gc.id),
+          name: String(gc.name),
+          type: String(gc.type),
+          amount: Number(gc.amount || 0),
+        }));
+
         const itemsRes = await client.query(
           'SELECT id, name, price, quantity FROM items WHERE bill_id = $1',
           [b.id]
         );
 
-        const chargesRes = await client.query(
-          'SELECT type, amount FROM global_charges WHERE bill_id = $1',
-          [b.id]
-        );
-
-        const items: GroupItemOverview[] = itemsRes.rows.map(it => ({
-          id: String(it.id),
-          name: String(it.name),
-          price: Number(it.price || 0),
-          quantity: Number(it.quantity || 1),
-          totalPrice: Number(it.price || 0) * Number(it.quantity || 1),
-        }));
+        const items: GroupItemOverview[] = [];
+        for (const it of itemsRes.rows) {
+          const assignRes = await client.query(
+            'SELECT person_id, quantity FROM item_assignments WHERE item_id = $1',
+            [it.id]
+          );
+          const assignments: Record<string, number> = {};
+          assignRes.rows.forEach(row => {
+            assignments[row.person_id] = Number(row.quantity);
+          });
+          items.push({
+            id: String(it.id),
+            name: String(it.name),
+            price: Number(it.price || 0),
+            quantity: Number(it.quantity || 1),
+            totalPrice: Number(it.price || 0) * Number(it.quantity || 1),
+            assignments,
+          });
+        }
 
         const subtotal = items.reduce((s, it) => s + it.totalPrice, 0);
         let fixedCharges = 0;
@@ -641,9 +675,13 @@ export class PostgresAdapter implements DatabaseAdapter {
           location: b.location ?? null,
           currency: b.currency || 'VND',
           totalAmount: billTotal,
+          host_id: b.host_id ? String(b.host_id) : null,
+          host_name: hostName,
           created_at: typeof b.created_at === 'string' ? b.created_at : new Date(b.created_at).toISOString(),
           updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
           items,
+          people,
+          globalCharges,
         });
       }
 

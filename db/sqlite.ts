@@ -558,7 +558,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     const isOwner = Boolean(userId && group.owner_id === userId);
 
     const billsRaw = this.db.prepare(`
-      SELECT id, name, location, currency, created_at, updated_at
+      SELECT id, name, location, currency, host_id, created_at, updated_at
       FROM bills
       WHERE group_id = ?
       ORDER BY updated_at DESC
@@ -567,6 +567,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       name: string | null;
       location: string | null;
       currency: string | null;
+      host_id: string | null;
       created_at: string;
       updated_at: string;
     }>;
@@ -576,22 +577,59 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     const bills: GroupBillOverview[] = [];
 
+    const stmtPeople = this.db.prepare(
+      'SELECT id, name, sponsor_amount as sponsorAmount, paid_amount as paidAmount, user_id as userId, email FROM people WHERE bill_id = ?'
+    );
+    const stmtCharges = this.db.prepare(
+      'SELECT id, name, type, amount FROM global_charges WHERE bill_id = ?'
+    );
+    const stmtItems = this.db.prepare(
+      'SELECT id, name, price, quantity FROM items WHERE bill_id = ?'
+    );
+    const stmtAssignments = this.db.prepare(
+      'SELECT person_id, quantity FROM item_assignments WHERE item_id = ?'
+    );
+
     for (const b of billsRaw) {
-      const itemsRaw = this.db.prepare(
-        'SELECT id, name, price, quantity FROM items WHERE bill_id = ?'
-      ).all(b.id) as unknown as Array<{ id: string; name: string; price: number; quantity: number }>;
-
-      const chargesRaw = this.db.prepare(
-        'SELECT type, amount FROM global_charges WHERE bill_id = ?'
-      ).all(b.id) as unknown as Array<{ type: string; amount: number }>;
-
-      const items: GroupItemOverview[] = itemsRaw.map(it => ({
-        id: String(it.id),
-        name: String(it.name),
-        price: Number(it.price || 0),
-        quantity: Number(it.quantity || 1),
-        totalPrice: Number(it.price || 0) * Number(it.quantity || 1),
+      const peopleRaw = stmtPeople.all(b.id) as unknown as PersonRow[];
+      const people: PersonData[] = peopleRaw.map(p => ({
+        id: String(p.id),
+        name: String(p.name),
+        sponsorAmount: Number(p.sponsorAmount || 0),
+        paidAmount: Number(p.paidAmount || 0),
+        userId: p.userId ? String(p.userId) : null,
+        email: p.email ? String(p.email) : null,
       }));
+
+      const hostPerson = people.find(p => p.id === b.host_id);
+      const hostName = hostPerson?.name || null;
+
+      const chargesRaw = stmtCharges.all(b.id) as unknown as ChargeRow[];
+      const globalCharges: GlobalChargeData[] = chargesRaw.map(gc => ({
+        id: String(gc.id),
+        name: String(gc.name),
+        type: String(gc.type),
+        amount: Number(gc.amount || 0),
+      }));
+
+      const itemsRaw = stmtItems.all(b.id) as unknown as Array<{ id: string; name: string; price: number; quantity: number }>;
+
+      const items: GroupItemOverview[] = itemsRaw.map(it => {
+        const assignmentsRows = stmtAssignments.all(it.id) as unknown as AssignmentRow[];
+        const assignments: Record<string, number> = {};
+        assignmentsRows.forEach(row => {
+          assignments[row.person_id] = Number(row.quantity);
+        });
+
+        return {
+          id: String(it.id),
+          name: String(it.name),
+          price: Number(it.price || 0),
+          quantity: Number(it.quantity || 1),
+          totalPrice: Number(it.price || 0) * Number(it.quantity || 1),
+          assignments,
+        };
+      });
 
       const subtotal = items.reduce((s, it) => s + it.totalPrice, 0);
       let fixedCharges = 0;
@@ -611,9 +649,13 @@ export class SqliteAdapter implements DatabaseAdapter {
         location: b.location ?? null,
         currency: b.currency || 'VND',
         totalAmount: billTotal,
+        host_id: b.host_id ? String(b.host_id) : null,
+        host_name: hostName,
         created_at: typeof b.created_at === 'string' ? b.created_at : new Date(b.created_at).toISOString(),
         updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
         items,
+        people,
+        globalCharges,
       });
     }
 
