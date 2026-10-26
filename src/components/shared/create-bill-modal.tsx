@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,28 +10,46 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tag, MapPin, User, ArrowRight, ReceiptText, Coins } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tag, MapPin, User, ArrowRight, ReceiptText, Coins, Folder } from "lucide-react";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
+import { useGroupStore } from "@/store/useGroupStore";
 
 export interface CreateBillFormData {
   name: string;
   location: string;
   hostName?: string;
   currency?: string;
+  groupId?: string | null;
 }
 
 interface CreateBillModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CreateBillFormData) => void;
+  defaultGroupId?: string | null;
+  initialGroupId?: string | null;
 }
 
-export function CreateBillModal({ open, onOpenChange, onSubmit }: CreateBillModalProps) {
+export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, initialGroupId }: CreateBillModalProps) {
+  const effectiveGroupId = defaultGroupId || initialGroupId || 'none';
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [hostName, setHostName] = useState('');
   const [currency, setCurrency] = useState<string>('VND');
+  const [groupId, setGroupId] = useState<string>(effectiveGroupId);
   const [error, setError] = useState('');
+  const { groups, fetchGroups } = useGroupStore();
+
+  useEffect(() => {
+    if (open) {
+      fetchGroups();
+      const initial = defaultGroupId || initialGroupId;
+      if (initial) {
+        setGroupId(initial);
+      }
+    }
+  }, [open, defaultGroupId, initialGroupId, fetchGroups]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -45,10 +63,12 @@ export function CreateBillModal({ open, onOpenChange, onSubmit }: CreateBillModa
       location: location.trim(),
       hostName: hostName.trim() || undefined,
       currency,
+      groupId: groupId === 'none' ? null : groupId,
     });
     setName('');
     setLocation('');
     setHostName('');
+    setGroupId('none');
     onOpenChange(false);
   };
 
@@ -126,6 +146,28 @@ export function CreateBillModal({ open, onOpenChange, onSubmit }: CreateBillModa
                 onChange={(c) => setCurrency(c)}
                 variant="default"
               />
+            </div>
+
+            <div className="space-y-1 sm:space-y-1.5">
+              <Label htmlFor="bill-group" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5 text-primary" /> Link to Group (Optional)
+              </Label>
+              <Select value={groupId} onValueChange={setGroupId}>
+                <SelectTrigger id="bill-group" className="h-9 bg-foreground/[0.03] border-border rounded-xl font-medium text-xs">
+                  <SelectValue placeholder="No Group (Standalone Bill)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Group (Standalone Bill)</SelectItem>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      📁 {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground/70 pl-1">
+                Adds this bill into a group overview. Can also be updated later in Settings.
+              </p>
             </div>
           </div>
 

@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Settings, Percent, Banknote, Tag, MapPin, Check, CloudUpload } from "lucide-react";
+import { Plus, Trash2, Settings, Percent, Banknote, Tag, MapPin, Check, CloudUpload, Folder, UserCheck, Shield } from "lucide-react";
 import { useBillStore, type Person, type GlobalCharge, type Item } from "@/store/useBillStore";
+import { useGroupStore } from "@/store/useGroupStore";
+import { TransferOwnershipModal } from "@/components/shared/transfer-ownership-modal";
 import { cn } from "@/lib/utils";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
@@ -55,7 +57,17 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
 
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const currency = useBillStore((state) => state.currency);
+    const groupId = useBillStore((state) => state.groupId);
+    const setGroupId = useBillStore((state) => state.setGroupId);
+    const currentBillId = useBillStore((state) => state.currentBillId);
+    const isReadOnly = useBillStore((state) => state.isReadOnly);
+    const { groups, fetchGroups } = useGroupStore();
+
+    useEffect(() => {
+        fetchGroups();
+    }, [fetchGroups]);
 
     const totalItemCost = items.reduce((sum, item) => sum + (item.price || 0), 0);
 
@@ -133,8 +145,9 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                     <Input
                                         placeholder="Bill name (e.g. Lunch at KFC)"
                                         value={billName}
+                                        disabled={isReadOnly}
                                         onChange={(e) => setBillName(e.target.value)}
-                                        className="pl-9 h-9 bg-foreground/[0.03] border-border rounded-xl focus-visible:ring-1 focus-visible:ring-foreground/20 font-medium text-xs"
+                                        className="pl-9 h-9 bg-foreground/[0.03] border-border rounded-xl focus-visible:ring-1 focus-visible:ring-foreground/20 font-medium text-xs disabled:opacity-60"
                                     />
                                 </div>
                                 <div className="relative group">
@@ -142,8 +155,9 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                     <Input
                                         placeholder="Location"
                                         value={location}
+                                        disabled={isReadOnly}
                                         onChange={(e) => setLocation(e.target.value)}
-                                        className="pl-9 h-9 bg-foreground/[0.03] border-border rounded-xl focus-visible:ring-1 focus-visible:ring-foreground/20 font-medium text-xs"
+                                        className="pl-9 h-9 bg-foreground/[0.03] border-border rounded-xl focus-visible:ring-1 focus-visible:ring-foreground/20 font-medium text-xs disabled:opacity-60"
                                     />
                                 </div>
                             </div>
@@ -157,6 +171,40 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                             </div>
                             <CurrencyDropdown variant="default" />
                             <p className="text-[10px] text-muted-foreground/80 px-1 font-medium">Switching currency automatically converts all prices and amounts using central bank rates.</p>
+                        </div>
+
+                        {/* Bill Group Setting */}
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between px-1">
+                                <Label className="text-[11px] font-black text-foreground/60 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                    <Folder className="w-3.5 h-3.5 text-primary" /> Group Assignment
+                                </Label>
+                                {groupId && (
+                                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                                        Linked
+                                    </span>
+                                )}
+                            </div>
+                            <Select
+                                value={groupId || "none"}
+                                onValueChange={(val) => setGroupId(val === "none" ? null : val)}
+                                disabled={isReadOnly}
+                            >
+                                <SelectTrigger className="h-9 bg-foreground/[0.03] border-border rounded-xl font-medium text-xs">
+                                    <SelectValue placeholder="No Group (Standalone Bill)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No Group (Standalone Bill)</SelectItem>
+                                    {groups.map((g) => (
+                                        <SelectItem key={g.id} value={g.id}>
+                                            📁 {g.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground/80 px-1 font-medium">
+                                Link this bill to an overview group to track combined spending across multiple events.
+                            </p>
                         </div>
 
                         {/* Payment QR Code */}
@@ -209,7 +257,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                         {/* Host Selection */}
                         <div className="space-y-2 sm:space-y-3">
                             <Label className="text-[11px] font-black text-foreground/60 uppercase tracking-[0.2em] pl-1">Primary Payer (Host)</Label>
-                            <Select value={hostId || ""} onValueChange={setHostId}>
+                            <Select value={hostId || ""} onValueChange={setHostId} disabled={isReadOnly}>
                                 <SelectTrigger className="w-full h-9 sm:h-10 bg-muted/20 border-foreground/5 rounded-xl hover:bg-foreground/5 hover:border-foreground/20 transition-all font-semibold text-xs sm:text-sm">
                                     <SelectValue placeholder="Who paid the bill?" />
                                 </SelectTrigger>
@@ -343,9 +391,62 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                 )}
                             </div>
                         </div>
+
+                        {/* Bill Ownership & Administration */}
+                        <div className="space-y-3 pt-2 border-t border-border/50">
+                            <Label className="text-[11px] font-black text-foreground/60 uppercase tracking-[0.2em] pl-1 flex items-center gap-1.5">
+                                <Shield className="w-3.5 h-3.5 text-primary" /> Ownership &amp; Permissions
+                            </Label>
+                            <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 flex items-center justify-between gap-3 flex-wrap">
+                                <div className="space-y-0.5 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-xs font-bold text-foreground">
+                                            {isReadOnly ? 'Read-Only Mode' : 'You own this bill'}
+                                        </p>
+                                        <span className={cn(
+                                            "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded",
+                                            isReadOnly ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary border border-primary/20"
+                                        )}>
+                                            {isReadOnly ? 'Participant / Viewer' : 'Owner'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        {isReadOnly
+                                            ? 'Only the bill owner can edit configuration, add items, or transfer ownership.'
+                                            : 'You can transfer full administrative ownership of this bill to another registered user.'}
+                                    </p>
+                                </div>
+
+                                {!isReadOnly && currentBillId && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setIsTransferModalOpen(true)}
+                                        className="h-8 rounded-xl font-bold text-xs gap-1.5 shrink-0"
+                                    >
+                                        <UserCheck className="w-3.5 h-3.5 text-amber-500" />
+                                        <span>Transfer Ownership</span>
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </ScrollArea>
             </CardContent>
+
+            {currentBillId && (
+                <TransferOwnershipModal
+                    open={isTransferModalOpen}
+                    onOpenChange={setIsTransferModalOpen}
+                    targetType="bill"
+                    targetId={currentBillId}
+                    targetName={billName || 'Untitled Bill'}
+                    onSuccess={() => {
+                        store.fetchBill(currentBillId);
+                    }}
+                />
+            )}
         </Card>
     );
 }
