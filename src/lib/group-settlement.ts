@@ -1,5 +1,11 @@
 import { calculateBill } from "@/hooks/useBillState";
-import type { BillGroupDetail, GroupBillOverview, PersonData } from "@/db/types";
+import type {
+  BillGroupDetail,
+  GroupBillOverview,
+  GroupItemOverview,
+  PersonData,
+  GlobalChargeData,
+} from "@/../db/types";
 
 export interface GroupParticipantSummary {
   key: string;
@@ -156,14 +162,14 @@ export function calculateGroupSettlement(
   const billSummaries: GroupBillSummaryItem[] = [];
 
   for (const b of bills) {
-    const people = b.people || [];
-    const items = b.items || [];
-    const globalCharges = b.globalCharges || [];
+    const people: PersonData[] = b.people || [];
+    const items: GroupItemOverview[] = b.items || [];
+    const globalCharges: GlobalChargeData[] = b.globalCharges || [];
     const hostId = b.host_id || (people.length > 0 ? people[0].id : null);
 
     // Run the core calculation engine for this bill
     const billCalc = calculateBill({
-      people: people.map(p => ({
+      people: people.map((p: PersonData) => ({
         id: p.id,
         name: p.name,
         email: p.email || null,
@@ -171,14 +177,14 @@ export function calculateGroupSettlement(
         sponsorAmount: p.sponsorAmount || 0,
         paidAmount: p.paidAmount || 0,
       })),
-      items: items.map(it => ({
+      items: items.map((it: GroupItemOverview) => ({
         id: it.id,
         name: it.name,
         price: it.price,
         quantity: it.quantity,
         assignments: it.assignments || {},
       })),
-      globalCharges: globalCharges.map(gc => ({
+      globalCharges: globalCharges.map((gc: GlobalChargeData) => ({
         id: gc.id,
         name: gc.name,
         type: gc.type as 'fixed' | 'percent',
@@ -192,14 +198,14 @@ export function calculateGroupSettlement(
 
     // Calculate effective paid amounts matching calculateBill's logic
     let othersPaid = 0;
-    people.forEach(p => {
+    people.forEach((p: PersonData) => {
       if (p.id !== hostId) {
         othersPaid += (p.paidAmount || 0);
       }
     });
 
     const effectivePaidAmounts: Record<string, number> = {};
-    people.forEach(p => {
+    people.forEach((p: PersonData) => {
       if (p.id === hostId) {
         effectivePaidAmounts[p.id] = Math.max(0, billTotal - othersPaid);
       } else {
@@ -218,7 +224,7 @@ export function calculateGroupSettlement(
     const billParticipants: BillParticipantSummary[] = [];
 
     // Track for this bill and accumulate into personMap
-    people.forEach(p => {
+    people.forEach((p: PersonData) => {
       const paid = effectivePaidAmounts[p.id] || 0;
       const share = billCalc.finalPayables[p.id] || 0;
       const net = paid - share;
@@ -256,8 +262,8 @@ export function calculateGroupSettlement(
 
     // Per-bill flows with resolved names
     const resolvedFlows = (billCalc.settlementFlows || []).map(f => {
-      const debtor = people.find(p => p.id === f.from);
-      const creditor = people.find(p => p.id === f.to);
+      const debtor = people.find((p: PersonData) => p.id === f.from);
+      const creditor = people.find((p: PersonData) => p.id === f.to);
       return {
         fromName: debtor ? debtor.name : 'Unknown',
         toName: creditor ? creditor.name : 'Host',
@@ -271,7 +277,7 @@ export function calculateGroupSettlement(
       location: b.location,
       currency: b.currency,
       totalAmount: billTotal,
-      hostName: b.host_name || (people.find(p => p.id === hostId)?.name ?? null),
+      hostName: b.host_name || (people.find((p: PersonData) => p.id === hostId)?.name ?? null),
       createdAt: b.created_at,
       participants: billParticipants,
       flows: resolvedFlows,

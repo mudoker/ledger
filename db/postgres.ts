@@ -10,6 +10,8 @@ import type {
   GroupBillOverview,
   GroupItemOverview,
   SearchResults,
+  PersonData,
+  GlobalChargeData,
 } from './types';
 
 export class PostgresAdapter implements DatabaseAdapter {

@@ -4,7 +4,7 @@ import {
   simplifyGroupDebts,
   getPersonKey,
 } from "@/lib/group-settlement";
-import type { GroupBillOverview } from "@/db/types";
+import type { GroupBillOverview } from "@/../db/types";
 
 describe("Group Settlement & Cross-Bill Aggregation", () => {
   it("generates deterministic person keys prioritizing userId > email > name", () => {
