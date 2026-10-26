@@ -519,13 +519,15 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                 onClick={() => setIsSearchModalOpen(true)}
                 footer={
                     user ? (
-                        <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
-                            <span>Signed in as <strong className="text-foreground font-semibold">{user.name || user.email}</strong></span>
-                            <span>•</span>
+                        <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground select-none">
+                            <span>
+                                Signed in as <strong className="text-foreground font-bold">{user.name || user.email}</strong>
+                            </span>
+                            <span className="text-muted-foreground/60">•</span>
                             <button
                                 type="button"
                                 onClick={signOut}
-                                className="text-[11px] text-muted-foreground hover:text-foreground font-semibold underline-offset-4 hover:underline cursor-pointer"
+                                className="text-xs sm:text-sm text-muted-foreground hover:text-foreground font-medium underline-offset-4 hover:underline cursor-pointer transition-colors"
                             >
                                 Log out
                             </button>
