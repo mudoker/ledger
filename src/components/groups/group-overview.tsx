@@ -26,7 +26,8 @@ import {
   Check,
   Sparkles,
   Settings2,
-  X
+  X,
+  Scale,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
@@ -34,6 +35,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
 import { CreateBillModal, type CreateBillFormData } from '@/components/shared/create-bill-modal';
+import { GroupSummary } from './group-summary';
 import type { BillGroupDetail } from '@/../db/types';
 
 interface GroupOverviewProps {
@@ -51,6 +53,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   const [isDeleting, setIsDeleting] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'summary'>('bills');
 
   // Bill accordion expansion state (default: all expanded for quick overview)
   const [collapsedBills, setCollapsedBills] = useState<Record<string, boolean>>({});
@@ -230,242 +233,286 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         </div>
 
         {/* Aggregated Overview Cards with subtle gradients */}
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mt-5">
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border border-primary/20 shadow-xs relative overflow-hidden">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mt-5">
+          <div
+            onClick={() => setActiveMainTab('summary')}
+            className={`p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border shadow-xs relative overflow-hidden cursor-pointer transition-all ${
+              activeMainTab === 'summary'
+                ? 'border-primary ring-1 ring-primary/40'
+                : 'border-primary/20 hover:border-primary/40'
+            }`}
+            title="Click to view group expenses & settlement summary"
+          >
             <div className="flex items-center gap-1.5 text-primary text-[10px] font-bold uppercase tracking-wider mb-1">
               <Coins className="w-3.5 h-3.5" />
-              <span>Total Spend</span>
+              <span>Expenses</span>
             </div>
-            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight">
+            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
               {formatCurrency(group.total_amount)}
             </div>
-            <div className="text-[9px] text-muted-foreground mt-0.5">across all bills</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">across all bills</div>
           </div>
 
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-card to-card border border-blue-500/20 shadow-xs relative overflow-hidden">
+          <div
+            onClick={() => setActiveMainTab('bills')}
+            className={`p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-card to-card border shadow-xs relative overflow-hidden cursor-pointer transition-all ${
+              activeMainTab === 'bills'
+                ? 'border-blue-500 ring-1 ring-blue-500/40'
+                : 'border-blue-500/20 hover:border-blue-500/40'
+            }`}
+            title="Click to view bills list"
+          >
             <div className="flex items-center gap-1.5 text-blue-500 text-[10px] font-bold uppercase tracking-wider mb-1">
               <Layers className="w-3.5 h-3.5" />
               <span>Bills</span>
             </div>
-            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight">
+            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
               {group.total_bills}
             </div>
-            <div className="text-[9px] text-muted-foreground mt-0.5">linked invoices</div>
-          </div>
-
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-card to-card border border-emerald-500/20 shadow-xs relative overflow-hidden">
-            <div className="flex items-center gap-1.5 text-emerald-500 text-[10px] font-bold uppercase tracking-wider mb-1">
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Items</span>
-            </div>
-            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight">
-              {group.total_items}
-            </div>
-            <div className="text-[9px] text-muted-foreground mt-0.5">ordered items</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">linked invoices</div>
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 px-4 sm:px-6 md:px-8 py-5 w-full max-w-4xl mx-auto space-y-4">
-        {/* Controls: In-Page Filter + New Bill Button */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-            <Input
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              placeholder="Filter bills or items in this group..."
-              className="h-9 pl-8 text-xs rounded-xl bg-card border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 placeholder:text-muted-foreground/50"
-            />
-            {filterQuery && (
-              <button
-                type="button"
-                onClick={() => setFilterQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+        {/* Top-Level Navigation Switcher: Bills vs Summary */}
+        <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-3">
+          <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-2xl border border-border/50">
+            <button
+              type="button"
+              onClick={() => setActiveMainTab('bills')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'bills'
+                  ? 'bg-background text-foreground shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5 text-primary" />
+              <span>Bills ({group.total_bills})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMainTab('summary')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'summary'
+                  ? 'bg-background text-foreground shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5 text-primary" />
+              <span>Summary</span>
+            </button>
           </div>
 
-          {onNewBill && (
+          {activeMainTab === 'bills' && onNewBill && (
             <Button
               onClick={() => setIsCreateBillModalOpen(true)}
               size="sm"
-              className="gap-1.5 h-9 rounded-xl font-bold text-xs bg-foreground text-background hover:bg-foreground/90 shrink-0 shadow-sm"
+              className="gap-1.5 h-8 rounded-xl font-bold text-xs bg-foreground text-background hover:bg-foreground/90 shrink-0 shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Bill to Group</span>
+              <span className="hidden sm:inline">Add Bill to Group</span>
+              <span className="sm:hidden">Add Bill</span>
             </Button>
           )}
         </div>
 
-        {/* Section Title */}
-        <div className="flex items-center justify-between pt-1">
-          <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Receipt className="w-3.5 h-3.5 text-primary" /> Bills &amp; Line Items ({filteredBills.length})
-          </h2>
-          <span className="text-[10px] text-muted-foreground font-semibold">
-            Click item to jump to bill
-          </span>
-        </div>
+        {/* Tab 1: Group Summary View */}
+        {activeMainTab === 'summary' && (
+          <GroupSummary group={group} onSelectBill={onSelectBill} />
+        )}
 
-        {/* Drill-down Bills and Items */}
-        {group.bills.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-center space-y-3 rounded-3xl border-2 border-dashed bg-muted/20 px-6">
-            <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-              <Receipt className="w-8 h-8" />
-            </div>
-            <div className="space-y-1 max-w-xs">
-              <p className="text-xs font-bold text-foreground">No bills in this group yet</p>
-              <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
-                Add an existing bill via Bill Settings, or start a new bill linked directly to &ldquo;{group.name}&rdquo;.
-              </p>
-            </div>
-            {onNewBill && (
-              <Button
-                onClick={() => setIsCreateBillModalOpen(true)}
-                size="sm"
-                className="rounded-xl text-xs font-bold gap-1.5 mt-2"
-              >
-                <Plus className="w-3.5 h-3.5" /> Create First Bill
-              </Button>
-            )}
-          </div>
-        ) : filteredBills.length === 0 ? (
-          <div className="py-12 text-center space-y-2 rounded-2xl border border-border/50 bg-card">
-            <Search className="w-6 h-6 text-muted-foreground/40 mx-auto" />
-            <p className="text-xs font-semibold text-muted-foreground">
-              No bills or items match &ldquo;{filterQuery}&rdquo;
-            </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFilterQuery('')}
-              className="text-xs font-bold text-primary"
-            >
-              Clear filter
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3.5">
-            {filteredBills.map((bill) => {
-              const isCollapsed = Boolean(collapsedBills[bill.id]);
-
-              return (
-                <Card
-                  key={bill.id}
-                  className="overflow-hidden border border-border/70 hover:border-foreground/30 transition-all rounded-2xl shadow-xs bg-card group"
+        {/* Tab 2: Bills and Drill-Down View */}
+        {activeMainTab === 'bills' && (
+          <div className="space-y-4">
+            {/* Controls: In-Page Filter */}
+            <div className="relative w-full max-w-md">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+              <Input
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                placeholder="Filter bills or items in this group..."
+                className="h-9 pl-8 text-xs rounded-xl bg-card border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 placeholder:text-muted-foreground/50"
+              />
+              {filterQuery && (
+                <button
+                  type="button"
+                  onClick={() => setFilterQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded"
                 >
-                  {/* Bill Card Header */}
-                  <div className="flex items-center justify-between p-3.5 sm:p-4 bg-muted/20 border-b border-border/40">
-                    <div
-                      onClick={() => onSelectBill(bill.id)}
-                      className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group-hover:opacity-95"
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Section Title */}
+            <div className="flex items-center justify-between pt-1">
+              <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Receipt className="w-3.5 h-3.5 text-primary" /> Bills &amp; Line Items ({filteredBills.length})
+              </h2>
+              <span className="text-[10px] text-muted-foreground font-semibold">
+                Click item to jump to bill
+              </span>
+            </div>
+
+            {/* Drill-down Bills and Items */}
+            {group.bills.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-center space-y-3 rounded-3xl border-2 border-dashed bg-muted/20 px-6">
+                <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                  <Receipt className="w-8 h-8" />
+                </div>
+                <div className="space-y-1 max-w-xs">
+                  <p className="text-xs font-bold text-foreground">No bills in this group yet</p>
+                  <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                    Add an existing bill via Bill Settings, or start a new bill linked directly to &ldquo;{group.name}&rdquo;.
+                  </p>
+                </div>
+                {onNewBill && (
+                  <Button
+                    onClick={() => setIsCreateBillModalOpen(true)}
+                    size="sm"
+                    className="rounded-xl text-xs font-bold gap-1.5 mt-2"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Create First Bill
+                  </Button>
+                )}
+              </div>
+            ) : filteredBills.length === 0 ? (
+              <div className="py-12 text-center space-y-2 rounded-2xl border border-border/50 bg-card">
+                <Search className="w-6 h-6 text-muted-foreground/40 mx-auto" />
+                <p className="text-xs font-semibold text-muted-foreground">
+                  No bills or items match &ldquo;{filterQuery}&rdquo;
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFilterQuery('')}
+                  className="text-xs font-bold text-primary"
+                >
+                  Clear filter
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {filteredBills.map((bill) => {
+                  const isCollapsed = Boolean(collapsedBills[bill.id]);
+
+                  return (
+                    <Card
+                      key={bill.id}
+                      className="overflow-hidden border border-border/70 hover:border-foreground/30 transition-all rounded-2xl shadow-xs bg-card group"
                     >
-                      <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 group-hover:scale-105 transition-transform">
-                        <Receipt className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
-                            {bill.name}
-                          </h3>
-                          <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5" />
-                            <span>
-                              {formatDistanceToNow(new Date(bill.updated_at), { addSuffix: true })}
-                            </span>
+                      {/* Bill Card Header */}
+                      <div className="flex items-center justify-between p-3.5 sm:p-4 bg-muted/20 border-b border-border/40">
+                        <div
+                          onClick={() => onSelectBill(bill.id)}
+                          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group-hover:opacity-95"
+                        >
+                          <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 group-hover:scale-105 transition-transform">
+                            <Receipt className="w-4 h-4" />
                           </div>
-                          {bill.location && (
-                            <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none">
-                              <MapPin className="w-2.5 h-2.5" />
-                              <span className="truncate">{bill.location}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
+                                {bill.name}
+                              </h3>
+                              <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                             </div>
-                          )}
-                          <span className="text-primary font-bold">
-                            {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>
+                                  {formatDistanceToNow(new Date(bill.updated_at), { addSuffix: true })}
+                                </span>
+                              </div>
+                              {bill.location && (
+                                <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none">
+                                  <MapPin className="w-2.5 h-2.5" />
+                                  <span className="truncate">{bill.location}</span>
+                                </div>
+                              )}
+                              <span className="text-primary font-bold">
+                                {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 ml-3">
+                          <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
+                            {formatCurrency(bill.totalAmount)}
                           </span>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => toggleBillCollapse(bill.id)}
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground rounded-lg"
+                            title={isCollapsed ? 'Expand items' : 'Collapse items'}
+                          >
+                            {isCollapsed ? (
+                              <ChevronRight className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </Button>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2 shrink-0 ml-3">
-                      <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
-                        {formatCurrency(bill.totalAmount)}
-                      </span>
+                      {/* Expandable Line Items (Clicking any item jumps directly to bill) */}
+                      <AnimatePresence initial={false}>
+                        {!isCollapsed && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                          >
+                            <CardContent className="p-0 divide-y divide-border/20">
+                              {bill.items.length === 0 ? (
+                                <div className="py-3 px-4 text-[11px] text-muted-foreground/60 italic text-center">
+                                  No items entered in this bill yet.
+                                </div>
+                              ) : (
+                                bill.items.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    onClick={() => onSelectBill(bill.id)}
+                                    className="flex items-center justify-between py-2 px-4 text-xs hover:bg-foreground/[0.03] cursor-pointer transition-colors group/item"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                      <Tag className="w-3 h-3 text-muted-foreground/40 shrink-0 group-hover/item:text-primary transition-colors" />
+                                      <span className="font-medium text-foreground truncate group-hover/item:text-primary transition-colors">
+                                        {item.name}
+                                      </span>
+                                      {item.quantity > 1 && (
+                                        <span className="text-[10px] font-bold text-muted-foreground px-1.5 py-0.2 rounded-md bg-muted/80 shrink-0">
+                                          × {item.quantity}
+                                        </span>
+                                      )}
+                                    </div>
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleBillCollapse(bill.id)}
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground rounded-lg"
-                        title={isCollapsed ? 'Expand items' : 'Collapse items'}
-                      >
-                        {isCollapsed ? (
-                          <ChevronRight className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
+                                    <div className="flex items-center gap-3 shrink-0 ml-3">
+                                      <span className="font-bold text-foreground tabular-nums text-xs">
+                                        {formatCurrency(item.totalPrice)}
+                                      </span>
+                                      <span className="text-[10px] text-primary opacity-0 group-hover/item:opacity-100 transition-opacity font-bold">
+                                        Open ↗
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </CardContent>
+                          </motion.div>
                         )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Expandable Line Items (Clicking any item jumps directly to bill) */}
-                  <AnimatePresence initial={false}>
-                    {!isCollapsed && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                      >
-                        <CardContent className="p-0 divide-y divide-border/20">
-                          {bill.items.length === 0 ? (
-                            <div className="py-3 px-4 text-[11px] text-muted-foreground/60 italic text-center">
-                              No items entered in this bill yet.
-                            </div>
-                          ) : (
-                            bill.items.map((item) => (
-                              <div
-                                key={item.id}
-                                onClick={() => onSelectBill(bill.id)}
-                                className="flex items-center justify-between py-2 px-4 text-xs hover:bg-foreground/[0.03] cursor-pointer transition-colors group/item"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                  <Tag className="w-3 h-3 text-muted-foreground/40 shrink-0 group-hover/item:text-primary transition-colors" />
-                                  <span className="font-medium text-foreground truncate group-hover/item:text-primary transition-colors">
-                                    {item.name}
-                                  </span>
-                                  {item.quantity > 1 && (
-                                    <span className="text-[10px] font-bold text-muted-foreground px-1.5 py-0.2 rounded-md bg-muted/80 shrink-0">
-                                      × {item.quantity}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-3 shrink-0 ml-3">
-                                  <span className="font-bold text-foreground tabular-nums text-xs">
-                                    {formatCurrency(item.totalPrice)}
-                                  </span>
-                                  <span className="text-[10px] text-primary opacity-0 group-hover/item:opacity-100 transition-opacity font-bold">
-                                    Open ↗
-                                  </span>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </CardContent>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </Card>
-              );
-            })}
+                      </AnimatePresence>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
