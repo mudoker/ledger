@@ -132,51 +132,40 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
             </span>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div className="space-y-2 sm:space-y-4">
             {settlement.transfers.map((t, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between gap-2 p-3 rounded-2xl bg-background/80 hover:bg-background border border-border/60 transition-all shadow-2xs min-w-0"
+                className="flex items-center gap-1.5 sm:gap-4 bg-background/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-foreground/5 w-full min-w-0"
               >
                 {/* Debtor */}
-                <div className="flex items-center gap-2 min-w-0 max-w-[35%]">
-                  <div className="w-7 h-7 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-black text-xs flex items-center justify-center border border-rose-500/20 shrink-0">
-                    {t.fromName.slice(0, 1).toUpperCase()}
+                <div className="flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14">
+                  <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-foreground/5 flex items-center justify-center font-black text-xs border border-foreground/10 text-foreground shrink-0">
+                    {t.fromName[0]?.toUpperCase() || '?'}
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-foreground truncate" title={t.fromName}>
-                      {t.fromName}
-                    </div>
-                    <div className="text-[9px] text-muted-foreground uppercase font-black tracking-wider">
-                      Pays
-                    </div>
-                  </div>
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-tighter truncate max-w-[44px] xs:max-w-[48px] sm:max-w-[56px] text-center" title={t.fromName}>
+                    {t.fromName}
+                  </span>
                 </div>
 
-                {/* Amount with directional arrow */}
-                <div className="flex-1 flex flex-col items-center gap-0.5 px-2 min-w-0">
-                  <div className="text-xs sm:text-sm font-black text-primary tabular-nums tracking-tight whitespace-nowrap">
+                {/* Amount with directional shimmer track */}
+                <div className="flex-1 flex flex-col items-center gap-0.5 sm:gap-1 min-w-0 px-1">
+                  <div className="text-[11px] xs:text-xs sm:text-sm font-black text-primary tabular-nums italic truncate max-w-full">
                     {formatCurrency(t.amount)}
                   </div>
-                  <div className="w-full flex items-center gap-1">
-                    <div className="h-[2px] flex-1 bg-gradient-to-r from-rose-500/30 via-primary/60 to-emerald-500/30 rounded-full" />
-                    <ArrowRight className="w-3 h-3 text-primary shrink-0" />
+                  <div className="w-full h-1 bg-primary/10 rounded-full overflow-hidden relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/50 to-transparent animate-shimmer" />
                   </div>
                 </div>
 
                 {/* Creditor */}
-                <div className="flex items-center gap-2 min-w-0 max-w-[35%] justify-end text-right">
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-foreground truncate" title={t.toName}>
-                      {t.toName}
-                    </div>
-                    <div className="text-[9px] text-muted-foreground uppercase font-black tracking-wider">
-                      Receives
-                    </div>
+                <div className="flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14">
+                  <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center font-black text-xs text-primary border border-primary/20 shrink-0">
+                    {t.toName[0]?.toUpperCase() || '?'}
                   </div>
-                  <div className="w-7 h-7 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/20 shrink-0">
-                    {t.toName.slice(0, 1).toUpperCase()}
-                  </div>
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-tighter truncate max-w-[44px] xs:max-w-[48px] sm:max-w-[56px] text-center" title={t.toName}>
+                    {t.toName}
+                  </span>
                 </div>
               </div>
             ))}
@@ -226,8 +215,8 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
                   <TableHead className="text-right px-3 sm:px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground whitespace-nowrap">
                     Total Paid
                   </TableHead>
-                  <TableHead className="text-right px-3 sm:px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                    Fair Share
+                  <TableHead className="text-right px-3 sm:px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground whitespace-nowrap" title="Total consumption expenses share for this participant across all bills">
+                    Expenses (Share)
                   </TableHead>
                   <TableHead className="text-right px-3 sm:px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground whitespace-nowrap">
                     Net Balance
