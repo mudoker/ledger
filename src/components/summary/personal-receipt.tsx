@@ -78,6 +78,8 @@ export function PersonalReceipt() {
     const baseCost = rawCosts[selectedPerson.id] || 0;
     const totalCost = totalCosts[selectedPerson.id] || 0;
     const finalPay = finalPayables[selectedPerson.id] || 0;
+    const upfrontPaid = selectedPerson.paidAmount || 0;
+    const remainingToPay = isHost ? 0 : Math.max(0, finalPay - upfrontPaid);
 
     // Sponsorship states
     const surplusAmount = sponsorSurpluses ? (sponsorSurpluses[selectedPerson.id] || 0) : 0;
@@ -230,8 +232,12 @@ export function PersonalReceipt() {
             text += `\n🎁 Sponsor Relief: -${formatCurrency(reliefAmount)} (Equal table subsidy)\n`;
         }
 
+        if (upfrontPaid > 0) {
+            text += `\n💵 Paid Upfront (Advance Payment): -${formatCurrency(upfrontPaid)}\n`;
+        }
+
         text += `--------------------------------\n`;
-        text += `💰 TOTAL TO PAY: ${formatCurrency(finalPay)}\n`;
+        text += `💰 TOTAL TO PAY: ${formatCurrency(remainingToPay)}\n`;
 
         if (isHost) {
             text += `👑 Role: Host (Settle venue total: ${formatCurrency(totalBill)})\n`;
@@ -363,7 +369,7 @@ export function PersonalReceipt() {
                                 Final Payable
                             </span>
                             <span className="text-sm xs:text-base sm:text-lg font-black text-primary tabular-nums block">
-                                {finalPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(finalPay)}
+                                {remainingToPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(remainingToPay)}
                             </span>
                         </div>
                     </div>
@@ -534,6 +540,34 @@ export function PersonalReceipt() {
                                     </span>
                                 </div>
                             )}
+
+                            {/* Paid Upfront Deduction Line */}
+                            {upfrontPaid > 0 && (
+                                <div className="flex items-center justify-between text-xs py-1 px-1 min-w-0 text-emerald-600 dark:text-emerald-400 font-bold">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <Coins className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                        <span className="truncate">Paid Upfront (Advance Payment)</span>
+                                    </span>
+                                    <span className="tabular-nums shrink-0 ml-2 whitespace-nowrap">
+                                        -{formatCurrency(upfrontPaid)}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Paid Upfront Deduction Line when no other sponsorship items exist */}
+                    {!isSponsor && reliefAmount <= 0 && !isUnderPledged && upfrontPaid > 0 && (
+                        <div className="pt-1.5 border-t border-dashed border-border/60">
+                            <div className="flex items-center justify-between text-xs py-1 px-1 min-w-0 text-emerald-600 dark:text-emerald-400 font-bold">
+                                <span className="flex items-center gap-1.5 truncate">
+                                    <Coins className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    <span className="truncate">Paid Upfront (Advance Payment)</span>
+                                </span>
+                                <span className="tabular-nums shrink-0 ml-2 whitespace-nowrap">
+                                    -{formatCurrency(upfrontPaid)}
+                                </span>
+                            </div>
                         </div>
                     )}
 
@@ -543,7 +577,7 @@ export function PersonalReceipt() {
                             Total Payable
                         </span>
                         <span className="text-base sm:text-lg font-black text-primary tabular-nums shrink-0 ml-2 whitespace-nowrap">
-                            {finalPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(finalPay)}
+                            {remainingToPay < 0.01 ? "✓ 0 ₫ (Paid)" : formatCurrency(remainingToPay)}
                         </span>
                     </div>
                 </div>

@@ -21,6 +21,7 @@ export function SummarySection() {
         people,
         items,
         globalCharges,
+        hostId,
         calculate,
         qrCode,
     } = useBillState();
@@ -156,22 +157,49 @@ export function SummarySection() {
                                                                 {formatCurrency(total)}
                                                             </TableCell>
                                                             <TableCell className="text-right px-1.5 xs:px-2.5 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs tabular-nums">
-                                                                {sponsorSurpluses && sponsorSurpluses[p.id] > 0 ? (
-                                                                    <span className="text-rose-600 dark:text-rose-400 font-bold" title={`Pledged ${formatCurrency(p.sponsorAmount)} (surplus +${formatCurrency(sponsorSurpluses[p.id])})`}>
-                                                                        +{formatCurrency(sponsorSurpluses[p.id])}
-                                                                    </span>
-                                                                ) : sponsorReliefs && sponsorReliefs[p.id] > 0 ? (
-                                                                    <span className="text-primary font-bold" title={`Equal relief discount received: -${formatCurrency(sponsorReliefs[p.id])}`}>
-                                                                        -{formatCurrency(sponsorReliefs[p.id])}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-muted-foreground/30">—</span>
-                                                                )}
+                                                                {(() => {
+                                                                    const surplus = sponsorSurpluses ? (sponsorSurpluses[p.id] || 0) : 0;
+                                                                    const relief = sponsorReliefs ? (sponsorReliefs[p.id] || 0) : 0;
+                                                                    const upfront = p.paidAmount || 0;
+
+                                                                    if (surplus > 0) {
+                                                                        const netSurplus = surplus - upfront;
+                                                                        return (
+                                                                            <span className="text-rose-600 dark:text-rose-400 font-bold" title={`Pledged ${formatCurrency(p.sponsorAmount || 0)}${upfront > 0 ? ` (paid upfront ${formatCurrency(upfront)})` : ''}`}>
+                                                                                {netSurplus >= 0 ? `+${formatCurrency(netSurplus)}` : `-${formatCurrency(Math.abs(netSurplus))}`}
+                                                                            </span>
+                                                                        );
+                                                                    }
+
+                                                                    const totalDeduction = relief + upfront;
+                                                                    if (totalDeduction > 0) {
+                                                                        return (
+                                                                            <span
+                                                                                className="text-primary font-bold"
+                                                                                title={`Credit: ${relief > 0 ? `relief -${formatCurrency(relief)}` : ''}${relief > 0 && upfront > 0 ? ' + ' : ''}${upfront > 0 ? `upfront -${formatCurrency(upfront)}` : ''}`}
+                                                                            >
+                                                                                -{formatCurrency(totalDeduction)}
+                                                                            </span>
+                                                                        );
+                                                                    }
+
+                                                                    return <span className="text-muted-foreground/30">—</span>;
+                                                                })()}
                                                             </TableCell>
                                                             <TableCell className="text-right font-black px-2 xs:px-2.5 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap text-xs sm:text-sm tabular-nums">
-                                                                <span className={pay < 0.01 ? "text-primary" : "text-foreground"}>
-                                                                    {pay < 0.01 ? "✓ PAID" : formatCurrency(pay)}
-                                                                </span>
+                                                                {(() => {
+                                                                    const isHost = p.id === hostId;
+                                                                    const upfront = p.paidAmount || 0;
+                                                                    const remaining = pay - upfront;
+
+                                                                    if (isHost) {
+                                                                        return <span className="text-primary">✓ PAID</span>;
+                                                                    }
+                                                                    if (remaining <= 0.01) {
+                                                                        return <span className="text-primary">✓ PAID</span>;
+                                                                    }
+                                                                    return <span className="text-foreground">{formatCurrency(remaining)}</span>;
+                                                                })()}
                                                             </TableCell>
                                                         </TableRow>
                                                     );
