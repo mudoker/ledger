@@ -16,6 +16,7 @@ import { CreateBillModal, type CreateBillFormData } from '@/components/shared/cr
 import { CreateGroupModal } from '@/components/shared/create-group-modal';
 import { BottomSearchBar } from '@/components/shared/bottom-search-bar';
 import { FuzzySearchModal } from '@/components/shared/fuzzy-search-modal';
+import { LandingCard } from '@/components/layout/landing-card';
 
 interface LandingPageProps {
     onNewBill: (data: CreateBillFormData) => void;
@@ -322,63 +323,18 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                 </div>
                             ) : (
                                 groups.map((group) => (
-                                    <Card
+                                    <LandingCard
                                         key={group.id}
-                                        className="group overflow-hidden border border-border/70 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 cursor-pointer rounded-2xl touch-manipulation active:scale-[0.99] bg-card"
+                                        id={group.id}
+                                        title={group.name}
+                                        amount={group.total_amount}
+                                        description={group.description}
+                                        icon={<Folder className="w-5 h-5 sm:w-6 sm:h-6 transition-colors group-hover:text-inherit" />}
+                                        iconVariant="primary"
+                                        role={group.is_owner ? 'owner' : 'participant'}
+                                        timestamp={group.updated_at}
                                         onClick={() => onSelectGroup?.(group.id)}
-                                    >
-                                        <CardContent className="p-0">
-                                            <div className="flex items-center gap-3.5 sm:gap-4 p-4 sm:p-5">
-                                                <div className="p-3 bg-primary/10 text-primary rounded-2xl group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300 shrink-0 group-hover:scale-105 shadow-2xs">
-                                                    <Folder className="w-5 h-5 sm:w-6 sm:h-6 transition-colors group-hover:text-inherit" />
-                                                </div>
-
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-primary transition-colors flex-1 min-w-0">
-                                                            {group.name}
-                                                        </h3>
-                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-lg tracking-tight shrink-0 ml-2">
-                                                            {formatCurrency(group.total_amount)}
-                                                        </span>
-                                                    </div>
-
-                                                    {group.description && (
-                                                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                                                            {group.description}
-                                                        </p>
-                                                    )}
-
-                                                    <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
-                                                        <span className={group.is_owner
-                                                            ? "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-foreground/10 text-foreground border border-foreground/20 shrink-0 shadow-2xs"
-                                                            : "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0 shadow-2xs"
-                                                        }>
-                                                            {group.is_owner ? 'Owner' : 'Participant'}
-                                                        </span>
-                                                        <div className="flex items-center gap-1 shrink-0">
-                                                            <Clock className="w-3 h-3" />
-                                                            {formatDistanceToNow(new Date(group.updated_at), { addSuffix: true })}
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5 font-bold shrink-0">
-                                                            <span className="text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">
-                                                                {group.total_bills} bill{group.total_bills === 1 ? '' : 's'}
-                                                            </span>
-                                                            <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                                                                {group.total_items} item{group.total_items === 1 ? '' : 's'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-muted/60 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
-                                                        <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                                    />
                                 ))
                             )
                         ) : billHistory.length === 0 && !hasActiveDraft ? (
@@ -392,122 +348,45 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                         ) : (
                             <>
                                 {hasActiveDraft && (
-                                    <Card
-                                        className="group overflow-hidden border-amber-500/40 bg-amber-500/[0.04] hover:border-amber-500/70 hover:shadow-2xl hover:shadow-black/5 transition-all duration-300 cursor-pointer rounded-2xl touch-manipulation active:scale-[0.99]"
-                                        onClick={() => onSelectBill('current')}
-                                    >
-                                        <CardContent className="p-0">
-                                            <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-5">
-                                                <div className="p-2.5 sm:p-3 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl group-hover:bg-amber-500 group-hover:text-white transition-colors shrink-0">
-                                                    <Receipt className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />
-                                                </div>
-
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors flex-1 min-w-0">
-                                                            {billName || 'Untitled Draft Bill'}
-                                                        </h3>
-                                                        {draftTotal > 0 && (
-                                                            <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0 ml-2">
-                                                                {formatCurrency(draftTotal)}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
-                                                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
-                                                            Draft
-                                                        </span>
-                                                        <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold shrink-0">
-                                                            <Clock className="w-3 h-3 shrink-0" />
-                                                            <span>{lastSaved ? formatDistanceToNow(new Date(lastSaved), { addSuffix: true }) : 'Unsaved local draft'}</span>
-                                                        </div>
-                                                        {location && (
-                                                            <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none shrink-0">
-                                                                <MapPin className="w-3 h-3 shrink-0" />
-                                                                <span className="truncate">{location}</span>
-                                                            </div>
-                                                        )}
-                                                        <div className="flex items-center gap-1.5 font-bold shrink-0">
-                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                                                {items.length} item{items.length === 1 ? '' : 's'}
-                                                            </span>
-                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                                                {people.length} member{people.length === 1 ? '' : 's'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
-                                                        <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                    </div>
-                                                </div>
+                                    <LandingCard
+                                        id="current"
+                                        title={billName || 'Untitled Draft Bill'}
+                                        amount={draftTotal > 0 ? draftTotal : undefined}
+                                        icon={<Receipt className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />}
+                                        iconVariant="amber"
+                                        isDraft={true}
+                                        role="draft"
+                                        timestamp={lastSaved || undefined}
+                                        location={location}
+                                        extraMetadata={
+                                            <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                                    {items.length} item{items.length === 1 ? '' : 's'}
+                                                </span>
+                                                <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                                    {people.length} member{people.length === 1 ? '' : 's'}
+                                                </span>
                                             </div>
-                                        </CardContent>
-                                    </Card>
+                                        }
+                                        onClick={() => onSelectBill('current')}
+                                    />
                                 )}
 
                                 {billHistory.map((bill) => (
-                                <Card
-                                    key={bill.id}
-                                    className="group overflow-hidden border-border/50 hover:border-foreground/20 hover:shadow-2xl hover:shadow-black/5 transition-all duration-300 cursor-pointer rounded-2xl touch-manipulation active:scale-[0.99]"
-                                    onClick={() => onSelectBill(bill.id)}
-                                >
-                                    <CardContent className="p-0">
-                                        <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-5">
-                                            <div className="p-2.5 sm:p-3 bg-muted rounded-xl group-hover:bg-foreground group-hover:text-background transition-colors shrink-0">
-                                                <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground transition-colors group-hover:text-inherit" />
-                                            </div>
-
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <h3 className="font-bold text-base sm:text-lg truncate text-foreground flex-1 min-w-0">
-                                                        {bill.name || `Bill ${bill.id.slice(0, 8)}`}
-                                                    </h3>
-                                                    {bill.totalAmount !== undefined && (
-                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0 ml-2">
-                                                            {formatCurrency(bill.totalAmount)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
-                                                    {bill.group_name && (
-                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shrink-0 inline-flex items-center gap-1">
-                                                            <Folder className="w-2.5 h-2.5" />
-                                                            <span className="truncate max-w-[120px]">{bill.group_name}</span>
-                                                        </span>
-                                                    )}
-                                                    {bill.role && (
-                                                        <span className={bill.role === 'owner'
-                                                            ? "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-foreground/10 text-foreground border border-foreground/20 shrink-0"
-                                                            : "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0"
-                                                        }>
-                                                            {bill.role === 'owner' ? 'Owner' : 'Participant'}
-                                                        </span>
-                                                    )}
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        <Clock className="w-3 h-3" />
-                                                        {formatDistanceToNow(new Date(bill.updated_at), { addSuffix: true })}
-                                                    </div>
-                                                    {bill.location && (
-                                                        <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none shrink-0">
-                                                            <MapPin className="w-3 h-3 shrink-0" />
-                                                            <span className="truncate">{bill.location}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-muted group-hover:bg-foreground group-hover:text-background transition-all duration-300">
-                                                    <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
+                                    <LandingCard
+                                        key={bill.id}
+                                        id={bill.id}
+                                        title={bill.name || `Bill ${bill.id.slice(0, 8)}`}
+                                        amount={bill.totalAmount}
+                                        icon={<Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground transition-colors group-hover:text-inherit" />}
+                                        iconVariant="muted"
+                                        role={bill.role}
+                                        groupName={bill.group_name}
+                                        timestamp={bill.updated_at}
+                                        location={bill.location}
+                                        onClick={() => onSelectBill(bill.id)}
+                                    />
+                                ))}
                             </>
                         )}
                     </motion.div>

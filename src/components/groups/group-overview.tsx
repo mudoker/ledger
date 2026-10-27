@@ -33,6 +33,7 @@ import { formatCurrency } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
+import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
 import { CreateBillModal, type CreateBillFormData } from '@/components/shared/create-bill-modal';
 import { GroupSummary } from './group-summary';
@@ -199,15 +200,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground truncate">
                   {group.name}
                 </h1>
-                <span
-                  className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
-                    group.is_owner
-                      ? 'bg-foreground/10 text-foreground border-foreground/20'
-                      : 'bg-primary/10 text-primary border-primary/20'
-                  }`}
-                >
-                  {group.is_owner ? 'Owner' : 'Participant'}
-                </span>
+                <RoleBadge role={group.is_owner ? 'owner' : 'participant'} />
               </div>
               {group.description && (
                 <p className="text-xs text-muted-foreground mt-0.5">{group.description}</p>
