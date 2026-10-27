@@ -27,7 +27,7 @@ export function BottomSearchBar({ onClick, footer }: BottomSearchBarProps) {
       initial={{ y: 24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ type: 'spring', damping: 20, stiffness: 300, delay: 0.1 }}
-      className="fixed bottom-0 left-0 right-0 z-30 flex flex-col items-center justify-end px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none"
+      className="fixed bottom-0 left-0 right-0 z-30 flex flex-col items-center justify-end px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none transition-opacity duration-200 [html[data-keyboard-open='true']_&]:opacity-0 [html[data-keyboard-open='true']_&]:pointer-events-none"
     >
       <div className="w-full max-w-md sm:max-w-lg flex flex-col items-center gap-2.5 sm:gap-3 pointer-events-auto">
         <button
