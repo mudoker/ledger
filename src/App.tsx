@@ -104,6 +104,8 @@ function App() {
     } else if (id || viewData || editData) {
       if (id) {
         setView('editor');
+        setReturnToGroupId(null);
+        useGroupStore.getState().clearCurrentGroup();
         fetchBill(id, isShare).catch((err) => {
           console.error("Fetch bill error:", err);
           setView('landing');
@@ -158,16 +160,16 @@ function App() {
   }, [view]);
 
   // Stacked navigation back handler:
-  // If the bill was opened from a group or belongs to a group, going back returns to that group view.
-  // Otherwise, it returns to the landing page.
+  // If the bill was opened from a group (outer -> group -> bill), going back returns to that group view.
+  // Otherwise, it returns to the landing page (outer).
   const handleBackFromEditor = async () => {
     if (!isReadOnly && (people.length > 0 || items.length > 0)) {
       await saveToDb();
     }
 
-    const currentBillGroupId = useBillStore.getState().groupId;
-    const targetGroupId = returnToGroupId || currentGroup?.id || currentBillGroupId;
-    if (targetGroupId) {
+    // Stacked navigation: only return to group if navigated outer -> group -> bill
+    if (returnToGroupId) {
+      const targetGroupId = returnToGroupId;
       setReturnToGroupId(null);
       const url = new URL(window.location.href);
       url.searchParams.delete('id');
@@ -213,6 +215,10 @@ function App() {
       if (id) {
         if (groupId) {
           setReturnToGroupId(groupId);
+          fetchGroup(groupId);
+        } else {
+          setReturnToGroupId(null);
+          useGroupStore.getState().clearCurrentGroup();
         }
         setView('editor');
         fetchBill(id, isShare);
@@ -242,9 +248,13 @@ function App() {
       setLocation(data.location.trim());
     }
 
-    const targetGroupId = data?.groupId || (view === 'group' && currentGroup?.id ? currentGroup.id : null);
-    if (targetGroupId) {
-      setReturnToGroupId(targetGroupId);
+    const isFromGroup = view === 'group' && Boolean(currentGroup?.id);
+    const targetGroupId = isFromGroup ? currentGroup!.id : (data?.groupId || null);
+    if (isFromGroup) {
+      setReturnToGroupId(currentGroup!.id);
+    } else {
+      setReturnToGroupId(null);
+      useGroupStore.getState().clearCurrentGroup();
     }
 
     const hostName = data?.hostName?.trim() || user?.name || (user?.email ? user.email.split('@')[0] : 'Me');
@@ -274,7 +284,7 @@ function App() {
 
     const url = new URL(window.location.href);
     url.searchParams.set('id', newBillId);
-    if (targetGroupId) {
+    if (isFromGroup && targetGroupId) {
       url.searchParams.set('groupId', targetGroupId);
     } else {
       url.searchParams.delete('groupId');
@@ -301,13 +311,15 @@ function App() {
       setView('editor');
       return;
     }
-    const currentGroupId = view === 'group' ? (currentGroup?.id || null) : returnToGroupId;
-    if (currentGroupId) {
-      setReturnToGroupId(currentGroupId);
+    const isFromGroup = view === 'group' && Boolean(currentGroup?.id);
+    const navGroupId = isFromGroup ? currentGroup!.id : null;
+    setReturnToGroupId(navGroupId);
+    if (!isFromGroup) {
+      useGroupStore.getState().clearCurrentGroup();
     }
     const url = new URL(window.location.href);
-    if (currentGroupId) {
-      url.searchParams.set('groupId', currentGroupId);
+    if (navGroupId) {
+      url.searchParams.set('groupId', navGroupId);
     } else {
       url.searchParams.delete('groupId');
     }
@@ -452,7 +464,7 @@ function App() {
                       size="icon"
                       onClick={handleBackFromEditor}
                       className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl shrink-0 touch-manipulation active:scale-95"
-                      title={returnToGroupId || currentGroup ? "Back to Group" : "Back to Bills"}
+                      title={returnToGroupId ? "Back to Group" : "Back to Bills"}
                     >
                       <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                     </Button>

@@ -334,19 +334,11 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                                 </div>
 
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                            <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-primary transition-colors">
-                                                                {group.name}
-                                                            </h3>
-                                                            <span className={group.is_owner
-                                                                ? "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-foreground/10 text-foreground border border-foreground/20 shrink-0 shadow-2xs"
-                                                                : "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0 shadow-2xs"
-                                                            }>
-                                                                {group.is_owner ? 'Owner' : 'Participant'}
-                                                            </span>
-                                                        </div>
-                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-lg tracking-tight shrink-0">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-primary transition-colors flex-1 min-w-0">
+                                                            {group.name}
+                                                        </h3>
+                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-lg tracking-tight shrink-0 ml-2">
                                                             {formatCurrency(group.total_amount)}
                                                         </span>
                                                     </div>
@@ -357,16 +349,22 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                                         </p>
                                                     )}
 
-                                                    <div className="flex items-center gap-3 sm:gap-4 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
-                                                        <div className="flex items-center gap-1">
+                                                    <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
+                                                        <span className={group.is_owner
+                                                            ? "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-foreground/10 text-foreground border border-foreground/20 shrink-0 shadow-2xs"
+                                                            : "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0 shadow-2xs"
+                                                        }>
+                                                            {group.is_owner ? 'Owner' : 'Participant'}
+                                                        </span>
+                                                        <div className="flex items-center gap-1 shrink-0">
                                                             <Clock className="w-3 h-3" />
                                                             {formatDistanceToNow(new Date(group.updated_at), { addSuffix: true })}
                                                         </div>
-                                                        <div className="flex items-center gap-1.5 font-bold">
-                                                            <span className="text-blue-500 bg-blue-500/10 px-1.5 py-0.2 rounded">
+                                                        <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                            <span className="text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">
                                                                 {group.total_bills} bill{group.total_bills === 1 ? '' : 's'}
                                                             </span>
-                                                            <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.2 rounded">
+                                                            <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
                                                                 {group.total_items} item{group.total_items === 1 ? '' : 's'}
                                                             </span>
                                                         </div>
@@ -405,37 +403,35 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                                 </div>
 
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                            <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-                                                                {billName || 'Untitled Draft Bill'}
-                                                            </h3>
-                                                            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
-                                                                Draft
-                                                            </span>
-                                                        </div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <h3 className="font-bold text-base sm:text-lg truncate text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors flex-1 min-w-0">
+                                                            {billName || 'Untitled Draft Bill'}
+                                                        </h3>
                                                         {draftTotal > 0 && (
-                                                            <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0">
+                                                            <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0 ml-2">
                                                                 {formatCurrency(draftTotal)}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-3 sm:gap-4 mt-1 text-[10px] text-muted-foreground font-medium flex-wrap">
-                                                        <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                                    <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
+                                                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                                                            Draft
+                                                        </span>
+                                                        <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold shrink-0">
                                                             <Clock className="w-3 h-3 shrink-0" />
                                                             <span>{lastSaved ? formatDistanceToNow(new Date(lastSaved), { addSuffix: true }) : 'Unsaved local draft'}</span>
                                                         </div>
                                                         {location && (
-                                                            <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none">
+                                                            <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none shrink-0">
                                                                 <MapPin className="w-3 h-3 shrink-0" />
                                                                 <span className="truncate">{location}</span>
                                                             </div>
                                                         )}
-                                                        <div className="flex items-center gap-1.5 font-bold">
-                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.2 rounded">
+                                                        <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                                                 {items.length} item{items.length === 1 ? '' : 's'}
                                                             </span>
-                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.2 rounded">
+                                                            <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                                                 {people.length} member{people.length === 1 ? '' : 's'}
                                                             </span>
                                                         </div>
@@ -465,39 +461,37 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                             </div>
 
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                        <h3 className="font-bold text-base sm:text-lg truncate text-foreground">
-                                                            {bill.name || `Bill ${bill.id.slice(0, 8)}`}
-                                                        </h3>
-                                                        {bill.group_name && (
-                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shrink-0 inline-flex items-center gap-1">
-                                                                <Folder className="w-2.5 h-2.5" />
-                                                                <span className="truncate max-w-[100px]">{bill.group_name}</span>
-                                                            </span>
-                                                        )}
-                                                        {bill.role && (
-                                                            <span className={bill.role === 'owner'
-                                                                ? "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-foreground/10 text-foreground border border-foreground/20 shrink-0"
-                                                                : "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 shrink-0"
-                                                            }>
-                                                                {bill.role === 'owner' ? 'Owner' : 'Participant'}
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <h3 className="font-bold text-base sm:text-lg truncate text-foreground flex-1 min-w-0">
+                                                        {bill.name || `Bill ${bill.id.slice(0, 8)}`}
+                                                    </h3>
                                                     {bill.totalAmount !== undefined && (
-                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0">
+                                                        <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0 ml-2">
                                                             {formatCurrency(bill.totalAmount)}
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="flex items-center gap-3 sm:gap-4 mt-1 text-[10px] text-muted-foreground font-medium flex-wrap">
-                                                    <div className="flex items-center gap-1">
+                                                <div className="flex items-center gap-2 sm:gap-3 mt-1.5 text-[10px] text-muted-foreground font-medium flex-wrap">
+                                                    {bill.group_name && (
+                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shrink-0 inline-flex items-center gap-1">
+                                                            <Folder className="w-2.5 h-2.5" />
+                                                            <span className="truncate max-w-[120px]">{bill.group_name}</span>
+                                                        </span>
+                                                    )}
+                                                    {bill.role && (
+                                                        <span className={bill.role === 'owner'
+                                                            ? "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-foreground/10 text-foreground border border-foreground/20 shrink-0"
+                                                            : "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0"
+                                                        }>
+                                                            {bill.role === 'owner' ? 'Owner' : 'Participant'}
+                                                        </span>
+                                                    )}
+                                                    <div className="flex items-center gap-1 shrink-0">
                                                         <Clock className="w-3 h-3" />
                                                         {formatDistanceToNow(new Date(bill.updated_at), { addSuffix: true })}
                                                     </div>
                                                     {bill.location && (
-                                                        <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none">
+                                                        <div className="flex items-center gap-1 truncate max-w-[140px] sm:max-w-none shrink-0">
                                                             <MapPin className="w-3 h-3 shrink-0" />
                                                             <span className="truncate">{bill.location}</span>
                                                         </div>
