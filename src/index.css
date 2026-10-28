@@ -4,37 +4,6 @@
 
 @layer base {
   :root,
-  .light {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 158 84% 35%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215 16% 40%;
-    --accent: 210 40% 94%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 214 32% 90%;
-    --input: 214 32% 90%;
-    --ring: 158 84% 35%;
-    --radius: 0.75rem;
-
-    /* Viewport & Keyboard dynamic variables */
-    --keyboard-height: 0px;
-    --visual-viewport-height: 100vh;
-    --visual-viewport-offset-top: 0px;
-    --dialog-center-y: 50%;
-    --dialog-max-height: 86dvh;
-    --keyboard-open: 0;
-  }
-
   .dark,
   .dark.theme-emerald {
     --background: 222 47% 4.5%;
@@ -56,6 +25,37 @@
     --border: 217 33% 17%;
     --input: 217 33% 17%;
     --ring: 160 84% 39%;
+    --radius: 0.75rem;
+
+    /* Viewport & Keyboard dynamic variables */
+    --keyboard-height: 0px;
+    --visual-viewport-height: 100vh;
+    --visual-viewport-offset-top: 0px;
+    --dialog-center-y: 50%;
+    --dialog-max-height: 86dvh;
+    --keyboard-open: 0;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 158 84% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 40%;
+    --accent: 210 40% 94%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214 32% 90%;
+    --input: 214 32% 90%;
+    --ring: 158 84% 35%;
   }
 
   .dark.theme-neon {
@@ -99,6 +99,8 @@
   html {
     height: 100%;
     min-height: 100%;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     scroll-behavior: smooth;
     overscroll-behavior: none;
     -webkit-text-size-adjust: 100%;

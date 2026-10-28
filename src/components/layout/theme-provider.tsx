@@ -1,3 +1,5 @@
+'use client';
+
 import { createContext, useContext, useEffect, useState } from "react"
 
 export type Theme = "dark-emerald" | "dark-neon" | "light" | "system" | "dark"
@@ -10,14 +12,14 @@ interface ThemeProviderState {
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>({
-    theme: "system",
+    theme: "dark-emerald",
     setTheme: () => { },
     resolvedTheme: "dark-emerald",
 })
 
 export function ThemeProvider({
     children,
-    defaultTheme = "system",
+    defaultTheme = "dark-emerald",
     storageKey = "vite-ui-theme",
 }: {
     children: React.ReactNode
@@ -25,11 +27,16 @@ export function ThemeProvider({
     storageKey?: string
 }) {
     const [theme, setTheme] = useState<Theme>(() => {
-        const stored = localStorage.getItem(storageKey)
-        if (stored === "dark") return "dark-emerald"
-        if (stored === "light") return "light"
-        if (stored === "dark-neon" || stored === "dark-emerald" || stored === "system") {
-            return stored as Theme
+        if (typeof window === "undefined") return defaultTheme
+        try {
+            const stored = localStorage.getItem(storageKey)
+            if (stored === "dark") return "dark-emerald"
+            if (stored === "light") return "light"
+            if (stored === "dark-neon" || stored === "dark-emerald" || stored === "system") {
+                return stored as Theme
+            }
+        } catch {
+            // Ignore storage errors in restricted contexts
         }
         return defaultTheme
     })
@@ -89,7 +96,9 @@ export function ThemeProvider({
     const value: ThemeProviderState = {
         theme,
         setTheme: (newTheme: Theme) => {
-            localStorage.setItem(storageKey, newTheme)
+            try {
+                localStorage.setItem(storageKey, newTheme)
+            } catch {}
             setTheme(newTheme)
         },
         resolvedTheme,

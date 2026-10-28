@@ -3,6 +3,7 @@ import '@/index.css';
 import { ViewportUnzoom } from '@/components/shared/viewport-unzoom';
 import { PwaRegister } from '@/components/shared/pwa-register';
 import { QueryProvider } from '@/components/providers/query-provider';
+import { ThemeProvider } from '@/components/layout/theme-provider';
 
 export const metadata: Metadata = {
   title: 'Ledger',
@@ -45,13 +46,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark theme-emerald" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k='vite-ui-theme',s=localStorage.getItem(k)||'dark-emerald',r='dark-emerald';if(s==='light'){r='light';}else if(s==='dark-neon'){r='dark-neon';}else if(s==='system'){var d=window.matchMedia('(prefers-color-scheme: dark)').matches;r=d?(localStorage.getItem(k+'-dark-style')||'dark-emerald'):'light';}var el=document.documentElement;el.classList.remove('light','dark','theme-neon','theme-emerald');if(r==='light'){el.classList.add('light');}else if(r==='dark-neon'){el.classList.add('dark','theme-neon');}else{el.classList.add('dark','theme-emerald');}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="antialiased selection:bg-foreground/20">
-        <QueryProvider>
-          <ViewportUnzoom />
-          <PwaRegister />
-          {children}
-        </QueryProvider>
+        <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
+          <QueryProvider>
+            <ViewportUnzoom />
+            <PwaRegister />
+            {children}
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
