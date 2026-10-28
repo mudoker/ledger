@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { AppLogo } from "@/components/shared/app-logo";
 
 const VERSION_FALLBACK = "latest";
 const SEEN_VERSION_KEY = "ledger_pwa_seen_version";
@@ -216,6 +217,9 @@ export function PwaRegister() {
     };
 
     const pollForUpdate = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       try {
         const reg = registration;
         if (reg) {
@@ -230,16 +234,47 @@ export function PwaRegister() {
       }
     };
 
+    const startPolling = () => {
+      if (interval) clearInterval(interval);
+      // Poll every 5 minutes only while app is visible in the foreground
+      interval = setInterval(() => {
+        if (typeof document === "undefined" || document.visibilityState === "visible") {
+          void pollForUpdate();
+        }
+      }, 5 * 60_000);
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+      if (resumeTimeout) {
+        clearTimeout(resumeTimeout);
+        resumeTimeout = undefined;
+      }
+    };
+
     const onVisible = () => {
-      if (document.visibilityState === "visible") void pollForUpdate();
+      if (document.visibilityState === "visible") {
+        void pollForUpdate();
+        startPolling();
+      } else {
+        stopPolling();
+      }
     };
 
     const onPageShow = () => {
       void pollForUpdate();
+      startPolling();
+    };
+
+    const onPageHide = () => {
+      stopPolling();
     };
 
     const onStandaloneResume = () => {
-      if (!isStandalonePwa()) return;
+      if (!isStandalonePwa() || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
       if (resumeTimeout) clearTimeout(resumeTimeout);
       resumeTimeout = setTimeout(() => void pollForUpdate(), 250);
     };
@@ -287,10 +322,14 @@ export function PwaRegister() {
           reg.addEventListener("updatefound", () => watchInstalling(reg));
           await pollForUpdate();
 
-          interval = setInterval(pollForUpdate, 60_000);
+          if (typeof document === "undefined" || document.visibilityState === "visible") {
+            startPolling();
+          }
+
           window.addEventListener("focus", pollForUpdate);
           window.addEventListener("online", pollForUpdate);
           window.addEventListener("pageshow", onPageShow);
+          window.addEventListener("pagehide", onPageHide);
           window.addEventListener("touchstart", onStandaloneResume, { passive: true });
           document.addEventListener("visibilitychange", onVisible);
         })
@@ -334,11 +373,11 @@ export function PwaRegister() {
         (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleHandle);
       }
       if (timerHandle) clearTimeout(timerHandle);
-      if (interval) clearInterval(interval);
-      if (resumeTimeout) clearTimeout(resumeTimeout);
+      stopPolling();
       window.removeEventListener("focus", pollForUpdate);
       window.removeEventListener("online", pollForUpdate);
       window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("touchstart", onStandaloneResume);
       document.removeEventListener("visibilitychange", onVisible);
       navigator.serviceWorker.removeEventListener("message", onServiceWorkerMessage);
@@ -350,6 +389,7 @@ export function PwaRegister() {
     <Dialog
       open={showUpdateModal}
       onOpenChange={(open) => {
+        // Modal is forced open until updated - cannot be closed by outside trigger
         if (open) setShowUpdateModal(true);
       }}
     >
@@ -357,11 +397,16 @@ export function PwaRegister() {
         showClose={false}
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
-        className="w-[min(92vw,400px)] rounded-3xl border border-border bg-card p-5 text-foreground shadow-2xl sm:p-6"
+        className="w-[min(92vw,400px)] rounded-3xl border border-border/80 bg-card/95 backdrop-blur-xl p-5 text-foreground shadow-2xl sm:p-6"
       >
-        <DialogHeader className="space-y-3 text-left">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-foreground/10 text-foreground">
-            <Sparkles className="h-5 w-5 fill-foreground text-foreground" />
+        <DialogHeader className="space-y-3.5 text-left">
+          <div className="flex items-center justify-between">
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-primary/25 via-primary/10 to-transparent border border-primary/25 text-primary p-2.5 shadow-lg shadow-primary/10 shrink-0">
+              <AppLogo className="h-full w-full" />
+            </div>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-tight bg-primary/15 text-primary border border-primary/25">
+              v{version}
+            </span>
           </div>
           <div className="space-y-1.5">
             <DialogTitle className="text-xl font-bold tracking-tight text-foreground">
@@ -373,8 +418,11 @@ export function PwaRegister() {
           </div>
         </DialogHeader>
 
-        <div className="rounded-2xl border border-border/80 bg-foreground/[0.035] p-3 text-[11px] font-medium leading-relaxed text-muted-foreground">
-          Your bills and splits stay saved. The app will reload once the update is activated.
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 text-xs font-medium leading-relaxed text-foreground/80 flex items-start gap-2.5">
+          <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <span>
+            Your bills, groups, and splits stay saved. The app will reload once the update is activated.
+          </span>
         </div>
 
         <div className="pt-1">
@@ -382,10 +430,10 @@ export function PwaRegister() {
             type="button"
             onClick={applyUpdate}
             disabled={isApplying}
-            className="h-11 w-full rounded-xl bg-foreground text-xs font-bold text-background shadow-sm hover:opacity-90 flex items-center justify-center gap-2"
+            className="h-11 w-full rounded-xl bg-primary text-primary-foreground text-xs sm:text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
           >
-            <RefreshCw className={cn("h-4 w-4 shrink-0 text-background", isApplying && "animate-spin")} />
-            <span>{isApplying ? "Updating..." : "Update now"}</span>
+            <RefreshCw className={cn("h-4 w-4 shrink-0 text-primary-foreground", isApplying && "animate-spin")} />
+            <span>{isApplying ? "Updating Ledger..." : "Update now"}</span>
           </Button>
         </div>
       </DialogContent>
