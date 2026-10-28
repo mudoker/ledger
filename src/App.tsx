@@ -16,6 +16,7 @@ import { LandingPage } from "@/components/layout/landing-page";
 import { BillConfiguration } from "@/components/summary/bill-configuration";
 import { DiscrepancyBanner } from "@/components/shared/discrepancy-banner";
 import { AppLogo } from "@/components/shared/app-logo";
+import { LoadingScreen } from "@/components/shared/loading-screen";
 import { CreateBillModal, type CreateBillFormData } from "@/components/shared/create-bill-modal";
 import { ResizableSplit } from "@/components/layout/resizable-split";
 import { AuthButton } from "@/components/layout/auth-button";
@@ -179,12 +180,12 @@ function App() {
       await fetchGroup(targetGroupId);
       useGroupStore.getState().fetchGroups();
     } else {
-      await handleBackToLanding();
+      await handleBackToLanding(true);
     }
   };
 
   // Instantaneous back navigation with reliable background synchronization
-  const handleBackToLanding = async () => {
+  const handleBackToLanding = async (alreadySaved: boolean = false) => {
     // 1. Instantly switch view for 0-latency UI feedback
     setView('landing');
     setReturnToGroupId(null);
@@ -196,8 +197,8 @@ function App() {
     // 3. Reset active group in store
     useGroupStore.getState().clearCurrentGroup();
 
-    // 4. Save and sync history if bill had unsaved changes
-    if (view === 'editor' && !isReadOnly && (people.length > 0 || items.length > 0)) {
+    // 4. Save and sync history if bill had unsaved changes and not already saved
+    if (!alreadySaved && !isReadOnly && (people.length > 0 || items.length > 0)) {
       await saveToDb();
     }
     fetchHistory();
@@ -225,7 +226,9 @@ function App() {
       } else if (groupId) {
         setView('group');
         setReturnToGroupId(null);
-        fetchGroup(groupId);
+        fetchGroup(groupId).then((g) => {
+          if (!g) setView('landing');
+        });
       } else {
         setView('landing');
         setReturnToGroupId(null);
@@ -336,18 +339,17 @@ function App() {
     url.searchParams.set('groupId', groupId);
     window.history.pushState({}, '', url.toString());
     setView('group');
-    fetchGroup(groupId);
+    fetchGroup(groupId).then((g) => {
+      if (!g) {
+        setView('landing');
+        url.searchParams.delete('groupId');
+        window.history.replaceState({}, '', url.toString());
+      }
+    });
   };
 
   if (!isHydrated) {
-    return (
-      <div className="h-screen w-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse flex flex-col items-center gap-4">
-          <AppLogo className="w-12 h-12 text-primary/40" />
-          <div className="h-2 w-32 bg-muted rounded"></div>
-        </div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -419,12 +421,7 @@ function App() {
               />
             </>
           ) : (
-            <div className="h-screen w-screen flex items-center justify-center bg-background">
-              <div className="animate-pulse flex flex-col items-center gap-4">
-                <AppLogo className="w-12 h-12 text-primary/40" />
-                <div className="h-2 w-32 bg-muted rounded"></div>
-              </div>
-            </div>
+            <LoadingScreen message="Loading group..." />
           )
         ) : (
           <>
@@ -456,7 +453,7 @@ function App() {
             />
 
               {/* Header - Fixed & Safe-Area Aware */}
-              <div className="flex-none px-2.5 sm:px-6 md:px-8 lg:px-10 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] sm:pt-4 md:pt-6 w-full max-w-full md:max-w-[94%] 2xl:max-w-[2000px] mx-auto">
+              <div className="flex-none px-4 sm:px-6 md:px-8 lg:px-10 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 w-full max-w-full md:max-w-[94%] 2xl:max-w-[2000px] mx-auto">
                 <header className="flex justify-between items-center mb-1.5 sm:mb-3 md:mb-5 gap-1.5 sm:gap-3">
                   <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
                     <Button
@@ -465,6 +462,7 @@ function App() {
                       onClick={handleBackFromEditor}
                       className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl shrink-0 touch-manipulation active:scale-95"
                       title={returnToGroupId ? "Back to Group" : "Back to Bills"}
+                      aria-label={returnToGroupId ? "Back to Group" : "Back to Bills"}
                     >
                       <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                     </Button>
@@ -494,7 +492,12 @@ function App() {
                     <Button
                       variant={view === 'editor' ? 'secondary' : 'outline'}
                       size="sm"
-                      onClick={() => setView('editor')}
+                      onClick={() => {
+                        setView('editor');
+                        if (mobileTab !== 'people' && mobileTab !== 'items') {
+                          setMobileTab('items');
+                        }
+                      }}
                       className="hidden md:flex gap-2 rounded-xl h-9"
                     >
                       <Receipt className="w-4 h-4" /> Editor
@@ -502,7 +505,10 @@ function App() {
                     <Button
                       variant={view === 'summary' ? 'secondary' : 'outline'}
                       size="sm"
-                      onClick={() => setView('summary')}
+                      onClick={() => {
+                        setView('summary');
+                        setMobileTab('summary');
+                      }}
                       className="hidden md:flex gap-2 rounded-xl h-9"
                     >
                       <CreditCard className="w-4 h-4" /> Summary
@@ -510,7 +516,10 @@ function App() {
                     <Button
                       variant={view === 'settings' ? 'secondary' : 'outline'}
                       size="sm"
-                      onClick={() => setView('settings')}
+                      onClick={() => {
+                        setView('settings');
+                        setMobileTab('settings');
+                      }}
                       className="hidden md:flex gap-2 rounded-xl h-9"
                     >
                       <Settings className="w-4 h-4" /> Settings
@@ -594,7 +603,7 @@ function App() {
               {/* Mobile Bottom Nav */}
               <nav
                 aria-label="Mobile Navigation"
-                className="md:hidden flex-none bg-card/95 dark:bg-[#121215]/95 backdrop-blur-2xl border-t border-border/80 select-none pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgba(0,0,0,0.35)] z-30"
+                className="md:hidden flex-none bg-card/95 dark:bg-[#121215]/95 backdrop-blur-2xl border-t border-border/80 select-none pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgba(0,0,0,0.35)] z-30 transition-all duration-200 [html[data-keyboard-open='true']_&]:hidden"
               >
                 <div className="flex h-14 max-w-md mx-auto items-center justify-around px-2">
                   <button
@@ -605,7 +614,10 @@ function App() {
                         ? "text-primary"
                         : "text-muted-foreground hover:text-foreground"
                     )}
-                    onClick={() => setMobileTab('people')}
+                    onClick={() => {
+                      setMobileTab('people');
+                      setView('editor');
+                    }}
                   >
                     <div className="relative flex items-center justify-center">
                       <div className={cn(
@@ -646,7 +658,10 @@ function App() {
                         ? "text-primary"
                         : "text-muted-foreground hover:text-foreground"
                     )}
-                    onClick={() => setMobileTab('items')}
+                    onClick={() => {
+                      setMobileTab('items');
+                      setView('editor');
+                    }}
                   >
                     <div className="relative flex items-center justify-center">
                       <div className={cn(
@@ -687,7 +702,10 @@ function App() {
                         ? "text-primary"
                         : "text-muted-foreground hover:text-foreground"
                     )}
-                    onClick={() => setMobileTab('summary')}
+                    onClick={() => {
+                      setMobileTab('summary');
+                      setView('summary');
+                    }}
                   >
                     <div className="relative flex items-center justify-center">
                       <div className={cn(
@@ -718,7 +736,10 @@ function App() {
                         ? "text-primary"
                         : "text-muted-foreground hover:text-foreground"
                     )}
-                    onClick={() => setMobileTab('settings')}
+                    onClick={() => {
+                      setMobileTab('settings');
+                      setView('settings');
+                    }}
                   >
                     <div className="relative flex items-center justify-center">
                       <div className={cn(

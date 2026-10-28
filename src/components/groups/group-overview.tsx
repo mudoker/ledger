@@ -36,6 +36,7 @@ import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-m
 import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
 import { CreateBillModal, type CreateBillFormData } from '@/components/shared/create-bill-modal';
+import { ModeToggle } from '@/components/layout/mode-toggle';
 import { GroupSummary } from './group-summary';
 import type { BillGroupDetail } from '@/../db/types';
 
@@ -116,9 +117,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   }, [group.bills, filterQuery]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-background overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0 bg-background">
       {/* Top Header / Sticky Nav */}
-      <div className="flex-none px-4 sm:px-6 md:px-8 pt-4 pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
+      <div className="flex-none px-4 sm:px-6 md:px-8 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
         <div className="flex items-center justify-between gap-3">
           <Button
             variant="ghost"
@@ -186,6 +187,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                 </Button>
               </>
             )}
+            <ModeToggle />
           </div>
         </div>
 
