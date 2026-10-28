@@ -1,7 +1,6 @@
 import { calculateBill } from "@/hooks/useBillState";
 import type {
   BillGroupDetail,
-  GroupBillOverview,
   GroupItemOverview,
   PersonData,
   GlobalChargeData,

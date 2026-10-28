@@ -196,7 +196,7 @@ describe('Bill Groups, Aggregation, and Search Feature', () => {
       );
 
       // Verify bill has group_id in getBill
-      let bill = await adapter.getBill('bill_persistent', 'user_alice');
+      const bill = await adapter.getBill('bill_persistent', 'user_alice');
       expect(bill?.group_id).toBe(groupA.id);
       expect(bill?.data.groupId).toBe(groupA.id);
       expect(bill?.group_name).toBe('Vacation Group A');

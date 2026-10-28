@@ -307,7 +307,7 @@ describe('Advanced Group Aggregation, Calculations & Security Invariants', () =>
       );
 
       // Verify Alice is owner
-      let bill = await adapter.getBill('bill_to_transfer', 'user_alice');
+      const bill = await adapter.getBill('bill_to_transfer', 'user_alice');
       expect(bill!.owner_id).toBe('user_alice');
       expect(bill!.role).toBe('owner');
       expect(bill!.isReadOnly).toBe(false);
