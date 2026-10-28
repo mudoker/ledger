@@ -12,6 +12,8 @@ import type {
   SearchResults,
   PersonData,
   GlobalChargeData,
+  DeviceSubscription,
+  SaveSubscriptionInput,
 } from './types';
 
 export class PostgresAdapter implements DatabaseAdapter {
@@ -89,6 +91,10 @@ export class PostgresAdapter implements DatabaseAdapter {
           owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
           group_id TEXT REFERENCES bill_groups(id) ON DELETE SET NULL,
           currency TEXT DEFAULT 'VND',
+          visibility VARCHAR(32) DEFAULT 'restricted',
+          share_token VARCHAR(64),
+          is_shared INTEGER DEFAULT 1,
+          revoked_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
@@ -133,6 +139,25 @@ export class PostgresAdapter implements DatabaseAdapter {
         ALTER TABLE people ADD COLUMN IF NOT EXISTS user_id TEXT;
         ALTER TABLE people ADD COLUMN IF NOT EXISTS email TEXT;
         CREATE INDEX IF NOT EXISTS idx_bills_group_id ON bills(group_id);
+        ALTER TABLE bills ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) DEFAULT 'restricted';
+        ALTER TABLE bills ADD COLUMN IF NOT EXISTS share_token VARCHAR(64);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bills_share_token ON bills(share_token);
+        ALTER TABLE bills ADD COLUMN IF NOT EXISTS is_shared INTEGER DEFAULT 1;
+        ALTER TABLE bills ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+
+        CREATE TABLE IF NOT EXISTS device_subscriptions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          device_id TEXT,
+          endpoint TEXT UNIQUE NOT NULL,
+          p256dh TEXT NOT NULL,
+          auth TEXT NOT NULL,
+          user_agent TEXT,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_device_subscriptions_user ON device_subscriptions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_device_subscriptions_device ON device_subscriptions(device_id);
       `);
     } finally {
       client.release();
@@ -240,7 +265,25 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getBill(id: string, userId?: string | null, isShare: boolean = false): Promise<BillDetail | null> {
+  async getBillMeta(id: string): Promise<{ id: string; owner_id: string | null; name: string | null; is_shared: boolean } | null> {
+    if (!this.pool) throw new Error('Database pool not initialized');
+    const client = await this.pool.connect();
+    try {
+      const res = await client.query('SELECT id, owner_id, name, is_shared FROM bills WHERE id = $1', [id]);
+      if (res.rows.length === 0) return null;
+      const b = res.rows[0];
+      return {
+        id: String(b.id),
+        owner_id: b.owner_id ? String(b.owner_id) : null,
+        name: b.name ?? null,
+        is_shared: b.is_shared !== 0,
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  async getBill(id: string, userId?: string | null, isShare: boolean = false, shareToken?: string | null): Promise<BillDetail | null> {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
@@ -252,6 +295,13 @@ export class PostgresAdapter implements DatabaseAdapter {
       `, [id]);
       if (billRes.rows.length === 0) return null;
       const bill = billRes.rows[0];
+
+      // Check if cloud sharing has been revoked
+      if (bill.is_shared === 0) {
+        if (!userId || bill.owner_id !== userId) {
+          return null;
+        }
+      }
 
       // Check user email if userId provided
       let userEmail: string | null = null;
@@ -272,17 +322,31 @@ export class PostgresAdapter implements DatabaseAdapter {
       );
       const isParticipant = participantCheck.rows.length > 0;
 
-      // Access control check:
-      // 1. Shared access: strictly read-only for anyone
-      // 2. Logged in Owner: full edit
-      // 3. Logged in Participant: view-only
-      // 4. Otherwise: access denied
-      if (!isShare && !isOwner && !isParticipant) {
+      let role: 'owner' | 'participant' | 'viewer' = 'viewer';
+      let isReadOnly = true;
+
+      if (isOwner) {
+        role = 'owner';
+        isReadOnly = Boolean(isShare);
+      } else if (isParticipant) {
+        role = 'participant';
+        isReadOnly = true;
+      } else if (isShare) {
+        if (bill.visibility === 'restricted') {
+          return null;
+        }
+        if (bill.visibility === 'public') {
+          if (bill.share_token) {
+            if (!shareToken || shareToken !== bill.share_token) {
+              return null;
+            }
+          }
+        }
+        role = 'viewer';
+        isReadOnly = true;
+      } else {
         return null;
       }
-
-      const role: 'owner' | 'participant' | 'viewer' = isOwner ? 'owner' : (isParticipant ? 'participant' : 'viewer');
-      const isReadOnly = isShare || !isOwner;
 
       const peopleRes = await client.query(
         'SELECT id, name, sponsor_amount as "sponsorAmount", paid_amount as "paidAmount", user_id as "userId", email FROM people WHERE bill_id = $1',
@@ -339,6 +403,10 @@ export class PostgresAdapter implements DatabaseAdapter {
         owner_id: bill.owner_id ? String(bill.owner_id) : null,
         role,
         isReadOnly,
+        visibility: bill.visibility || 'restricted',
+        shareToken: bill.share_token || null,
+        isShared: bill.is_shared !== 0,
+        shareRevokedAt: bill.revoked_at ? String(bill.revoked_at) : null,
         group_id: bill.group_id ? String(bill.group_id) : null,
         group_name: bill.group_name ? String(bill.group_name) : null,
         data: {
@@ -396,10 +464,14 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       const targetGroupId = rawGroupId !== undefined ? (rawGroupId || null) : (existingRes.rows[0]?.group_id || null);
 
+      const visibility = data.visibility || existingRes.rows[0]?.visibility || 'public';
+      const shareToken = data.shareToken !== undefined ? data.shareToken : (existingRes.rows[0]?.share_token || null);
+      const isShared = data.isShared !== undefined ? (data.isShared ? 1 : 0) : (existingRes.rows[0]?.is_shared !== undefined ? existingRes.rows[0].is_shared : 1);
+
       // Upsert bill
       await client.query(`
-        INSERT INTO bills (id, name, location, host_id, qr_code, currency, owner_id, group_id, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+        INSERT INTO bills (id, name, location, host_id, qr_code, currency, owner_id, group_id, visibility, share_token, is_shared, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           location = EXCLUDED.location,
@@ -408,8 +480,11 @@ export class PostgresAdapter implements DatabaseAdapter {
           currency = EXCLUDED.currency,
           owner_id = COALESCE(bills.owner_id, EXCLUDED.owner_id),
           group_id = EXCLUDED.group_id,
+          visibility = EXCLUDED.visibility,
+          share_token = EXCLUDED.share_token,
+          is_shared = EXCLUDED.is_shared,
           updated_at = CURRENT_TIMESTAMP
-      `, [billId, name, location, hostId, qrCode, currency, ownerId, targetGroupId]);
+      `, [billId, name, location, hostId, qrCode, currency, ownerId, targetGroupId, visibility, shareToken, isShared]);
 
       // Delete existing children
       await client.query('DELETE FROM item_assignments WHERE item_id IN (SELECT id FROM items WHERE bill_id = $1)', [billId]);
@@ -502,6 +577,30 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
+  async revokeBillShare(billId: string, userId?: string | null): Promise<boolean> {
+    if (!this.pool) throw new Error('Database pool not initialized');
+    const client = await this.pool.connect();
+    try {
+      if (userId) {
+        const billRes = await client.query('SELECT owner_id FROM bills WHERE id = $1', [billId]);
+        if (billRes.rows.length > 0) {
+          const ownerId = billRes.rows[0].owner_id;
+          if (ownerId && ownerId !== userId) {
+            throw new Error('Forbidden: Only the bill owner can revoke sharing');
+          }
+        }
+      }
+
+      const res = await client.query(
+        "UPDATE bills SET is_shared = 0, share_token = NULL, visibility = 'local', revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [billId]
+      );
+      return (res.rowCount ?? 0) > 0;
+    } finally {
+      client.release();
+    }
+  }
+
   async listBills(userId?: string | null): Promise<BillSummary[]> {
     if (!this.pool) throw new Error('Database pool not initialized');
     // If not logged in, return empty list (RBAC: users must login to view their saved bills)
@@ -532,12 +631,15 @@ export class PostgresAdapter implements DatabaseAdapter {
           (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras
         FROM bills b
         LEFT JOIN bill_groups bg ON bg.id = b.group_id
-        WHERE b.owner_id = $1
-           OR EXISTS (
-             SELECT 1 FROM people p
-             WHERE p.bill_id = b.id
-             AND (p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2)))
-           )
+        WHERE (b.is_shared IS NULL OR b.is_shared = 1)
+          AND (
+            b.owner_id = $1
+            OR EXISTS (
+              SELECT 1 FROM people p
+              WHERE p.bill_id = b.id
+              AND (p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2)))
+            )
+          )
         ORDER BY b.updated_at DESC
       `, [userId, userEmail || '']);
 
@@ -1005,6 +1107,97 @@ export class PostgresAdapter implements DatabaseAdapter {
           bill_name: i.bill_name || `Bill ${i.bill_id.slice(0, 8)}`,
         })),
       };
+    } finally {
+      client.release();
+    }
+  }
+
+  async saveDeviceSubscription(sub: SaveSubscriptionInput): Promise<DeviceSubscription> {
+    if (!this.pool) throw new Error('Database pool not initialized');
+    const client = await this.pool.connect();
+    try {
+      const existing = await client.query('SELECT id FROM device_subscriptions WHERE endpoint = $1', [sub.endpoint]);
+      const id = existing.rows.length > 0 ? existing.rows[0].id : crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      const res = await client.query(`
+        INSERT INTO device_subscriptions (id, user_id, device_id, endpoint, p256dh, auth, user_agent, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (endpoint) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          device_id = EXCLUDED.device_id,
+          p256dh = EXCLUDED.p256dh,
+          auth = EXCLUDED.auth,
+          user_agent = EXCLUDED.user_agent,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+      `, [id, sub.userId || null, sub.deviceId || null, sub.endpoint, sub.keys.p256dh, sub.keys.auth, sub.userAgent || null, now, now]);
+
+      const r = res.rows[0];
+      return {
+        id: String(r.id),
+        user_id: r.user_id ? String(r.user_id) : null,
+        device_id: r.device_id ? String(r.device_id) : null,
+        endpoint: String(r.endpoint),
+        p256dh: String(r.p256dh),
+        auth: String(r.auth),
+        user_agent: r.user_agent ? String(r.user_agent) : null,
+        created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString(),
+        updated_at: typeof r.updated_at === 'string' ? r.updated_at : new Date(r.updated_at).toISOString(),
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  async getSubscriptionsByUser(userId: string): Promise<DeviceSubscription[]> {
+    if (!this.pool) throw new Error('Database pool not initialized');
+    const client = await this.pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM device_subscriptions WHERE user_id = $1', [userId]);
+      return res.rows.map(r => ({
+        id: String(r.id),
+        user_id: r.user_id ? String(r.user_id) : null,
+        device_id: r.device_id ? String(r.device_id) : null,
+        endpoint: String(r.endpoint),
+        p256dh: String(r.p256dh),
+        auth: String(r.auth),
+        user_agent: r.user_agent ? String(r.user_agent) : null,
+        created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString(),
+        updated_at: typeof r.updated_at === 'string' ? r.updated_at : new Date(r.updated_at).toISOString(),
+      }));
+    } finally {
+      client.release();
+    }
+  }
+
+  async getSubscriptionsByDevice(deviceId: string): Promise<DeviceSubscription[]> {
+    if (!this.pool) throw new Error('Database pool not initialized');
+    const client = await this.pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM device_subscriptions WHERE device_id = $1', [deviceId]);
+      return res.rows.map(r => ({
+        id: String(r.id),
+        user_id: r.user_id ? String(r.user_id) : null,
+        device_id: r.device_id ? String(r.device_id) : null,
+        endpoint: String(r.endpoint),
+        p256dh: String(r.p256dh),
+        auth: String(r.auth),
+        user_agent: r.user_agent ? String(r.user_agent) : null,
+        created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString(),
+        updated_at: typeof r.updated_at === 'string' ? r.updated_at : new Date(r.updated_at).toISOString(),
+      }));
+    } finally {
+      client.release();
+    }
+  }
+
+  async deleteSubscriptionByEndpoint(endpoint: string): Promise<boolean> {
+    if (!this.pool) throw new Error('Database pool not initialized');
+    const client = await this.pool.connect();
+    try {
+      const res = await client.query('DELETE FROM device_subscriptions WHERE endpoint = $1', [endpoint]);
+      return (res.rowCount ?? 0) > 0;
     } finally {
       client.release();
     }

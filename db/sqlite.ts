@@ -12,6 +12,8 @@ import type {
   SearchResults,
   PersonData,
   GlobalChargeData,
+  DeviceSubscription,
+  SaveSubscriptionInput,
 } from './types';
 
 interface BillRow {
@@ -24,6 +26,10 @@ interface BillRow {
   group_id: string | null;
   group_name?: string | null;
   currency: string | null;
+  visibility?: 'local' | 'restricted' | 'public' | null;
+  share_token?: string | null;
+  is_shared?: number | null;
+  revoked_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -133,6 +139,10 @@ export class SqliteAdapter implements DatabaseAdapter {
         owner_id TEXT,
         group_id TEXT,
         currency TEXT DEFAULT 'VND',
+        visibility TEXT DEFAULT 'restricted',
+        share_token TEXT,
+        is_shared INTEGER DEFAULT 1,
+        revoked_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -192,6 +202,19 @@ export class SqliteAdapter implements DatabaseAdapter {
     if (!billColNames.has('currency')) {
       this.db.exec("ALTER TABLE bills ADD COLUMN currency TEXT DEFAULT 'VND';");
     }
+    if (!billColNames.has('visibility')) {
+      this.db.exec("ALTER TABLE bills ADD COLUMN visibility TEXT DEFAULT 'restricted';");
+    }
+    if (!billColNames.has('share_token')) {
+      this.db.exec('ALTER TABLE bills ADD COLUMN share_token TEXT;');
+      this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_bills_share_token ON bills(share_token);');
+    }
+    if (!billColNames.has('is_shared')) {
+      this.db.exec('ALTER TABLE bills ADD COLUMN is_shared INTEGER DEFAULT 1;');
+    }
+    if (!billColNames.has('revoked_at')) {
+      this.db.exec('ALTER TABLE bills ADD COLUMN revoked_at DATETIME;');
+    }
 
     const peopleColumns = this.db.prepare("PRAGMA table_info(people)").all() as Array<{ name: string }>;
     const peopleColNames = new Set(peopleColumns.map(c => c.name));
@@ -201,6 +224,22 @@ export class SqliteAdapter implements DatabaseAdapter {
     if (!peopleColNames.has('email')) {
       this.db.exec('ALTER TABLE people ADD COLUMN email TEXT;');
     }
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS device_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        device_id TEXT,
+        endpoint TEXT UNIQUE NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_device_subscriptions_user ON device_subscriptions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_device_subscriptions_device ON device_subscriptions(device_id);
+    `);
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
@@ -278,7 +317,18 @@ export class SqliteAdapter implements DatabaseAdapter {
     }));
   }
 
-  async getBill(id: string, userId?: string | null, isShare: boolean = false): Promise<BillDetail | null> {
+  async getBillMeta(id: string): Promise<{ id: string; owner_id: string | null; name: string | null; is_shared: boolean } | null> {
+    const bill = this.db.prepare('SELECT id, owner_id, name, is_shared FROM bills WHERE id = ?').get(id) as unknown as BillRow | undefined;
+    if (!bill) return null;
+    return {
+      id: String(bill.id),
+      owner_id: bill.owner_id ? String(bill.owner_id) : null,
+      name: bill.name ?? null,
+      is_shared: bill.is_shared !== 0,
+    };
+  }
+
+  async getBill(id: string, userId?: string | null, isShare: boolean = false, shareToken?: string | null): Promise<BillDetail | null> {
     const bill = this.db.prepare(`
       SELECT b.*, bg.name as group_name
       FROM bills b
@@ -286,6 +336,13 @@ export class SqliteAdapter implements DatabaseAdapter {
       WHERE b.id = ?
     `).get(id) as unknown as BillRow | undefined;
     if (!bill) return null;
+
+    // Check if cloud sharing has been revoked
+    if (bill.is_shared === 0) {
+      if (!userId || bill.owner_id !== userId) {
+        return null;
+      }
+    }
 
     let userEmail: string | null = null;
     if (userId) {
@@ -300,12 +357,32 @@ export class SqliteAdapter implements DatabaseAdapter {
     ).all(id, userId || 'none', userEmail || 'none');
     const isParticipant = participantCheck.length > 0;
 
-    if (!isShare && !isOwner && !isParticipant) {
+    let role: 'owner' | 'participant' | 'viewer' = 'viewer';
+    let isReadOnly = true;
+
+    if (isOwner) {
+      role = 'owner';
+      isReadOnly = Boolean(isShare);
+    } else if (isParticipant) {
+      role = 'participant';
+      isReadOnly = true;
+    } else if (isShare) {
+      // Check restricted mode
+      if (bill.visibility === 'restricted') {
+        return null;
+      }
+      if (bill.visibility === 'public') {
+        if (bill.share_token) {
+          if (!shareToken || shareToken !== bill.share_token) {
+            return null;
+          }
+        }
+      }
+      role = 'viewer';
+      isReadOnly = true;
+    } else {
       return null;
     }
-
-    const role: 'owner' | 'participant' | 'viewer' = isOwner ? 'owner' : (isParticipant ? 'participant' : 'viewer');
-    const isReadOnly = isShare || !isOwner;
 
     const people = (
       this.db.prepare(
@@ -354,6 +431,10 @@ export class SqliteAdapter implements DatabaseAdapter {
       owner_id: bill.owner_id ? String(bill.owner_id) : null,
       role,
       isReadOnly,
+      visibility: bill.visibility || 'restricted',
+      shareToken: bill.share_token || null,
+      isShared: bill.is_shared !== 0,
+      shareRevokedAt: bill.revoked_at ? String(bill.revoked_at) : null,
       group_id: bill.group_id ? String(bill.group_id) : null,
       group_name: bill.group_name ? String(bill.group_name) : null,
       data: {
@@ -388,7 +469,7 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     this.db.exec('BEGIN TRANSACTION;');
     try {
-      const existing = this.db.prepare('SELECT id, owner_id, group_id FROM bills WHERE id = ?').get(billId) as BillRow | undefined;
+      const existing = this.db.prepare('SELECT id, owner_id, group_id, visibility, share_token, is_shared FROM bills WHERE id = ?').get(billId) as BillRow | undefined;
       if (existing) {
         if (existing.owner_id && userId && existing.owner_id !== userId) {
           throw new Error('Forbidden: Only the bill owner can edit this bill');
@@ -402,14 +483,18 @@ export class SqliteAdapter implements DatabaseAdapter {
       const rawGroupId = data.groupId !== undefined ? data.groupId : data.group_id;
       const targetGroupId = rawGroupId !== undefined ? (rawGroupId || null) : (existing?.group_id || null);
 
+      const visibility = data.visibility || existing?.visibility || 'public';
+      const shareToken = data.shareToken !== undefined ? data.shareToken : (existing?.share_token || null);
+      const isShared = data.isShared !== undefined ? (data.isShared ? 1 : 0) : (existing?.is_shared !== undefined ? existing.is_shared : 1);
+
       if (existing) {
         this.db.prepare(
-          'UPDATE bills SET name = ?, location = ?, host_id = ?, qr_code = ?, currency = ?, owner_id = COALESCE(owner_id, ?), group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).run(name, location, hostId, qrCode, currency, ownerId, targetGroupId, billId);
+          'UPDATE bills SET name = ?, location = ?, host_id = ?, qr_code = ?, currency = ?, owner_id = COALESCE(owner_id, ?), group_id = ?, visibility = ?, share_token = ?, is_shared = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run(name, location, hostId, qrCode, currency, ownerId, targetGroupId, visibility, shareToken, isShared, billId);
       } else {
         this.db.prepare(
-          'INSERT INTO bills (id, name, location, host_id, qr_code, currency, owner_id, group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run(billId, name, location, hostId, qrCode, currency, ownerId, targetGroupId);
+          'INSERT INTO bills (id, name, location, host_id, qr_code, currency, owner_id, group_id, visibility, share_token, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run(billId, name, location, hostId, qrCode, currency, ownerId, targetGroupId, visibility, shareToken, isShared);
       }
 
       this.db.prepare('DELETE FROM item_assignments WHERE item_id IN (SELECT id FROM items WHERE bill_id = ?)').run(billId);
@@ -483,6 +568,19 @@ export class SqliteAdapter implements DatabaseAdapter {
     return Number(res.changes || 0) > 0;
   }
 
+  async revokeBillShare(billId: string, userId?: string | null): Promise<boolean> {
+    if (userId) {
+      const bill = this.db.prepare('SELECT owner_id FROM bills WHERE id = ?').get(billId) as BillRow | undefined;
+      if (bill && bill.owner_id && bill.owner_id !== userId) {
+        throw new Error('Forbidden: Only the bill owner can revoke sharing');
+      }
+    }
+    const res = this.db.prepare(
+      'UPDATE bills SET is_shared = 0, share_token = NULL, visibility = ?, revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run('local', billId);
+    return Number(res.changes || 0) > 0;
+  }
+
   async listBills(userId?: string | null): Promise<BillSummary[]> {
     if (!userId) {
       return [];
@@ -508,12 +606,15 @@ export class SqliteAdapter implements DatabaseAdapter {
         (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras
       FROM bills b
       LEFT JOIN bill_groups bg ON bg.id = b.group_id
-      WHERE b.owner_id = ?
-         OR EXISTS (
-           SELECT 1 FROM people p
-           WHERE p.bill_id = b.id
-           AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
-         )
+      WHERE (b.is_shared IS NULL OR b.is_shared = 1)
+        AND (
+          b.owner_id = ?
+          OR EXISTS (
+            SELECT 1 FROM people p
+            WHERE p.bill_id = b.id
+            AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+          )
+        )
       ORDER BY b.updated_at DESC
     `);
 
@@ -944,6 +1045,81 @@ export class SqliteAdapter implements DatabaseAdapter {
         bill_name: i.bill_name || `Bill ${i.bill_id.slice(0, 8)}`,
       })),
     };
+  }
+
+  async saveDeviceSubscription(sub: SaveSubscriptionInput): Promise<DeviceSubscription> {
+    const existing = this.db.prepare('SELECT id FROM device_subscriptions WHERE endpoint = ?').get(sub.endpoint) as { id: string } | undefined;
+    const id = existing?.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO device_subscriptions (id, user_id, device_id, endpoint, p256dh, auth, user_agent, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET
+        user_id = excluded.user_id,
+        device_id = excluded.device_id,
+        p256dh = excluded.p256dh,
+        auth = excluded.auth,
+        user_agent = excluded.user_agent,
+        updated_at = excluded.updated_at
+    `).run(
+      id,
+      sub.userId || null,
+      sub.deviceId || null,
+      sub.endpoint,
+      sub.keys.p256dh,
+      sub.keys.auth,
+      sub.userAgent || null,
+      now,
+      now
+    );
+
+    return {
+      id,
+      user_id: sub.userId || null,
+      device_id: sub.deviceId || null,
+      endpoint: sub.endpoint,
+      p256dh: sub.keys.p256dh,
+      auth: sub.keys.auth,
+      user_agent: sub.userAgent || null,
+      created_at: now,
+      updated_at: now,
+    };
+  }
+
+  async getSubscriptionsByUser(userId: string): Promise<DeviceSubscription[]> {
+    const rows = this.db.prepare('SELECT * FROM device_subscriptions WHERE user_id = ?').all(userId) as any[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      user_id: r.user_id ? String(r.user_id) : null,
+      device_id: r.device_id ? String(r.device_id) : null,
+      endpoint: String(r.endpoint),
+      p256dh: String(r.p256dh),
+      auth: String(r.auth),
+      user_agent: r.user_agent ? String(r.user_agent) : null,
+      created_at: String(r.created_at),
+      updated_at: String(r.updated_at),
+    }));
+  }
+
+  async getSubscriptionsByDevice(deviceId: string): Promise<DeviceSubscription[]> {
+    const rows = this.db.prepare('SELECT * FROM device_subscriptions WHERE device_id = ?').all(deviceId) as any[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      user_id: r.user_id ? String(r.user_id) : null,
+      device_id: r.device_id ? String(r.device_id) : null,
+      endpoint: String(r.endpoint),
+      p256dh: String(r.p256dh),
+      auth: String(r.auth),
+      user_agent: r.user_agent ? String(r.user_agent) : null,
+      created_at: String(r.created_at),
+      updated_at: String(r.updated_at),
+    }));
+  }
+
+  async deleteSubscriptionByEndpoint(endpoint: string): Promise<boolean> {
+    const res = this.db.prepare('DELETE FROM device_subscriptions WHERE endpoint = ?').run(endpoint);
+    return Number(res.changes || 0) > 0;
   }
 
   async close(): Promise<void> {

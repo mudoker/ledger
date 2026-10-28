@@ -44,6 +44,9 @@ export interface BillPayload {
   items?: ItemData[];
   globalCharges?: GlobalChargeData[];
   charges?: GlobalChargeData[];
+  visibility?: 'local' | 'restricted' | 'public';
+  shareToken?: string | null;
+  isShared?: boolean;
 }
 
 export interface GroupItemOverview {
@@ -134,6 +137,10 @@ export interface BillDetail {
   owner_id?: string | null;
   role?: 'owner' | 'participant' | 'viewer';
   isReadOnly?: boolean;
+  visibility?: 'local' | 'restricted' | 'public';
+  shareToken?: string | null;
+  isShared?: boolean;
+  shareRevokedAt?: string | null;
   group_id?: string | null;
   group_name?: string | null;
   data: {
@@ -188,9 +195,11 @@ export interface BillSummary {
 export interface DatabaseAdapter {
   readonly type: 'neon' | 'postgres' | 'sqlite';
   init(): Promise<void>;
-  getBill(id: string, userId?: string | null, isShare?: boolean): Promise<BillDetail | null>;
+  getBill(id: string, userId?: string | null, isShare?: boolean, shareToken?: string | null): Promise<BillDetail | null>;
+  getBillMeta?(id: string): Promise<{ id: string; owner_id: string | null; name: string | null; is_shared: boolean } | null>;
   saveBill(billId: string, data: BillPayload, userId?: string | null): Promise<void>;
   deleteBill?(billId: string, userId?: string | null): Promise<boolean>;
+  revokeBillShare?(billId: string, userId?: string | null): Promise<boolean>;
   listBills(userId?: string | null): Promise<BillSummary[]>;
   createGroup?(name: string, ownerId: string, description?: string | null, currency?: string): Promise<BillGroupDetail>;
   getGroup?(id: string, userId?: string | null): Promise<BillGroupDetail | null>;
@@ -205,5 +214,32 @@ export interface DatabaseAdapter {
   getUserById?(id: string): Promise<User | null>;
   upsertUser?(user: { id?: string; email: string; name?: string | null; avatar_url?: string | null }): Promise<User>;
   searchUsers?(query: string): Promise<Array<{ id: string; email: string; name: string | null; avatar_url: string | null }>>;
+  saveDeviceSubscription?(sub: SaveSubscriptionInput): Promise<DeviceSubscription>;
+  getSubscriptionsByUser?(userId: string): Promise<DeviceSubscription[]>;
+  getSubscriptionsByDevice?(deviceId: string): Promise<DeviceSubscription[]>;
+  deleteSubscriptionByEndpoint?(endpoint: string): Promise<boolean>;
   close?(): Promise<void>;
+}
+
+export interface DeviceSubscription {
+  id: string;
+  user_id: string | null;
+  device_id: string | null;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaveSubscriptionInput {
+  userId?: string | null;
+  deviceId?: string | null;
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  userAgent?: string | null;
 }

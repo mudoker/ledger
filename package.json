@@ -41,6 +41,7 @@
     "recharts": "^3.7.0",
     "tailwind-merge": "^3.4.1",
     "tesseract.js": "^7.0.0",
+    "web-push": "^3.6.7",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -50,6 +51,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^11.0.0",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.24",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

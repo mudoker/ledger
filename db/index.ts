@@ -23,6 +23,10 @@ export function resetDbInstance() {
   dbInstance = null;
 }
 
+export function setDbInstance(adapter: DatabaseAdapter | null) {
+  dbInstance = adapter;
+}
+
 export async function getDb(): Promise<DatabaseAdapter> {
   if (dbInstance) {
     return dbInstance;
