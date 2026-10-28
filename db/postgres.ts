@@ -183,6 +183,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
+      await client.query('BEGIN');
       const cleanEmail = user.email.trim().toLowerCase();
       const userId = user.id || crypto.randomUUID();
 
@@ -201,6 +202,8 @@ export class PostgresAdapter implements DatabaseAdapter {
       // Auto-link any existing bill participants with matching email to this user_id
       await client.query('UPDATE people SET user_id = $1 WHERE LOWER(email) = LOWER($2) AND user_id IS NULL', [u.id, cleanEmail]);
 
+      await client.query('COMMIT');
+
       return {
         id: String(u.id),
         email: String(u.email),
@@ -209,6 +212,9 @@ export class PostgresAdapter implements DatabaseAdapter {
         created_at: typeof u.created_at === 'string' ? u.created_at : new Date(u.created_at).toISOString(),
         updated_at: typeof u.updated_at === 'string' ? u.updated_at : new Date(u.updated_at).toISOString(),
       };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }
@@ -818,9 +824,14 @@ export class PostgresAdapter implements DatabaseAdapter {
         throw new Error('Forbidden: Only the group owner can delete this group');
       }
 
+      await client.query('BEGIN');
       await client.query('UPDATE bills SET group_id = NULL WHERE group_id = $1', [id]);
       const res = await client.query('DELETE FROM bill_groups WHERE id = $1', [id]);
+      await client.query('COMMIT');
       return (res.rowCount ?? 0) > 0;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }
@@ -858,6 +869,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       const targetUser = await this.getUserById(newOwnerId);
       if (!targetUser) throw new Error('New owner user not found');
 
+      await client.query('BEGIN');
       await client.query('UPDATE bills SET owner_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [newOwnerId, billId]);
 
       // Ensure new owner is in people table
@@ -875,6 +887,10 @@ export class PostgresAdapter implements DatabaseAdapter {
           [personId, billId, targetUser.name || targetUser.email.split('@')[0], newOwnerId, targetUser.email]
         );
       }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }

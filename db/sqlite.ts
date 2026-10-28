@@ -234,23 +234,30 @@ export class SqliteAdapter implements DatabaseAdapter {
     const existing = await this.getUserByEmail(cleanEmail);
     const userId = existing?.id || user.id || crypto.randomUUID();
 
-    if (existing) {
-      this.db.prepare(`
-        UPDATE users
-        SET name = COALESCE(?, name),
-            avatar_url = COALESCE(?, avatar_url),
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(user.name || null, user.avatar_url || null, existing.id);
-    } else {
-      this.db.prepare(`
-        INSERT INTO users (id, email, name, avatar_url, updated_at)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `).run(userId, cleanEmail, user.name || null, user.avatar_url || null);
-    }
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      if (existing) {
+        this.db.prepare(`
+          UPDATE users
+          SET name = COALESCE(?, name),
+              avatar_url = COALESCE(?, avatar_url),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(user.name || null, user.avatar_url || null, existing.id);
+      } else {
+        this.db.prepare(`
+          INSERT INTO users (id, email, name, avatar_url, updated_at)
+          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `).run(userId, cleanEmail, user.name || null, user.avatar_url || null);
+      }
 
-    // Auto-link existing participants with matching email
-    this.db.prepare('UPDATE people SET user_id = ? WHERE LOWER(email) = LOWER(?) AND user_id IS NULL').run(userId, cleanEmail);
+      // Auto-link existing participants with matching email
+      this.db.prepare('UPDATE people SET user_id = ? WHERE LOWER(email) = LOWER(?) AND user_id IS NULL').run(userId, cleanEmail);
+      this.db.exec('COMMIT;');
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
+    }
 
     const saved = await this.getUserById(userId);
     if (!saved) throw new Error('Failed to retrieve user after upsert');
@@ -774,10 +781,17 @@ export class SqliteAdapter implements DatabaseAdapter {
       throw new Error('Forbidden: Only the group owner can delete this group');
     }
 
-    // Bills are automatically unlinked because FOREIGN KEY has ON DELETE SET NULL, but let's be explicit
-    this.db.prepare('UPDATE bills SET group_id = NULL WHERE group_id = ?').run(id);
-    const res = this.db.prepare('DELETE FROM bill_groups WHERE id = ?').run(id);
-    return Number(res.changes || 0) > 0;
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      // Bills are automatically unlinked because FOREIGN KEY has ON DELETE SET NULL, but let's be explicit
+      this.db.prepare('UPDATE bills SET group_id = NULL WHERE group_id = ?').run(id);
+      const res = this.db.prepare('DELETE FROM bill_groups WHERE id = ?').run(id);
+      this.db.exec('COMMIT;');
+      return Number(res.changes || 0) > 0;
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
+    }
   }
 
   async transferGroupOwnership(id: string, newOwnerId: string, userId?: string | null): Promise<void> {
@@ -803,20 +817,27 @@ export class SqliteAdapter implements DatabaseAdapter {
     const targetUser = await this.getUserById(newOwnerId);
     if (!targetUser) throw new Error('New owner user not found');
 
-    this.db.prepare('UPDATE bills SET owner_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newOwnerId, billId);
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      this.db.prepare('UPDATE bills SET owner_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newOwnerId, billId);
 
-    // Ensure new owner is in people table
-    const existingPerson = this.db.prepare(
-      'SELECT id FROM people WHERE bill_id = ? AND (user_id = ? OR (email IS NOT NULL AND LOWER(email) = LOWER(?)))'
-    ).get(billId, newOwnerId, targetUser.email) as { id: string } | undefined;
+      // Ensure new owner is in people table
+      const existingPerson = this.db.prepare(
+        'SELECT id FROM people WHERE bill_id = ? AND (user_id = ? OR (email IS NOT NULL AND LOWER(email) = LOWER(?)))'
+      ).get(billId, newOwnerId, targetUser.email) as { id: string } | undefined;
 
-    if (existingPerson) {
-      this.db.prepare('UPDATE people SET user_id = ? WHERE id = ?').run(newOwnerId, existingPerson.id);
-    } else {
-      const personId = crypto.randomUUID();
-      this.db.prepare(
-        'INSERT INTO people (id, bill_id, name, sponsor_amount, paid_amount, user_id, email) VALUES (?, ?, ?, 0, 0, ?, ?)'
-      ).run(personId, billId, targetUser.name || targetUser.email.split('@')[0], newOwnerId, targetUser.email);
+      if (existingPerson) {
+        this.db.prepare('UPDATE people SET user_id = ? WHERE id = ?').run(newOwnerId, existingPerson.id);
+      } else {
+        const personId = crypto.randomUUID();
+        this.db.prepare(
+          'INSERT INTO people (id, bill_id, name, sponsor_amount, paid_amount, user_id, email) VALUES (?, ?, ?, 0, 0, ?, ?)'
+        ).run(personId, billId, targetUser.name || targetUser.email.split('@')[0], newOwnerId, targetUser.email);
+      }
+      this.db.exec('COMMIT;');
+    } catch (err) {
+      this.db.exec('ROLLBACK;');
+      throw err;
     }
   }
 
