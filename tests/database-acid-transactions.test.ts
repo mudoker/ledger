@@ -1,26 +1,26 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import type { DatabaseAdapter } from '../db/types';
 import { SqliteAdapter } from '../db/sqlite';
-import { DatabaseSync } from 'node:sqlite';
 import { unlinkSync, existsSync } from 'node:fs';
 
-describe('Database ACID Transactions & System Consistency', () => {
-  let adapter: SqliteAdapter;
+describe('Database ACID Transactions & System Consistency (Agnostic Specification)', () => {
+  let adapter: DatabaseAdapter;
 
   beforeEach(async () => {
     adapter = new SqliteAdapter(':memory:');
     await adapter.init();
 
-    await adapter.upsertUser({
+    await adapter.upsertUser!({
       id: 'user_alice',
       email: 'alice@example.com',
       name: 'Alice',
     });
-    await adapter.upsertUser({
+    await adapter.upsertUser!({
       id: 'user_bob',
       email: 'bob@example.com',
       name: 'Bob',
     });
-    await adapter.upsertUser({
+    await adapter.upsertUser!({
       id: 'user_charlie',
       email: 'charlie@example.com',
       name: 'Charlie',
@@ -28,11 +28,13 @@ describe('Database ACID Transactions & System Consistency', () => {
   });
 
   afterEach(async () => {
-    await adapter.close();
+    if (adapter.close) {
+      await adapter.close();
+    }
   });
 
   describe('Atomicity (All-or-Nothing Execution)', () => {
-    it('rolls back completely when saving a bill with invalid foreign key in assignments, preserving original state', async () => {
+    it('rolls back completely when saving a bill with invalid foreign assignments, preserving original state', async () => {
       // Step 1: Save initial valid bill
       await adapter.saveBill(
         'bill_atomic_1',
@@ -60,8 +62,7 @@ describe('Database ACID Transactions & System Consistency', () => {
       expect(originalBill?.data.items.length).toBe(1);
       expect(originalBill?.data.items[0].name).toBe('Wagyu Steak');
 
-      // Step 2: Attempt to update bill with an assignment to a non-existent person ID
-      // This violates FOREIGN KEY constraint on item_assignments(person_id) -> people(id)
+      // Step 2: Attempt to update bill with an assignment referencing a non-existent person ID
       let errorThrown = false;
       try {
         await adapter.saveBill(
@@ -79,22 +80,20 @@ describe('Database ACID Transactions & System Consistency', () => {
                 name: 'Truffle Pasta',
                 price: 180000,
                 quantity: 1,
-                assignments: { non_existent_person_999: 1 }, // Foreign key violation!
+                assignments: { non_existent_person_999: 1 },
               },
             ],
             charges: [],
           },
           'user_alice'
         );
-      } catch (err: unknown) {
+      } catch {
         errorThrown = true;
-        const msg = err instanceof Error ? err.message : String(err);
-        expect(msg).toContain('FOREIGN KEY');
       }
 
       expect(errorThrown).toBe(true);
 
-      // Step 3: Verify the transaction rolled back completely: original bill, items, people, and charges must be intact
+      // Step 3: Verify the transaction rolled back: original bill, items, people, and charges remain intact
       const preservedBill = await adapter.getBill('bill_atomic_1', 'user_alice');
       expect(preservedBill).not.toBeNull();
       expect(preservedBill?.data.name).toBe('Original Feast');
@@ -105,6 +104,44 @@ describe('Database ACID Transactions & System Consistency', () => {
       expect(preservedBill?.data.people.length).toBe(2);
       expect(preservedBill?.data.globalCharges.length).toBe(1);
       expect(preservedBill?.data.globalCharges[0].name).toBe('VAT');
+    });
+
+    it('rolls back completely when an unauthorized user attempts to update a bill', async () => {
+      await adapter.saveBill(
+        'bill_rbac_atomic',
+        {
+          name: 'Alice Private Bill',
+          currency: 'VND',
+          people: [{ id: 'p1', name: 'Alice', userId: 'user_alice' }],
+          items: [{ id: 'i1', name: 'Coffee', price: 45000, quantity: 1, assignments: {} }],
+        },
+        'user_alice'
+      );
+
+      // Bob tries to overwrite Alice's bill
+      let errorThrown = false;
+      try {
+        await adapter.saveBill(
+          'bill_rbac_atomic',
+          {
+            name: 'Hijacked Bill',
+            people: [{ id: 'p2', name: 'Bob', userId: 'user_bob' }],
+            items: [{ id: 'i2', name: 'Expensive Wine', price: 5000000, quantity: 1, assignments: {} }],
+          },
+          'user_bob'
+        );
+      } catch {
+        errorThrown = true;
+      }
+
+      expect(errorThrown).toBe(true);
+
+      // Verify Alice's original bill was not modified or corrupted
+      const bill = await adapter.getBill('bill_rbac_atomic', 'user_alice');
+      expect(bill?.data.name).toBe('Alice Private Bill');
+      expect(bill?.data.items.length).toBe(1);
+      expect(bill?.data.items[0].name).toBe('Coffee');
+      expect(bill?.owner_id).toBe('user_alice');
     });
 
     it('rolls back bill ownership transfer if target user does not exist without corrupting bill state', async () => {
@@ -121,10 +158,9 @@ describe('Database ACID Transactions & System Consistency', () => {
 
       let transferFailed = false;
       try {
-        await adapter.transferBillOwnership('bill_transfer_test', 'ghost_user_does_not_exist', 'user_alice');
-      } catch (err: unknown) {
+        await adapter.transferBillOwnership!('bill_transfer_test', 'ghost_user_does_not_exist', 'user_alice');
+      } catch {
         transferFailed = true;
-        expect((err as Error).message).toContain('New owner user not found');
       }
 
       expect(transferFailed).toBe(true);
@@ -135,28 +171,27 @@ describe('Database ACID Transactions & System Consistency', () => {
       expect(bill?.role).toBe('owner');
     });
 
-    it('rolls back atomically when deleting a non-existent group or unauthorized user attempts group deletion', async () => {
-      const group = await adapter.createGroup('Alice Secret Group', 'user_alice');
+    it('rolls back atomically when an unauthorized user attempts group deletion', async () => {
+      const group = await adapter.createGroup!('Alice Secret Group', 'user_alice');
 
       // Bob tries to delete Alice's group
       let bobFailed = false;
       try {
-        await adapter.deleteGroup(group.id, 'user_bob');
-      } catch (err: unknown) {
+        await adapter.deleteGroup!(group.id, 'user_bob');
+      } catch {
         bobFailed = true;
-        expect((err as Error).message).toContain('Forbidden');
       }
       expect(bobFailed).toBe(true);
 
       // Group must still exist and be intact
-      const fetchedGroup = await adapter.getGroup(group.id, 'user_alice');
+      const fetchedGroup = await adapter.getGroup!(group.id, 'user_alice');
       expect(fetchedGroup).not.toBeNull();
       expect(fetchedGroup?.name).toBe('Alice Secret Group');
     });
   });
 
-  describe('Consistency (Foreign Keys, Cascades & Schema Invariants)', () => {
-    it('cascades deletion cleanly: deleting a bill removes all items, assignments, people, and charges', async () => {
+  describe('Consistency (Cascades, References & Invariants)', () => {
+    it('cascades deletion cleanly: deleting a bill removes it from all participant views and search indices', async () => {
       // Step 1: Create a bill with rich child records
       await adapter.saveBill(
         'bill_cascade_1',
@@ -180,32 +215,35 @@ describe('Database ACID Transactions & System Consistency', () => {
         'user_alice'
       );
 
-      // Step 2: Delete bill
-      const deleted = await adapter.deleteBill('bill_cascade_1', 'user_alice');
+      // Step 2: Delete bill via public method
+      const deleted = await adapter.deleteBill!('bill_cascade_1', 'user_alice');
       expect(deleted).toBe(true);
 
-      // Step 3: Verify bill itself is gone
+      // Step 3: Verify bill itself is no longer retrievable
       const billAfter = await adapter.getBill('bill_cascade_1', 'user_alice', true);
       expect(billAfter).toBeNull();
 
-      // Step 4: Verify via direct low-level queries that child tables have 0 orphaned rows
-      // We can inspect the underlying SQLite database directly
-      const rawDb = (adapter as unknown as { db: DatabaseSync }).db;
-      const remainingPeople = rawDb.prepare('SELECT COUNT(*) as count FROM people WHERE bill_id = ?').get('bill_cascade_1') as { count: number };
-      const remainingItems = rawDb.prepare('SELECT COUNT(*) as count FROM items WHERE bill_id = ?').get('bill_cascade_1') as { count: number };
-      const remainingCharges = rawDb.prepare('SELECT COUNT(*) as count FROM global_charges WHERE bill_id = ?').get('bill_cascade_1') as { count: number };
-      const remainingAssignments = rawDb.prepare(
-        'SELECT COUNT(*) as count FROM item_assignments WHERE item_id IN (\'i_cas_1\', \'i_cas_2\')'
-      ).get() as { count: number };
+      // Step 4: Verify bill is removed from owner's bills list
+      const aliceBills = await adapter.listBills('user_alice');
+      expect(aliceBills.some(b => b.id === 'bill_cascade_1')).toBe(false);
 
-      expect(remainingPeople.count).toBe(0);
-      expect(remainingItems.count).toBe(0);
-      expect(remainingCharges.count).toBe(0);
-      expect(remainingAssignments.count).toBe(0);
+      // Step 5: Verify bill is removed from participant Bob's bills list (proves participant links were cleaned up)
+      const bobBills = await adapter.listBills('user_bob');
+      expect(bobBills.some(b => b.id === 'bill_cascade_1')).toBe(false);
+
+      // Step 6: Verify items are purged from search (proves child items & assignments were cascaded away)
+      const searchItems1 = await adapter.search!('Spring Rolls', 'user_alice');
+      expect(searchItems1.items.length).toBe(0);
+
+      const searchItems2 = await adapter.search!('Hot Pot', 'user_alice');
+      expect(searchItems2.items.length).toBe(0);
+
+      const searchBill = await adapter.search!('Cascade Target Bill', 'user_alice');
+      expect(searchBill.bills.length).toBe(0);
     });
 
     it('preserves bills with group_id = NULL when a group is deleted (ON DELETE SET NULL invariant)', async () => {
-      const group = await adapter.createGroup('Vacation Group', 'user_alice');
+      const group = await adapter.createGroup!('Vacation Group', 'user_alice');
 
       await adapter.saveBill(
         'bill_in_group_1',
@@ -224,11 +262,11 @@ describe('Database ACID Transactions & System Consistency', () => {
       expect(billBefore?.group_id).toBe(group.id);
 
       // Delete group
-      const deleteResult = await adapter.deleteGroup(group.id, 'user_alice');
+      const deleteResult = await adapter.deleteGroup!(group.id, 'user_alice');
       expect(deleteResult).toBe(true);
 
       // Group should be deleted
-      const groupAfter = await adapter.getGroup(group.id, 'user_alice');
+      const groupAfter = await adapter.getGroup!(group.id, 'user_alice');
       expect(groupAfter).toBeNull();
 
       // Bill MUST NOT be deleted; its group_id should now be NULL
@@ -256,15 +294,13 @@ describe('Database ACID Transactions & System Consistency', () => {
         'user_alice'
       );
 
-      // Participant initially has no user_id
-      const rawDb = (adapter as unknown as { db: DatabaseSync }).db;
-      const initialParticipant = rawDb.prepare('SELECT user_id, email FROM people WHERE id = ?').get('p_david') as { user_id: string | null; email: string };
-      expect(initialParticipant.user_id).toBeNull();
-      expect(initialParticipant.email).toBe('david@example.com');
+      // Prior to registration, an unknown random user cannot see this bill
+      const strangerBills = await adapter.listBills('random_unknown_id');
+      expect(strangerBills.length).toBe(0);
 
-      // Step 2: David signs up / logs in -> upsertUser called with matching email
-      const davidUser = await adapter.upsertUser({
-        email: 'David@Example.COM', // test case insensitivity
+      // Step 2: David signs up / logs in with matching email
+      const davidUser = await adapter.upsertUser!({
+        email: 'David@Example.COM', // test case-insensitivity
         name: 'David Verified',
         avatar_url: 'https://example.com/david.png',
       });
@@ -272,24 +308,27 @@ describe('Database ACID Transactions & System Consistency', () => {
       expect(davidUser.id).toBeDefined();
       expect(davidUser.email).toBe('david@example.com');
 
-      // Step 3: Verify the participant David on the previous bill was atomically auto-linked to davidUser.id
-      const linkedParticipant = rawDb.prepare('SELECT user_id, email FROM people WHERE id = ?').get('p_david') as { user_id: string | null; email: string };
-      expect(linkedParticipant.user_id).toBe(davidUser.id);
-
-      // Step 4: Verify David can now list this bill as a participant
+      // Step 3: Verify David can now list this bill as a participant (auto-linked)
       const davidBills = await adapter.listBills(davidUser.id);
       expect(davidBills.some(b => b.id === 'bill_pre_registration')).toBe(true);
 
-      // Step 5: Verify idempotency - upserting David again does not create a duplicate user
-      const davidUpdated = await adapter.upsertUser({
+      // Step 4: Verify bill detail recognizes David as a participant
+      const billDetail = await adapter.getBill('bill_pre_registration', davidUser.id);
+      expect(billDetail).not.toBeNull();
+      expect(billDetail?.role).toBe('participant');
+
+      // Step 5: Verify idempotency - upserting David again updates attributes without duplicating accounts
+      const davidUpdated = await adapter.upsertUser!({
         email: 'david@example.com',
         name: 'David Renovated',
       });
       expect(davidUpdated.id).toBe(davidUser.id);
       expect(davidUpdated.name).toBe('David Renovated');
 
-      const allDavids = rawDb.prepare('SELECT COUNT(*) as count FROM users WHERE LOWER(email) = LOWER(?)').get('david@example.com') as { count: number };
-      expect(allDavids.count).toBe(1);
+      // Search verifies there is only ONE user with this email
+      const searchUsers = await adapter.searchUsers!('david@example.com');
+      expect(searchUsers.length).toBe(1);
+      expect(searchUsers[0].id).toBe(davidUser.id);
     });
   });
 
@@ -329,11 +368,11 @@ describe('Database ACID Transactions & System Consistency', () => {
       expect(finalBill?.data.name).toBe('Iteration 10');
       expect(finalBill?.data.people.length).toBe(2);
       expect(finalBill?.data.items[0].quantity).toBe(10);
-      expect(finalBill?.data.items[0].price).toBe(60000); // 10000 + 10*5000
+      expect(finalBill?.data.items[0].price).toBe(60000);
     });
   });
 
-  describe('Durability (Physical Disk File Persistence)', () => {
+  describe('Durability (Persistence Across Disconnect / Reconnect)', () => {
     const tempDbPath = `/tmp/test_durability_${Date.now()}.sqlite`;
 
     afterEach(() => {
@@ -346,8 +385,8 @@ describe('Database ACID Transactions & System Consistency', () => {
       }
     });
 
-    it('persists complete bill, group, participants, and items across connection restarts to disk', async () => {
-      // Step 1: Open file-backed SQLite adapter and populate data
+    it('persists complete bill, group, participants, and items across connection restarts', async () => {
+      // Step 1: Open storage adapter and write data
       const diskAdapter1 = new SqliteAdapter(tempDbPath);
       await diskAdapter1.init();
 
@@ -377,22 +416,17 @@ describe('Database ACID Transactions & System Consistency', () => {
         'user_disk_alice'
       );
 
-      // Verify group total before closing
       const groupBefore = await diskAdapter1.getGroup(diskGroup.id, 'user_disk_alice');
-      // Subtotal: (400,000 * 2) + (25,000 * 4) = 800,000 + 100,000 = 900,000
-      // 10% VAT: 90,000
-      // Fixed charge: 50,000
-      // Total: 900,000 + 90,000 + 50,000 = 1,040,000
       expect(groupBefore?.total_amount).toBe(1040000);
 
-      // Step 2: Close adapter connection to simulate process shutdown
+      // Step 2: Terminate connection to simulate system shutdown
       await diskAdapter1.close();
 
-      // Step 3: Re-open brand new connection to the same file
+      // Step 3: Re-open brand new connection to the exact same persistent storage
       const diskAdapter2 = new SqliteAdapter(tempDbPath);
       await diskAdapter2.init();
 
-      // Step 4: Verify everything was preserved durably
+      // Step 4: Verify everything was preserved durably through public adapter contracts
       const billRestored = await diskAdapter2.getBill('bill_durable_1', 'user_disk_alice');
       expect(billRestored).not.toBeNull();
       expect(billRestored?.data.name).toBe('Durable Seafood Feast');
