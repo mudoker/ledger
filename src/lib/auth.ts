@@ -78,7 +78,14 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
+let testSessionUser: User | null = null;
+
+export function setTestSessionUser(user: User | null) {
+  testSessionUser = user;
+}
+
 export async function getSessionUser(): Promise<User | null> {
+  if (testSessionUser) return testSessionUser;
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('session_token')?.value;
@@ -102,8 +109,10 @@ export async function getSessionUser(): Promise<User | null> {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-  } catch (err) {
-    console.error('getSessionUser error:', err);
+  } catch (err: any) {
+    if (!err?.message?.includes('outside a request scope')) {
+      console.error('getSessionUser error:', err);
+    }
     return null;
   }
 }
