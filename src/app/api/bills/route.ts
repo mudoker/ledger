@@ -31,11 +31,20 @@ export async function POST(req: Request) {
   try {
     const user = await getSessionUser();
     const body = await req.json();
-    const { id, data } = body;
+    const { id, data, isShared, visibility, shareToken } = body;
     const billId = id || crypto.randomUUID();
 
     const db = await getDb();
-    await db.saveBill(billId, data || {}, user?.id || null);
+    await db.saveBill(
+      billId,
+      {
+        ...(data || {}),
+        isShared: isShared !== undefined ? isShared : data?.isShared,
+        visibility: visibility || data?.visibility,
+        shareToken: shareToken !== undefined ? shareToken : data?.shareToken,
+      },
+      user?.id || null
+    );
 
     return NextResponse.json({ id: billId, success: true }, { headers: corsHeaders });
   } catch (error: unknown) {

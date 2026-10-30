@@ -58,6 +58,9 @@ export function generateShareUrl(state: any, readOnly: boolean = true): string {
         if (readOnly) {
             url.searchParams.set('share', '1');
         }
+        if (state.shareToken) {
+            url.searchParams.set('token', state.shareToken);
+        }
         return url.toString();
     }
 

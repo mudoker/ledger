@@ -21,26 +21,18 @@ export async function GET(
   try {
     const { id } = await params;
     const url = new URL(req.url);
-    const isShare = url.searchParams.get('share') === '1' || url.searchParams.get('share') === 'true';
+    const token = url.searchParams.get('token') || url.searchParams.get('shareToken');
+    const isShare = url.searchParams.get('share') === '1' || url.searchParams.get('share') === 'true' || Boolean(token);
 
     const user = await getSessionUser();
     const db = await getDb();
-    const bill = await db.getBill(id, user?.id || null, isShare);
+    const bill = await db.getBill(id, user?.id || null, isShare, token);
 
     if (!bill) {
-      if (!isShare && !user) {
-        return NextResponse.json(
-          { error: 'Login required to view this private bill. Or view using a share link.' },
-          { status: 401, headers: corsHeaders }
-        );
-      }
-      if (!isShare && user) {
-        return NextResponse.json(
-          { error: 'Access denied: You are not an owner or participant in this bill.' },
-          { status: 403, headers: corsHeaders }
-        );
-      }
-      return NextResponse.json({ error: 'Bill not found' }, { status: 404, headers: corsHeaders });
+      return NextResponse.json(
+        { error: 'Bill not found or share link has been revoked' },
+        { status: 404, headers: corsHeaders }
+      );
     }
 
     return NextResponse.json(bill, { headers: corsHeaders });
@@ -52,13 +44,25 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const url = new URL(req.url);
+    const isRevokeOnly = url.searchParams.get('revoke') === '1' || url.searchParams.get('revoke') === 'true';
+
     const user = await getSessionUser();
     const db = await getDb();
+
+    if (isRevokeOnly && db.revokeBillShare) {
+      const revoked = await db.revokeBillShare(id, user?.id || null);
+      if (!revoked) {
+        return NextResponse.json({ error: 'Bill not found' }, { status: 404, headers: corsHeaders });
+      }
+      return NextResponse.json({ success: true, revoked: true, id }, { headers: corsHeaders });
+    }
+
     if (db.deleteBill) {
       const deleted = await db.deleteBill(id, user?.id || null);
       if (!deleted) {
