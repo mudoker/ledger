@@ -30,3 +30,4 @@ bills.sqlite
 .env
 .env.*
 !.env.example
+*.tsbuildinfo

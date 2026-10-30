@@ -5,7 +5,7 @@ import { useGroupStore } from './useGroupStore';
 import { useAppSettingsStore } from './useAppSettingsStore';
 import { useAuthStore } from './useAuthStore';
 import { getLocalDb } from '@/lib/local-db';
-import { syncManager } from '@/lib/local-db/sync-manager';
+import { syncManager, syncCoordinator } from '@/lib/local-db/sync-manager';
 import type { BillSharingStatus, BillVisibility, LocalBillRecord } from '@/lib/local-db/types';
 import { calculateBillTotals } from '@/lib/common-data-model';
 
@@ -601,35 +601,66 @@ export const useBillStore = create<BillState>()(
                     return billId;
                 }
 
-                // 3. Background asynchronous cloud sync (non-blocking, zero UI freeze)
-                (async () => {
+                // 3. Serialized background asynchronous cloud sync (non-blocking, 0ms freeze, zero race conditions)
+                syncCoordinator.scheduleSync(billId, async () => {
+                    const db = getLocalDb();
+                    // Always read freshest snapshot from local storage to prevent stale writes
+                    const latestBill = await db.getBill(billId);
+                    if (!latestBill) return;
+
+                    const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+                    if (isOffline) {
+                        const errMsg = 'Offline: changes saved locally, queued for sync';
+                        latestBill.syncError = errMsg;
+                        await db.saveBill(latestBill);
+                        set({ syncError: errMsg });
+                        await syncManager.enqueueOperation({
+                            billId,
+                            type: 'update',
+                        });
+                        return;
+                    }
+
                     try {
                         const response = await fetch('/api/bills', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                id: billId,
-                                isShared: state.sharingStatus === 'shared',
-                                visibility: state.visibility,
-                                shareToken: state.shareToken,
+                                id: latestBill.id,
+                                isShared: latestBill.sharingStatus === 'shared',
+                                visibility: latestBill.visibility,
+                                shareToken: latestBill.shareToken,
                                 data: {
-                                    name: state.billName,
-                                    location: state.location,
-                                    people: state.people,
-                                    items: state.items,
-                                    globalCharges: state.globalCharges,
-                                    hostId: state.hostId,
-                                    qrCode: state.qrCode,
-                                    currency: state.currency,
-                                    groupId: state.groupId,
-                                    visibility: state.visibility,
-                                    shareToken: state.shareToken,
+                                    name: latestBill.name,
+                                    location: latestBill.location,
+                                    people: latestBill.people,
+                                    items: latestBill.items,
+                                    globalCharges: latestBill.globalCharges,
+                                    hostId: latestBill.hostId,
+                                    qrCode: latestBill.qrCode,
+                                    currency: latestBill.currency,
+                                    groupId: latestBill.groupId,
+                                    visibility: latestBill.visibility,
+                                    shareToken: latestBill.shareToken,
                                 }
                             })
                         });
 
                         if (response.ok) {
                             const result = await response.json();
+                            const syncedAt = new Date().toISOString();
+                            latestBill.lastSyncedAt = syncedAt;
+                            latestBill.syncError = null;
+                            await db.saveBill(latestBill);
+
+                            // Clear any obsolete pending update ops for this bill in localDb
+                            const pendingOps = await db.getPendingOps();
+                            for (const op of pendingOps) {
+                                if (op.billId === billId && (op.type === 'upload' || op.type === 'update')) {
+                                    await db.removePendingOp(op.id);
+                                }
+                            }
+
                             if (result.id) {
                                 set({
                                     currentBillId: result.id,
@@ -639,19 +670,36 @@ export const useBillStore = create<BillState>()(
                                     const url = new URL(window.location.href);
                                     if (url.searchParams.get('id') !== result.id && url.searchParams.get('view') !== 'landing') {
                                         url.searchParams.set('id', result.id);
-                                        if (state.groupId) {
-                                            url.searchParams.set('groupId', state.groupId);
+                                        if (latestBill.groupId) {
+                                            url.searchParams.set('groupId', latestBill.groupId);
                                         }
                                         window.history.replaceState({}, '', url.toString());
                                     }
                                 }
                             }
+                        } else {
+                            const errBody = await response.json().catch(() => ({}));
+                            const errMsg = errBody.error || `Server responded with ${response.status}`;
+                            latestBill.syncError = errMsg;
+                            await db.saveBill(latestBill);
+                            set({ syncError: errMsg });
+                            await syncManager.enqueueOperation({
+                                billId,
+                                type: 'update',
+                            });
                         }
                     } catch (error: any) {
+                        const errMsg = error.message || 'Cloud sync network failure';
                         console.warn("Background cloud sync deferred:", error);
-                        set({ syncError: error.message || 'Cloud sync deferred' });
+                        latestBill.syncError = errMsg;
+                        await db.saveBill(latestBill);
+                        set({ syncError: errMsg });
+                        await syncManager.enqueueOperation({
+                            billId,
+                            type: 'update',
+                        });
                     }
-                })();
+                });
 
                 return billId;
             },
@@ -660,19 +708,43 @@ export const useBillStore = create<BillState>()(
                 const billId = id || get().currentBillId;
                 if (!billId) return false;
 
-                // 1. Delete from local DB
+                // 1. Delete from local DB & clear pending upload/update ops
                 try {
                     const localDb = getLocalDb();
                     await localDb.deleteBill(billId);
+                    const pendingOps = await localDb.getPendingOps();
+                    for (const op of pendingOps) {
+                        if (op.billId === billId && (op.type === 'upload' || op.type === 'update')) {
+                            await localDb.removePendingOp(op.id);
+                        }
+                    }
                 } catch (e) {
                     console.warn('Failed to delete bill locally:', e);
                 }
 
-                // 2. Delete from server API
-                try {
-                    await fetch(`/api/bills/${billId}`, { method: 'DELETE' });
-                } catch (e) {
-                    console.warn('Failed to delete bill on server:', e);
+                // 2. Delete from server API (with offline queue fallback)
+                const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+                if (isOffline) {
+                    await syncManager.enqueueOperation({
+                        billId,
+                        type: 'delete',
+                    });
+                } else {
+                    try {
+                        const res = await fetch(`/api/bills/${billId}`, { method: 'DELETE' });
+                        if (!res.ok && res.status !== 404) {
+                            await syncManager.enqueueOperation({
+                                billId,
+                                type: 'delete',
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('Failed to delete bill on server:', e);
+                        await syncManager.enqueueOperation({
+                            billId,
+                            type: 'delete',
+                        });
+                    }
                 }
 
                 // 3. Reset active bill if currently loaded
@@ -902,9 +974,21 @@ export const useBillStore = create<BillState>()(
                     const serverTime = new Date(result.updated_at).getTime();
                     const localTime = localBill ? new Date(localBill.updatedAt).getTime() : 0;
 
-                    // Only update in-memory state if no local bill was cached or server is strictly newer (e.g. edited elsewhere)
+                    // Check if local has pending unsynced operations
+                    let hasPendingSync = false;
+                    try {
+                        const db = getLocalDb();
+                        const pendingOps = await db.getPendingOps();
+                        hasPendingSync = pendingOps.some(op => op.billId === id && op.type !== 'revoke');
+                    } catch {}
+
+                    const isLocallySyncing = syncCoordinator.isSyncing(id);
+
+                    // Only update in-memory state if:
+                    // 1) We have no local bill cached, OR
+                    // 2) There are NO local unsynced pending operations AND server is strictly newer
                     const isStrictlyNewer = serverTime > (localTime + 1000);
-                    if (!localBill || isStrictlyNewer) {
+                    if (!localBill || (!hasPendingSync && !isLocallySyncing && isStrictlyNewer)) {
                         set({
                             ...result.data,
                             billName: result.data.name || '',
@@ -923,6 +1007,9 @@ export const useBillStore = create<BillState>()(
 
                         // Save downloaded bill to local storage in background
                         get().saveToLocal().catch(() => {});
+                    } else if (hasPendingSync) {
+                        // Local has newer unsynced edits: trigger background push to sync up to cloud!
+                        syncManager.processPendingOperations().catch(() => {});
                     }
                 } catch (error) {
                     if (localBill) {
@@ -939,10 +1026,19 @@ export const useBillStore = create<BillState>()(
                 const historyMap = new Map<string, BillHistoryItem>();
 
                 // 1. Load local bills first
+                const pendingDeleteIds = new Set<string>();
                 try {
                     const localDb = getLocalDb();
+                    const pendingOps = await localDb.getPendingOps();
+                    for (const op of pendingOps) {
+                        if (op.type === 'delete') {
+                            pendingDeleteIds.add(op.billId);
+                        }
+                    }
+
                     const localBills = await localDb.listBills();
                     for (const b of localBills) {
+                        if (pendingDeleteIds.has(b.id)) continue;
                         const total = calculateBillTotals(b).totalAmount;
 
                         historyMap.set(b.id, {
@@ -971,6 +1067,8 @@ export const useBillStore = create<BillState>()(
                     if (response.ok) {
                         const serverData: BillHistoryItem[] = await response.json();
                         for (const sb of serverData) {
+                            if (pendingDeleteIds.has(sb.id)) continue;
+
                             const existing = historyMap.get(sb.id);
                             if (existing) {
                                 const localTime = new Date(existing.updated_at).getTime();

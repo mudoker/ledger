@@ -68,7 +68,7 @@ export interface LocalGroupRecord {
 export interface PendingSyncOperation {
   id: string;
   billId: string;
-  type: 'upload' | 'update' | 'revoke';
+  type: 'upload' | 'update' | 'revoke' | 'delete';
   payload?: any;
   createdAt: string;
   attempts: number;

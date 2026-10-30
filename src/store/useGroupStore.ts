@@ -40,7 +40,10 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     try {
       const localDb = getLocalDb();
       localGroups = await localDb.listGroups().catch(() => []);
-      localBills = await localDb.listBills().catch(() => []);
+      const allLocalBills = await localDb.listBills().catch(() => []);
+      const pendingOps = await localDb.getPendingOps().catch(() => []);
+      const pendingDeleteIds = new Set(pendingOps.filter(op => op.type === 'delete').map(op => op.billId));
+      localBills = allLocalBills.filter(b => !pendingDeleteIds.has(b.id));
     } catch (e) {
       console.warn('Failed to load local groups/bills:', e);
     }
@@ -87,6 +90,8 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const localDb = getLocalDb();
     const lg = await localDb.getGroup(id).catch(() => null);
     const localBills = await localDb.listBills().catch(() => []);
+    const pendingOps = await localDb.getPendingOps().catch(() => []);
+    const pendingDeleteIds = new Set(pendingOps.filter(op => op.type === 'delete').map(op => op.billId));
 
     // 3. Resolve group metadata & participants by aggregating local and server
     const serverParticipants: PersonData[] = (serverGroup as any)?.participants || [];
@@ -114,7 +119,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
           currency: lg.currency || serverGroup?.currency || 'VND',
           created_at: serverGroup?.created_at || lg.createdAt,
           updated_at: lg.updatedAt,
-          bills: serverGroup?.bills || [],
+          bills: (serverGroup?.bills || []).filter(b => !pendingDeleteIds.has(b.id)),
           participants,
         } : (serverGroup ? { ...serverGroup, participants } : null));
 
@@ -124,8 +129,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
 
     // 4. Merge server bills with local bills using common data model
-    const serverBills = serverGroup?.bills || [];
-    const mergedBills = mergeBillsForGroup(serverBills, localBills, id, participants);
+    const serverBills = (serverGroup?.bills || []).filter(b => !pendingDeleteIds.has(b.id));
+    const activeLocalBills = localBills.filter(b => !pendingDeleteIds.has(b.id));
+    const mergedBills = mergeBillsForGroup(serverBills, activeLocalBills, id, participants);
 
     // Ensure group participants is strictly the superset of all bill participants (Bill.participants ⊆ Group.participants)
     const unifiedParticipants = ensureGroupParticipantsSuperset(participants, mergedBills);

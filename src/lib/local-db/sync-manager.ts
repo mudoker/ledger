@@ -97,6 +97,23 @@ class SyncManager {
               bill.lastSyncedAt = new Date().toISOString();
               bill.syncError = null;
               await db.saveBill(bill);
+              // Drain any redundant upload/update operations for this bill
+              const remainingOps = await db.getPendingOps();
+              for (const rop of remainingOps) {
+                if (rop.billId === bill.id && (rop.type === 'upload' || rop.type === 'update')) {
+                  await db.removePendingOp(rop.id);
+                }
+              }
+            } else {
+              op.attempts += 1;
+              await db.savePendingOp(op);
+            }
+          } else if (op.type === 'delete') {
+            const res = await fetch(`/api/bills/${op.billId}`, {
+              method: 'DELETE',
+            });
+            if (res.ok || res.status === 404) {
+              await db.removePendingOp(op.id);
             } else {
               op.attempts += 1;
               await db.savePendingOp(op);
@@ -178,3 +195,52 @@ class SyncManager {
 }
 
 export const syncManager = new SyncManager();
+
+export class SyncCoordinator {
+  private activeUploads = new Set<string>();
+  private pendingRetries = new Set<string>();
+
+  /**
+   * Schedules an asynchronous, background upload for a bill with trailing coalescing.
+   * Guarantees:
+   * 1. Only one upload runs at a time for a given bill (no out-of-order race conditions).
+   * 2. If rapid edits occur while an upload is in flight, a trailing upload executes with the freshest snapshot.
+   * 3. Completely non-blocking on the UI thread (0ms delay, zero jitter).
+   */
+  scheduleSync(billId: string, runUpload: () => Promise<void>): void {
+    if (this.activeUploads.has(billId)) {
+      this.pendingRetries.add(billId);
+      return;
+    }
+
+    this.activeUploads.add(billId);
+    this.pendingRetries.delete(billId);
+
+    // Run non-blocking background queue
+    (async () => {
+      try {
+        while (true) {
+          await runUpload();
+          if (this.pendingRetries.has(billId)) {
+            this.pendingRetries.delete(billId);
+            // Run again to sync the freshest state that was saved during previous upload
+            continue;
+          }
+          break;
+        }
+      } catch (e) {
+        console.warn(`[SyncCoordinator] Unexpected error during sync of bill ${billId}:`, e);
+      } finally {
+        this.activeUploads.delete(billId);
+        this.pendingRetries.delete(billId);
+      }
+    })();
+  }
+
+  isSyncing(billId: string): boolean {
+    return this.activeUploads.has(billId);
+  }
+}
+
+export const syncCoordinator = new SyncCoordinator();
+
