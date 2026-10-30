@@ -15,6 +15,7 @@ import { CreateBillModal, type CreateBillFormData } from '@/components/shared/cr
 import { CreateGroupModal } from '@/components/shared/create-group-modal';
 import { BottomSearchBar } from '@/components/shared/bottom-search-bar';
 import { FuzzySearchModal } from '@/components/shared/fuzzy-search-modal';
+import { DeleteConfirmationModal } from '@/components/shared/delete-confirmation-modal';
 import { LandingCard } from '@/components/layout/landing-card';
 import { calculateBillTotals } from '@/lib/common-data-model';
 
@@ -50,6 +51,14 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
     const [isDevLoginOpen, setIsDevLoginOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'bills' | 'groups'>('bills');
 
+    const [deleteTarget, setDeleteTarget] = useState<
+        | { type: 'bill'; id: string; name: string }
+        | { type: 'group'; id: string; name: string }
+        | { type: 'draft' }
+        | null
+    >(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     const [hasCreatedSample, setHasCreatedSample] = useState<boolean>(() => {
         if (typeof window === 'undefined') return false;
         const userKey = user?.id ? `ledger_sample_bill_${user.id}` : 'ledger_sample_bill_guest';
@@ -74,18 +83,21 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
         onLoadDemo?.();
     };
 
-    const handleDeleteBill = async (id: string, name?: string) => {
-        if (!window.confirm(`Are you sure you want to delete "${name || 'this bill'}"? This action cannot be undone.`)) {
-            return;
+    const handleDeleteConfirm = async () => {
+        if (!deleteTarget) return;
+        setIsDeleting(true);
+        try {
+            if (deleteTarget.type === 'bill') {
+                await deleteBill(deleteTarget.id);
+            } else if (deleteTarget.type === 'group') {
+                await deleteGroup(deleteTarget.id);
+            } else if (deleteTarget.type === 'draft') {
+                resetBill();
+            }
+        } finally {
+            setIsDeleting(false);
+            setDeleteTarget(null);
         }
-        await deleteBill(id);
-    };
-
-    const handleDeleteGroup = async (id: string, name: string) => {
-        if (!window.confirm(`Are you sure you want to delete "${name}"?\n\nThe bills inside this group will not be deleted; they will simply be unlinked.`)) {
-            return;
-        }
-        await deleteGroup(id);
     };
 
     useEffect(() => {
@@ -342,7 +354,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         role={group.is_owner ? 'owner' : 'participant'}
                                         timestamp={group.updated_at}
                                         onClick={() => onSelectGroup?.(group.id)}
-                                        onDelete={group.is_owner ? () => handleDeleteGroup(group.id, group.name) : undefined}
+                                        onDelete={group.is_owner ? () => setDeleteTarget({ type: 'group', id: group.id, name: group.name }) : undefined}
                                     />
                                 ))
                             )
@@ -378,11 +390,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                             </div>
                                         }
                                         onClick={() => onSelectBill('current')}
-                                        onDelete={() => {
-                                            if (window.confirm('Discard current draft?')) {
-                                                resetBill();
-                                            }
-                                        }}
+                                        onDelete={() => setDeleteTarget({ type: 'draft' })}
                                     />
                                 )}
 
@@ -401,7 +409,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         timestamp={bill.updated_at}
                                         location={bill.location}
                                         onClick={() => onSelectBill(bill.id)}
-                                        onDelete={() => handleDeleteBill(bill.id, bill.name)}
+                                        onDelete={() => setDeleteTarget({ type: 'bill', id: bill.id, name: bill.name || `Bill ${bill.id.slice(0, 8)}` })}
                                     />
                                 ))}
                             </>
@@ -438,6 +446,41 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                 onOpenChange={setIsSearchModalOpen}
                 onSelectBill={onSelectBill}
                 onSelectGroup={(gid) => onSelectGroup?.(gid)}
+            />
+
+            {/* Custom Delete Confirmation Modal */}
+            <DeleteConfirmationModal
+                open={Boolean(deleteTarget)}
+                onOpenChange={(open) => {
+                    if (!open) setDeleteTarget(null);
+                }}
+                title={
+                    deleteTarget?.type === 'draft'
+                        ? 'Discard Draft Bill?'
+                        : deleteTarget?.type === 'group'
+                        ? 'Delete Group?'
+                        : 'Delete Bill?'
+                }
+                itemName={
+                    deleteTarget?.type === 'draft'
+                        ? billName || 'Untitled Draft Bill'
+                        : deleteTarget?.name
+                }
+                description={
+                    deleteTarget?.type === 'draft'
+                        ? 'Are you sure you want to discard your current draft? Any unsaved items and participants will be cleared.'
+                        : deleteTarget?.type === 'group'
+                        ? `Are you sure you want to delete "${deleteTarget?.name}"?`
+                        : `Are you sure you want to delete "${deleteTarget?.name || 'this bill'}"? This action cannot be undone.`
+                }
+                warningNotice={
+                    deleteTarget?.type === 'group'
+                        ? 'Bills inside this group will not be deleted; they will simply be unlinked and remain available in your bills list.'
+                        : undefined
+                }
+                confirmText={deleteTarget?.type === 'draft' ? 'Discard Draft' : 'Delete'}
+                isLoading={isDeleting}
+                onConfirm={handleDeleteConfirm}
             />
 
             {IS_DEV && (

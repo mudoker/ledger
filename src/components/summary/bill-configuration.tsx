@@ -17,6 +17,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { calculateBillTotals } from "@/lib/common-data-model";
 import { InheritParticipantsDialog } from "@/components/groups/inherit-participants-dialog";
+import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 import type { PersonData } from "@/../db/types";
 
 export interface BillConfigurationProps {
@@ -61,6 +62,8 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isDeletingBill, setIsDeletingBill] = useState(false);
     const currency = useBillStore((state) => state.currency);
     const groupId = useBillStore((state) => state.groupId);
     const setGroupId = useBillStore((state) => state.setGroupId);
@@ -508,12 +511,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                         type="button"
                                         variant="destructive"
                                         size="sm"
-                                        onClick={async () => {
-                                            if (window.confirm(`Are you sure you want to permanently delete "${billName || 'this bill'}"?`)) {
-                                                await deleteBill(currentBillId);
-                                                window.location.href = window.location.origin + window.location.pathname;
-                                            }
-                                        }}
+                                        onClick={() => setIsDeleteModalOpen(true)}
                                         className="h-8 rounded-xl font-bold text-xs gap-1.5 shrink-0 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -557,6 +555,28 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                     targetName={billName || 'Untitled Bill'}
                     onSuccess={() => {
                         store.fetchBill(currentBillId);
+                    }}
+                />
+            )}
+
+            {currentBillId && (
+                <DeleteConfirmationModal
+                    open={isDeleteModalOpen}
+                    onOpenChange={setIsDeleteModalOpen}
+                    title="Delete Bill?"
+                    itemName={billName || 'Untitled Bill'}
+                    description="Are you sure you want to permanently delete this bill and all associated items and calculations? This action cannot be undone."
+                    confirmText="Delete Bill"
+                    isLoading={isDeletingBill}
+                    onConfirm={async () => {
+                        setIsDeletingBill(true);
+                        try {
+                            await deleteBill(currentBillId);
+                            window.location.href = window.location.origin + window.location.pathname;
+                        } finally {
+                            setIsDeletingBill(false);
+                            setIsDeleteModalOpen(false);
+                        }
                     }}
                 />
             )}

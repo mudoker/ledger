@@ -37,6 +37,7 @@ import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-m
 import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
 import { CreateBillModal, type CreateBillFormData } from '@/components/shared/create-bill-modal';
+import { DeleteConfirmationModal } from '@/components/shared/delete-confirmation-modal';
 import { ModeToggle } from '@/components/layout/mode-toggle';
 import { GroupSummary } from './group-summary';
 import type { BillGroupDetail } from '@/../db/types';
@@ -53,7 +54,13 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isCreateBillModalOpen, setIsCreateBillModalOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { type: 'group' }
+    | { type: 'bill'; id: string; name: string }
+    | { type: 'member'; id: string; name: string }
+    | null
+  >(null);
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<'bills' | 'members' | 'summary'>('bills');
@@ -74,9 +81,8 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
     }
   };
 
-  const handleRemoveMember = async (participantId: string, name: string) => {
-    if (!window.confirm(`Remove "${name}" from this group's participants?`)) return;
-    await removeGroupParticipant(group.id, participantId);
+  const handleRemoveMember = (participantId: string, name: string) => {
+    setDeleteTarget({ type: 'member', id: participantId, name });
   };
 
   const handleCopyLink = async () => {
@@ -90,24 +96,29 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
     }
   };
 
-  const handleDelete = async () => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete "${group.name}"?\n\nThe bills inside this group will NOT be deleted; they will simply be unlinked.`
-      )
-    ) {
-      return;
-    }
+  const handleDelete = () => {
+    setDeleteTarget({ type: 'group' });
+  };
 
-    setIsDeleting(true);
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleteLoading(true);
     try {
-      await deleteGroup(group.id);
-      onBack();
+      if (deleteTarget.type === 'group') {
+        await deleteGroup(group.id);
+        onBack();
+      } else if (deleteTarget.type === 'bill') {
+        const { useBillStore } = await import('@/store/useBillStore');
+        await useBillStore.getState().deleteBill(deleteTarget.id);
+        await fetchGroup(group.id);
+      } else if (deleteTarget.type === 'member') {
+        await removeGroupParticipant(group.id, deleteTarget.id);
+      }
     } catch (e) {
-      console.error('Failed to delete group:', e);
-      alert('Failed to delete group');
+      console.error('Failed to execute delete action:', e);
     } finally {
-      setIsDeleting(false);
+      setIsDeleteLoading(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -200,7 +211,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                   variant="ghost"
                   size="sm"
                   onClick={handleDelete}
-                  disabled={isDeleting}
+                  disabled={isDeleteLoading}
                   className="gap-1.5 h-8 text-xs font-semibold text-destructive hover:bg-destructive/10 rounded-xl"
                   title="Delete group"
                 >
@@ -537,13 +548,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                         {group.is_owner && (
                           <button
                             type="button"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm(`Are you sure you want to delete "${bill.name}"?`)) {
-                                const { useBillStore } = await import('@/store/useBillStore');
-                                await useBillStore.getState().deleteBill(bill.id);
-                                fetchGroup(group.id);
-                              }
+                              setDeleteTarget({ type: 'bill', id: bill.id, name: bill.name });
                             }}
                             className="p-1 rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
                             title="Delete Bill"
@@ -591,6 +598,40 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
           initialGroupId={group.id}
         />
       )}
+
+      <DeleteConfirmationModal
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={
+          deleteTarget?.type === 'group'
+            ? 'Delete Group?'
+            : deleteTarget?.type === 'bill'
+            ? 'Delete Bill?'
+            : 'Remove Participant?'
+        }
+        itemName={
+          deleteTarget?.type === 'group'
+            ? group.name
+            : deleteTarget?.name
+        }
+        description={
+          deleteTarget?.type === 'group'
+            ? `Are you sure you want to delete "${group.name}"?`
+            : deleteTarget?.type === 'bill'
+            ? `Are you sure you want to delete "${deleteTarget?.name || 'this bill'}"? This action cannot be undone.`
+            : `Are you sure you want to remove "${deleteTarget?.name}" from this group's participants?`
+        }
+        warningNotice={
+          deleteTarget?.type === 'group'
+            ? 'Bills inside this group will NOT be deleted; they will simply be unlinked and remain available in your bills list.'
+            : undefined
+        }
+        confirmText={deleteTarget?.type === 'member' ? 'Remove' : 'Delete'}
+        isLoading={isDeleteLoading}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
