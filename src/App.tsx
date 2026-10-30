@@ -186,11 +186,12 @@ function App() {
   // If the bill was opened from a group (outer -> group -> bill), going back returns to that group view.
   // Otherwise, it returns to the landing page (outer).
   const handleBackFromEditor = async () => {
+    // 1. Optimistic background save (non-blocking)
     if (!isReadOnly && (people.length > 0 || items.length > 0)) {
-      await saveToDb();
+      saveToDb().catch(() => {});
     }
 
-    // Stacked navigation: only return to group if navigated outer -> group -> bill
+    // 2. Instantly transition view for 0-latency UI feedback
     if (returnToGroupId) {
       const targetGroupId = returnToGroupId;
       setReturnToGroupId(null);
@@ -199,8 +200,8 @@ function App() {
       url.searchParams.set('groupId', targetGroupId);
       window.history.pushState({}, '', url.toString());
       setView('group');
-      await fetchGroup(targetGroupId);
-      useGroupStore.getState().fetchGroups();
+      fetchGroup(targetGroupId).catch(() => {});
+      useGroupStore.getState().fetchGroups().catch(() => {});
     } else {
       await handleBackToLanding(true);
     }
@@ -237,12 +238,12 @@ function App() {
     // 3. Reset active group in store
     useGroupStore.getState().clearCurrentGroup();
 
-    // 4. Save and sync history if bill had unsaved changes and not already saved
+    // 4. Save and sync history in background optimistically without freezing
     if (!alreadySaved && !isReadOnly && (people.length > 0 || items.length > 0)) {
-      await saveToDb();
+      saveToDb().catch(() => {});
     }
-    fetchHistory();
-    useGroupStore.getState().fetchGroups();
+    fetchHistory().catch(() => {});
+    useGroupStore.getState().fetchGroups().catch(() => {});
   };
 
   // Support native browser and mobile back/forward gestures

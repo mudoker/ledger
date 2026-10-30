@@ -50,13 +50,19 @@ describe("Custom Shadcn Delete Modal System", () => {
     expect(offendingFiles).toEqual([]);
   });
 
-  it("verifies landing page, bill configuration, and group overview use DeleteConfirmationModal", () => {
+  it("verifies all destructive operations across items, people, charges, bills, and groups use DeleteConfirmationModal", () => {
     const landingPage = fs.readFileSync(path.resolve(__dirname, "../src/components/layout/landing-page.tsx"), "utf8");
     const billConfig = fs.readFileSync(path.resolve(__dirname, "../src/components/summary/bill-configuration.tsx"), "utf8");
     const groupOverview = fs.readFileSync(path.resolve(__dirname, "../src/components/groups/group-overview.tsx"), "utf8");
+    const itemRow = fs.readFileSync(path.resolve(__dirname, "../src/components/items/item-row.tsx"), "utf8");
+    const personRow = fs.readFileSync(path.resolve(__dirname, "../src/components/people/person-row.tsx"), "utf8");
+    const billUploader = fs.readFileSync(path.resolve(__dirname, "../src/components/items/bill-uploader.tsx"), "utf8");
 
     expect(landingPage.includes("DeleteConfirmationModal")).toBe(true);
     expect(billConfig.includes("DeleteConfirmationModal")).toBe(true);
     expect(groupOverview.includes("DeleteConfirmationModal")).toBe(true);
+    expect(itemRow.includes("DeleteConfirmationModal")).toBe(true);
+    expect(personRow.includes("DeleteConfirmationModal")).toBe(true);
+    expect(billUploader.includes("DeleteConfirmationModal")).toBe(true);
   });
 });

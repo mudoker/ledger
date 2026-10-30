@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Settings, Plus, Trash2 } from "lucide-react";
 import { useBillStore, type Person, type GlobalCharge } from "@/store/useBillStore";
 import { getCurrencySymbol } from "@/lib/currency";
+import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 
 interface BillSettingsProps {
     people: Person[];
@@ -26,6 +28,7 @@ export function BillSettings({
     updateGlobalCharge,
     removeGlobalCharge,
 }: BillSettingsProps) {
+    const [chargeToDelete, setChargeToDelete] = useState<GlobalCharge | null>(null);
     const currency = useBillStore((state) => state.currency);
     const currSymbol = getCurrencySymbol(currency);
 
@@ -74,7 +77,7 @@ export function BillSettings({
                                             {charge.type === 'percent' ? '%' : currSymbol}
                                         </Button>
                                     </div>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeGlobalCharge(charge.id)}>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setChargeToDelete(charge)}>
                                         <Trash2 className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -88,6 +91,21 @@ export function BillSettings({
                     </div>
                 </div>
             </PopoverContent>
+
+            <DeleteConfirmationModal
+                open={Boolean(chargeToDelete)}
+                onOpenChange={(open) => !open && setChargeToDelete(null)}
+                title="Delete Charge?"
+                itemName={chargeToDelete?.name}
+                description={`Are you sure you want to remove the "${chargeToDelete?.name}" charge?`}
+                confirmText="Delete Charge"
+                onConfirm={() => {
+                    if (chargeToDelete) {
+                        removeGlobalCharge(chargeToDelete.id);
+                        setChargeToDelete(null);
+                    }
+                }}
+            />
         </Popover>
     );
 }

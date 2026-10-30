@@ -556,9 +556,38 @@ export const useBillStore = create<BillState>()(
                 if (state.isReadOnly) return null;
                 if (state.people.length === 0 && state.items.length === 0) return null;
 
-                // 1. Always persist to local IndexedDB first
+                // 1. Always persist to local IndexedDB first (instant & reliable)
                 const billId = (await get().saveToLocal()) || state.currentBillId;
                 if (!billId) return null;
+
+                // Optimistically update in-memory bill history immediately without waiting for server
+                const totals = calculateBillTotals({ items: state.items, globalCharges: state.globalCharges });
+                const updatedAt = new Date().toISOString();
+                set((s) => {
+                    const existingIndex = s.billHistory.findIndex((b) => b.id === billId);
+                    const historyItem: BillHistoryItem = {
+                        id: billId,
+                        name: s.billName,
+                        location: s.location || undefined,
+                        created_at: s.lastSaved || updatedAt,
+                        updated_at: updatedAt,
+                        totalAmount: totals.totalAmount,
+                        group_id: s.groupId,
+                        group_name: s.groupName,
+                        role: 'owner',
+                        is_owner: true,
+                        sharingStatus: s.sharingStatus || 'local',
+                        visibility: s.visibility || 'local',
+                        shareToken: s.shareToken,
+                    };
+                    const newHistory = existingIndex >= 0
+                        ? s.billHistory.map((b, i) => i === existingIndex ? { ...b, ...historyItem } : b)
+                        : [historyItem, ...s.billHistory];
+                    return {
+                        billHistory: newHistory,
+                        lastSaved: updatedAt,
+                    };
+                });
 
                 // 2. Check storage mode configuration
                 const storageMode = useAppSettingsStore.getState().storageMode;
@@ -572,59 +601,58 @@ export const useBillStore = create<BillState>()(
                     return billId;
                 }
 
-                // 3. Upload to cloud
-                set({ isSaving: true });
-                try {
-                    const response = await fetch('/api/bills', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: billId,
-                            isShared: state.sharingStatus === 'shared',
-                            visibility: state.visibility,
-                            shareToken: state.shareToken,
-                            data: {
-                                name: state.billName,
-                                location: state.location,
-                                people: state.people,
-                                items: state.items,
-                                globalCharges: state.globalCharges,
-                                hostId: state.hostId,
-                                qrCode: state.qrCode,
-                                currency: state.currency,
-                                groupId: state.groupId,
+                // 3. Background asynchronous cloud sync (non-blocking, zero UI freeze)
+                (async () => {
+                    try {
+                        const response = await fetch('/api/bills', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                id: billId,
+                                isShared: state.sharingStatus === 'shared',
                                 visibility: state.visibility,
                                 shareToken: state.shareToken,
-                            }
-                        })
-                    });
-
-                    const result = await response.json();
-                    if (result.id) {
-                        set({
-                            currentBillId: result.id,
-                            lastSaved: new Date().toISOString(),
-                            syncError: null,
-                        });
-                        get().fetchHistory();
-                        if (typeof window !== 'undefined') {
-                            const url = new URL(window.location.href);
-                            if (url.searchParams.get('id') !== result.id) {
-                                url.searchParams.set('id', result.id);
-                                if (state.groupId) {
-                                    url.searchParams.set('groupId', state.groupId);
+                                data: {
+                                    name: state.billName,
+                                    location: state.location,
+                                    people: state.people,
+                                    items: state.items,
+                                    globalCharges: state.globalCharges,
+                                    hostId: state.hostId,
+                                    qrCode: state.qrCode,
+                                    currency: state.currency,
+                                    groupId: state.groupId,
+                                    visibility: state.visibility,
+                                    shareToken: state.shareToken,
                                 }
-                                window.history.replaceState({}, '', url.toString());
+                            })
+                        });
+
+                        if (response.ok) {
+                            const result = await response.json();
+                            if (result.id) {
+                                set({
+                                    currentBillId: result.id,
+                                    syncError: null,
+                                });
+                                if (typeof window !== 'undefined') {
+                                    const url = new URL(window.location.href);
+                                    if (url.searchParams.get('id') !== result.id && url.searchParams.get('view') !== 'landing') {
+                                        url.searchParams.set('id', result.id);
+                                        if (state.groupId) {
+                                            url.searchParams.set('groupId', state.groupId);
+                                        }
+                                        window.history.replaceState({}, '', url.toString());
+                                    }
+                                }
                             }
                         }
-                        return result.id;
+                    } catch (error: any) {
+                        console.warn("Background cloud sync deferred:", error);
+                        set({ syncError: error.message || 'Cloud sync deferred' });
                     }
-                } catch (error: any) {
-                    console.error("Failed to save to database:", error);
-                    set({ syncError: error.message || 'Cloud sync failed' });
-                } finally {
-                    set({ isSaving: false });
-                }
+                })();
+
                 return billId;
             },
 
@@ -874,8 +902,9 @@ export const useBillStore = create<BillState>()(
                     const serverTime = new Date(result.updated_at).getTime();
                     const localTime = localBill ? new Date(localBill.updatedAt).getTime() : 0;
 
-                    // Only update if server is newer or local is already in sync
-                    if (!localBill || serverTime > localTime || (localBill.sharingStatus === 'shared' && serverTime >= localTime)) {
+                    // Only update in-memory state if no local bill was cached or server is strictly newer (e.g. edited elsewhere)
+                    const isStrictlyNewer = serverTime > (localTime + 1000);
+                    if (!localBill || isStrictlyNewer) {
                         set({
                             ...result.data,
                             billName: result.data.name || '',
@@ -892,8 +921,8 @@ export const useBillStore = create<BillState>()(
                             shareToken: result.shareToken || null,
                         });
 
-                        // Save downloaded bill to local storage
-                        await get().saveToLocal();
+                        // Save downloaded bill to local storage in background
+                        get().saveToLocal().catch(() => {});
                     }
                 } catch (error) {
                     if (localBill) {

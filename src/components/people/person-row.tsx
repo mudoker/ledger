@@ -10,6 +10,7 @@ import { formatCurrency } from "@/lib/format";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { cn } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/constants/colors";
+import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 
 interface PersonRowProps {
     person: Person;
@@ -26,6 +27,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
     const [editEmail, setEditEmail] = useState(person.email || '');
     const [editSponsor, setEditSponsor] = useState(person.sponsorAmount);
     const [editPaid, setEditPaid] = useState(person.paidAmount || 0);
+    const [showRemoveModal, setShowRemoveModal] = useState(false);
 
     const avatarGradient = getAvatarColor(person.name);
     const initials = getInitials(person.name);
@@ -269,13 +271,26 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl touch-manipulation active:scale-95 transition-colors"
-                        onClick={() => onRemove(person.id)}
+                        onClick={() => setShowRemoveModal(true)}
                         title="Remove participant"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                 </div>
             )}
+
+            <DeleteConfirmationModal
+                open={showRemoveModal}
+                onOpenChange={setShowRemoveModal}
+                title="Remove Participant?"
+                itemName={person.name}
+                description={`Are you sure you want to remove "${person.name}" from this bill? All their assigned item splits will be cleared.`}
+                confirmText="Remove"
+                onConfirm={() => {
+                    onRemove(person.id);
+                    setShowRemoveModal(false);
+                }}
+            />
         </div>
     );
 }

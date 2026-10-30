@@ -64,6 +64,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeletingBill, setIsDeletingBill] = useState(false);
+    const [chargeToDelete, setChargeToDelete] = useState<GlobalCharge | null>(null);
     const currency = useBillStore((state) => state.currency);
     const groupId = useBillStore((state) => state.groupId);
     const setGroupId = useBillStore((state) => state.setGroupId);
@@ -142,10 +143,10 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
         updateGlobalCharge(chargeId, { type: targetType, amount: newAmount });
     };
 
-    // Auto-save triggers
+    // Auto-save triggers - debounced background sync without cascading renders
     useEffect(() => {
-        setSaving(true);
         const timer = setTimeout(() => {
+            setSaving(true);
             onSave()
                 .then(() => {
                     setSaving(false);
@@ -156,7 +157,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                     console.warn('Auto-save error:', err);
                     setSaving(false);
                 });
-        }, 800);
+        }, 1000);
 
         return () => clearTimeout(timer);
     }, [billName, location, hostId, globalCharges, people, items, qrCode, onSave]);
@@ -432,7 +433,7 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                             variant="ghost"
                                             size="icon"
                                             className="h-8 w-8 sm:h-9 sm:w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors rounded-xl shrink-0 touch-manipulation active:scale-95"
-                                            onClick={() => removeGlobalCharge(charge.id)}
+                                            onClick={() => setChargeToDelete(charge)}
                                             title="Delete charge"
                                         >
                                             <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -580,6 +581,21 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                     }}
                 />
             )}
+
+            <DeleteConfirmationModal
+                open={Boolean(chargeToDelete)}
+                onOpenChange={(open) => !open && setChargeToDelete(null)}
+                title="Delete Charge?"
+                itemName={chargeToDelete?.name}
+                description={`Are you sure you want to remove the "${chargeToDelete?.name}" charge from this bill?`}
+                confirmText="Delete Charge"
+                onConfirm={() => {
+                    if (chargeToDelete) {
+                        removeGlobalCharge(chargeToDelete.id);
+                        setChargeToDelete(null);
+                    }
+                }}
+            />
         </Card>
     );
 }

@@ -9,6 +9,7 @@ import { useBillStore, type Item } from "@/store/useBillStore";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 
 export function ItemRow({ item }: { item: Item }) {
     const { updateItem, removeItem, people, isReadOnly } = useBillStore();
@@ -16,6 +17,7 @@ export function ItemRow({ item }: { item: Item }) {
     const [name, setName] = useState(item.name);
     const [price, setPrice] = useState(item.price);
     const [quantity, setQuantity] = useState(item.quantity?.toString() || "1");
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
 
     const handleSave = () => {
         const newQty = Math.max(1, parseInt(quantity) || 1);
@@ -196,7 +198,7 @@ export function ItemRow({ item }: { item: Item }) {
                                         <Button variant="ghost" size="sm" className="justify-start h-9 text-[10px] font-black uppercase tracking-widest gap-2 touch-manipulation active:scale-95" onClick={() => { setName(item.name); setPrice(item.price); setQuantity(item.quantity?.toString() || "1"); setIsEditing(true); }}>
                                             <Edit2 className="w-3.5 h-3.5" /> Edit Details
                                         </Button>
-                                        <Button variant="ghost" size="sm" className="justify-start h-9 text-[10px] font-black uppercase tracking-widest gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive touch-manipulation active:scale-95" onClick={() => removeItem(item.id)}>
+                                        <Button variant="ghost" size="sm" className="justify-start h-9 text-[10px] font-black uppercase tracking-widest gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive touch-manipulation active:scale-95" onClick={() => setShowDeleteModal(true)}>
                                             <Trash2 className="w-3.5 h-3.5" /> Delete Item
                                         </Button>
                                     </div>
@@ -427,6 +429,19 @@ export function ItemRow({ item }: { item: Item }) {
                     </div>
                 )}
             </div>
+
+            <DeleteConfirmationModal
+                open={showDeleteModal}
+                onOpenChange={setShowDeleteModal}
+                title="Delete Item?"
+                itemName={item.name}
+                description={`Are you sure you want to delete "${item.name}"? This action cannot be undone.`}
+                confirmText="Delete Item"
+                onConfirm={() => {
+                    removeItem(item.id);
+                    setShowDeleteModal(false);
+                }}
+            />
         </div>
     );
 }

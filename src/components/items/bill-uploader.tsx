@@ -8,6 +8,7 @@ import Tesseract from 'tesseract.js';
 import { useBillStore } from '@/store/useBillStore';
 import { Progress } from "@/components/ui/progress";
 import { parseReceiptText, type DetectedItem } from '@/lib/receipt-parser';
+import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 
 export interface BillUploaderProps {
     onScanComplete?: () => void;
@@ -21,6 +22,7 @@ export function BillUploader({ onScanComplete }: BillUploaderProps) {
     const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
     const [detectedCharges, setDetectedCharges] = useState<{ id: string, name: string, amount: number, type: 'fixed' | 'percent' }[]>([]);
     const [priceMode, setPriceMode] = useState<'total' | 'per-item'>('total');
+    const [showDiscardAllModal, setShowDiscardAllModal] = useState(false);
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -299,13 +301,25 @@ export function BillUploader({ onScanComplete }: BillUploaderProps) {
                         </ScrollArea>
                         <div className="flex justify-between items-center text-xs text-muted-foreground px-1 pt-1">
                             <span>Check quantities and prices before confirming.</span>
-                            <Button variant="ghost" size="sm" onClick={() => setDetectedItems([])} className="h-7 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1 px-2">
+                            <Button variant="ghost" size="sm" onClick={() => setShowDiscardAllModal(true)} className="h-7 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1 px-2">
                                 <Trash2 className="w-3 h-3" /> Discard All
                             </Button>
                         </div>
                     </div>
                 )}
             </CardContent>
+
+            <DeleteConfirmationModal
+                open={showDiscardAllModal}
+                onOpenChange={setShowDiscardAllModal}
+                title="Discard All Scanned Items?"
+                description={`Are you sure you want to discard all ${detectedItems.length} scanned items?`}
+                confirmText="Discard All"
+                onConfirm={() => {
+                    setDetectedItems([]);
+                    setShowDiscardAllModal(false);
+                }}
+            />
         </Card>
     );
 }
