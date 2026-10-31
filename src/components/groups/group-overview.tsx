@@ -154,7 +154,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden">
       {/* Top Header / Sticky Nav */}
-      <div className="flex-none px-4 sm:px-6 md:px-8 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
+      <div className="flex-none px-4 sm:px-6 md:px-8 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 pb-3 sm:pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
         <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <Button
             variant="ghost"
@@ -253,7 +253,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         </div>
 
         {/* Aggregated Overview Cards with colored active borders */}
-        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mt-5">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mt-3.5 sm:mt-5">
           <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border border-primary ring-1 ring-primary/40 shadow-xs relative overflow-hidden">
             <div className="flex items-center gap-1.5 text-primary text-[10px] font-bold uppercase tracking-wider mb-1">
               <Coins className="w-3.5 h-3.5" />
@@ -279,7 +279,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
       </div>
 
       {/* Main Content Area - pb-36 ensures ample clearance above floating bottom nav */}
-      <div className="flex-1 px-4 sm:px-6 md:px-8 pt-5 pb-36 w-full max-w-4xl mx-auto space-y-4 min-w-0">
+      <div className="flex-1 px-4 sm:px-6 md:px-8 pt-2 sm:pt-4 pb-36 w-full max-w-4xl mx-auto flex flex-col gap-3 sm:gap-4 min-w-0">
         {/* Desktop-Only Top Navigation Switcher (Mobile uses BottomNav) */}
         <div className="hidden md:flex items-center gap-1 bg-muted/40 p-1 rounded-2xl border border-border/50 w-fit">
           <button
@@ -612,16 +612,16 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
       <BottomNav
         items={[
           {
-            id: 'bills',
-            label: 'Bills',
-            icon: Receipt,
-            badge: group.total_bills,
-          },
-          {
             id: 'members',
             label: 'Members',
             icon: Users,
             badge: group.participants?.length || 0,
+          },
+          {
+            id: 'bills',
+            label: 'Bills',
+            icon: Receipt,
+            badge: group.total_bills,
           },
           {
             id: 'summary',
