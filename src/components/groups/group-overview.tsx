@@ -32,7 +32,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
-import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
 import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
@@ -43,6 +43,7 @@ import { GroupSummary } from './group-summary';
 import type { BillGroupDetail } from '@/../db/types';
 import { ParticipantCard } from '@/components/shared/participant-card';
 import { BottomNav } from '@/components/layout/bottom-nav';
+import { SwipeableCard } from '@/components/shared/swipeable-card';
 
 interface SwipeableBillCardProps {
   bill: BillGroupDetail['bills'][number];
@@ -52,103 +53,62 @@ interface SwipeableBillCardProps {
 }
 
 function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillCardProps) {
-  const controls = useAnimation();
-  const x = useMotionValue(0);
-
-  // Gradually reveal delete button as card is swiped left:
-  // At x = 0 (tap or resting), opacity is 0 (completely invisible, never overlaps or flashes on tap).
-  // As user swipes left (x moves from -10px to -60px), delete smoothly fades in underneath the sliding card.
-  const deleteOpacity = useTransform(x, [-10, -60], [0, 1]);
-  const deleteScale = useTransform(x, [-10, -60], [0.8, 1]);
-
-  const handleDragEnd = async (_: unknown, info: { offset: { x: number }; velocity: { x: number } }) => {
-    if (info.offset.x < -60 || info.velocity.x < -300) {
-      controls.start({ x: 0, transition: { type: 'spring', damping: 25, stiffness: 300 } });
-      onDelete();
-    } else {
-      controls.start({ x: 0, transition: { type: 'spring', damping: 25, stiffness: 300 } });
-    }
-  };
-
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 hover:border-foreground/30 transition-colors shadow-xs bg-card select-none">
-      {/* Background Delete Action (Revealed underneath only upon swiping left) */}
-      {isOwner && (
-        <motion.div
-          style={{ opacity: deleteOpacity, scale: deleteScale }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="absolute inset-y-0 right-0 w-24 bg-destructive text-destructive-foreground flex flex-col items-center justify-center gap-1 font-bold text-xs cursor-pointer select-none z-0 rounded-r-2xl"
-          title="Delete Bill"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Delete</span>
-        </motion.div>
-      )}
-
-      {/* Foreground Draggable Card Surface */}
-      <motion.div
-        style={{ x }}
-        drag={isOwner ? 'x' : false}
-        dragDirectionLock
-        dragConstraints={{ left: -96, right: 0 }}
-        dragElastic={0.12}
-        animate={controls}
-        onDragEnd={handleDragEnd}
-        onClick={onSelect}
-        className="relative z-10 bg-card hover:bg-muted/20 transition-colors p-3.5 sm:p-4 flex items-center justify-between cursor-pointer"
-      >
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0">
-            <Receipt className="w-4 h-4" />
+    <SwipeableCard
+      canDelete={isOwner}
+      onDelete={onDelete}
+      onClick={onSelect}
+      className="border-border/70 hover:border-foreground/30 shadow-xs"
+      contentClassName="p-3.5 sm:p-4 hover:bg-muted/20 flex items-center justify-between"
+    >
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0">
+          <Receipt className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          {/* Title Line (Full width for title) */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="font-bold text-sm sm:text-base text-foreground truncate">
+              {bill.name}
+            </h3>
+            <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
           </div>
-          <div className="min-w-0 flex-1">
-            {/* Title Line (Full width for title) */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <h3 className="font-bold text-sm sm:text-base text-foreground truncate">
-                {bill.name}
-              </h3>
-              <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-            </div>
 
-            {/* Subtitle Line (Timestamp, Local badge moved here, Location, Items) */}
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
-              <div className="flex items-center gap-1 shrink-0">
-                <Clock className="w-2.5 h-2.5 shrink-0" />
-                <span className="whitespace-nowrap">
-                  {formatConciseRelativeTime(bill.created_at || bill.updated_at)}
-                </span>
-              </div>
-              {(bill as any).isLocal && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1">
-                  <Shield className="w-2.5 h-2.5 text-emerald-500" />
-                  <span>Local</span>
-                </span>
-              )}
-              {bill.location && (
-                <div className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-[150px] shrink-0">
-                  <MapPin className="w-2.5 h-2.5 shrink-0" />
-                  <span className="truncate">{bill.location}</span>
-                </div>
-              )}
-              <span className="text-primary font-bold shrink-0 whitespace-nowrap">
-                • {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+          {/* Subtitle Line (Timestamp, Local badge moved here, Location, Items) */}
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
+            <div className="flex items-center gap-1 shrink-0">
+              <Clock className="w-2.5 h-2.5 shrink-0" />
+              <span className="whitespace-nowrap">
+                {formatConciseRelativeTime(bill.created_at || bill.updated_at)}
               </span>
             </div>
+            {(bill as any).isLocal && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1">
+                <Shield className="w-2.5 h-2.5 text-emerald-500" />
+                <span>Local</span>
+              </span>
+            )}
+            {bill.location && (
+              <div className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-[150px] shrink-0">
+                <MapPin className="w-2.5 h-2.5 shrink-0" />
+                <span className="truncate">{bill.location}</span>
+              </div>
+            )}
+            <span className="text-primary font-bold shrink-0 whitespace-nowrap">
+              • {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+            </span>
           </div>
         </div>
+      </div>
 
-        {/* Amount & Chevron */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-3">
-          <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
-            {formatCurrency(bill.totalAmount)}
-          </span>
-          <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
-        </div>
-      </motion.div>
-    </div>
+      {/* Amount & Chevron */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-3">
+        <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
+          {formatCurrency(bill.totalAmount)}
+        </span>
+        <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
+      </div>
+    </SwipeableCard>
   );
 }
 

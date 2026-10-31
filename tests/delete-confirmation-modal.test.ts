@@ -65,4 +65,20 @@ describe("Custom Shadcn Delete Modal System", () => {
     expect(personRow.includes("DeleteConfirmationModal")).toBe(true);
     expect(billUploader.includes("DeleteConfirmationModal")).toBe(true);
   });
+
+  it("verifies reusable SwipeableCard is used for bill and group cards on root page and group view", async () => {
+    const { SwipeableCard } = await import("@/components/shared/swipeable-card");
+    expect(SwipeableCard).toBeDefined();
+    expect(typeof SwipeableCard).toBe("function");
+
+    const landingCardSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/layout/landing-card.tsx"), "utf8");
+    const groupOverviewSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/groups/group-overview.tsx"), "utf8");
+
+    // Both root LandingCard and group SwipeableBillCard use SwipeableCard
+    expect(landingCardSrc.includes("SwipeableCard")).toBe(true);
+    expect(groupOverviewSrc.includes("SwipeableCard")).toBe(true);
+
+    // Visible trash button on the surface of LandingCard is eliminated in favor of swipe-to-delete
+    expect(landingCardSrc.includes("<button\n                                type=\"button\"\n                                onClick={(e) => {\n                                    e.stopPropagation();\n                                    onDelete();")).toBe(false);
+  });
 });
