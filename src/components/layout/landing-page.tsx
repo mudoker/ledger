@@ -4,7 +4,7 @@ import { useGroupStore } from "@/store/useGroupStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Clock, ChevronRight, Receipt, Play, History, MapPin, Shield, LogIn, Sparkles, FolderPlus, Folder } from "lucide-react";
+import { Plus, Clock, ChevronRight, Receipt, Play, History, MapPin, Shield, LogIn, Sparkles, FolderPlus, Folder, Loader2 } from "lucide-react";
 import { formatCurrency } from '@/lib/format';
 import { motion } from 'framer-motion';
 import { IS_DEV } from '@/lib/env';
@@ -16,7 +16,7 @@ import { CreateGroupModal } from '@/components/shared/create-group-modal';
 import { BottomSearchBar } from '@/components/shared/bottom-search-bar';
 import { FuzzySearchModal } from '@/components/shared/fuzzy-search-modal';
 import { DeleteConfirmationModal } from '@/components/shared/delete-confirmation-modal';
-import { LandingCard } from '@/components/layout/landing-card';
+import { LandingCard, LandingCardSkeleton } from '@/components/layout/landing-card';
 import { calculateBillTotals } from '@/lib/common-data-model';
 
 interface LandingPageProps {
@@ -30,6 +30,7 @@ interface LandingPageProps {
 export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo, onOpenSettings }: LandingPageProps) {
     const {
         billHistory,
+        isHistoryLoading,
         fetchHistory,
         isHydrated,
         people,
@@ -43,8 +44,8 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
         deleteBill,
         resetBill,
     } = useBillStore();
-    const { groups, fetchGroups, deleteGroup } = useGroupStore();
-    const { user, signInWithGoogle, signOut } = useAuthStore();
+    const { groups, isLoading: isGroupsLoading, fetchGroups, deleteGroup } = useGroupStore();
+    const { user, isLoading: isAuthLoading, isInitialized, signInWithGoogle, signOut } = useAuthStore();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -222,29 +223,50 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                 <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                         {user ? (
-                            <div className="flex items-center p-0.5 bg-muted rounded-xl border border-border/60">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('bills')}
-                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                                        activeTab === 'bills'
-                                            ? 'bg-card text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                    }`}
-                                >
-                                    Bills ({billHistory.length + (hasActiveDraft ? 1 : 0)})
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('groups')}
-                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                                        activeTab === 'groups'
-                                            ? 'bg-card text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                    }`}
-                                >
-                                    Groups ({groups.length})
-                                </button>
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center p-0.5 bg-muted rounded-xl border border-border/60">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('bills')}
+                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            activeTab === 'bills'
+                                                ? 'bg-card text-foreground shadow-sm'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        <span>Bills</span>
+                                        <span className="text-[11px] opacity-80">
+                                            ({isHistoryLoading && billHistory.length === 0 && !hasActiveDraft
+                                                ? '…'
+                                                : billHistory.length + (hasActiveDraft ? 1 : 0)})
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('groups')}
+                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            activeTab === 'groups'
+                                                ? 'bg-card text-foreground shadow-sm'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        <span>Groups</span>
+                                        <span className="text-[11px] opacity-80">
+                                            ({isGroupsLoading && groups.length === 0
+                                                ? '…'
+                                                : groups.length})
+                                        </span>
+                                    </button>
+                                </div>
+                                {(isHistoryLoading || isGroupsLoading) && (
+                                    <span
+                                        className="inline-flex items-center gap-1.5 text-[9px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 tracking-wider animate-pulse shrink-0"
+                                        title="Loading latest data from database"
+                                    >
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />
+                                        <span>Syncing</span>
+                                    </span>
+                                )}
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
@@ -252,6 +274,9 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                 <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-muted-foreground">
                                     Recent Transactions
                                 </h2>
+                                {(!isInitialized && isAuthLoading) && (
+                                    <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                                )}
                             </div>
                         )}
                     </div>
@@ -306,66 +331,96 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                         className="grid gap-3 sm:gap-4 pb-8 sm:pb-12"
                     >
                         {!user ? (
-                            <div className="flex flex-col items-center justify-center py-10 sm:py-14 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
-                                <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                                    <Shield className="w-6 h-6 sm:w-8 sm:h-8" />
-                                </div>
-                                <div className="space-y-1 max-w-sm">
-                                    <p className="text-foreground font-bold text-sm">Protected User Workspace</p>
-                                    <p className="text-xs text-muted-foreground leading-relaxed">
-                                        Sign in with Google to view and sync your bills and groups.
-                                    </p>
-                                </div>
-                                <Button
-                                    onClick={signInWithGoogle}
-                                    size="sm"
-                                    className="gap-2 rounded-xl text-xs font-bold"
-                                >
-                                    <LogIn className="w-3.5 h-3.5" /> Sign In with Google
-                                </Button>
-                            </div>
-                        ) : activeTab === 'groups' ? (
-                            groups.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
-                                    <Folder className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
-                                    <div className="space-y-1">
-                                        <p className="text-muted-foreground font-medium italic text-sm">No bill groups found.</p>
-                                        <p className="text-xs text-muted-foreground/60">Create a group to track multi-bill vacations, events, or shared living expenses!</p>
-                                    </div>
-                                    <Button
-                                        onClick={() => setIsCreateGroupModalOpen(true)}
-                                        size="sm"
-                                        variant="outline"
-                                        className="rounded-xl font-bold text-xs gap-1.5"
-                                    >
-                                        <FolderPlus className="w-3.5 h-3.5 text-primary" /> Create First Group
-                                    </Button>
+                            (!isInitialized && isAuthLoading) ? (
+                                <div className="space-y-3">
+                                    <LandingCardSkeleton hint="Verifying session..." />
+                                    <LandingCardSkeleton />
                                 </div>
                             ) : (
-                                groups.map((group) => (
-                                    <LandingCard
-                                        key={group.id}
-                                        id={group.id}
-                                        title={group.name}
-                                        amount={group.total_amount}
-                                        description={group.description}
-                                        icon={<Folder className="w-5 h-5 sm:w-6 sm:h-6 transition-colors group-hover:text-inherit" />}
-                                        iconVariant="primary"
-                                        role={group.is_owner ? 'owner' : 'participant'}
-                                        timestamp={group.updated_at}
-                                        onClick={() => onSelectGroup?.(group.id)}
-                                        onDelete={group.is_owner ? () => setDeleteTarget({ type: 'group', id: group.id, name: group.name }) : undefined}
-                                    />
-                                ))
+                                <div className="flex flex-col items-center justify-center py-10 sm:py-14 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
+                                    <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                                        <Shield className="w-6 h-6 sm:w-8 sm:h-8" />
+                                    </div>
+                                    <div className="space-y-1 max-w-sm">
+                                        <p className="text-foreground font-bold text-sm">Protected User Workspace</p>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Sign in with Google to view and sync your bills and groups.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        onClick={signInWithGoogle}
+                                        size="sm"
+                                        className="gap-2 rounded-xl text-xs font-bold"
+                                    >
+                                        <LogIn className="w-3.5 h-3.5" /> Sign In with Google
+                                    </Button>
+                                </div>
+                            )
+                        ) : activeTab === 'groups' ? (
+                            groups.length === 0 ? (
+                                isGroupsLoading ? (
+                                    <div className="space-y-3">
+                                        <LandingCardSkeleton hint="Loading groups from database..." />
+                                        <LandingCardSkeleton />
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
+                                        <Folder className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
+                                        <div className="space-y-1">
+                                            <p className="text-muted-foreground font-medium italic text-sm">No bill groups found.</p>
+                                            <p className="text-xs text-muted-foreground/60">Create a group to track multi-bill vacations, events, or shared living expenses!</p>
+                                        </div>
+                                        <Button
+                                            onClick={() => setIsCreateGroupModalOpen(true)}
+                                            size="sm"
+                                            variant="outline"
+                                            className="rounded-xl font-bold text-xs gap-1.5"
+                                        >
+                                            <FolderPlus className="w-3.5 h-3.5 text-primary" /> Create First Group
+                                        </Button>
+                                    </div>
+                                )
+                            ) : (
+                                <>
+                                    {groups.map((group) => (
+                                        <LandingCard
+                                            key={group.id}
+                                            id={group.id}
+                                            title={group.name}
+                                            amount={group.total_amount}
+                                            description={group.description}
+                                            icon={<Folder className="w-5 h-5 sm:w-6 sm:h-6 transition-colors group-hover:text-inherit" />}
+                                            iconVariant="primary"
+                                            role={group.is_owner ? 'owner' : 'participant'}
+                                            timestamp={group.updated_at}
+                                            onClick={() => onSelectGroup?.(group.id)}
+                                            onDelete={group.is_owner ? () => setDeleteTarget({ type: 'group', id: group.id, name: group.name }) : undefined}
+                                        />
+                                    ))}
+                                    {isGroupsLoading && (
+                                        <div className="pt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground/60">
+                                            <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                                            <span>Updating groups...</span>
+                                        </div>
+                                    )}
+                                </>
                             )
                         ) : billHistory.length === 0 && !hasActiveDraft ? (
-                            <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
-                                <Receipt className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
-                                <div className="space-y-1">
-                                    <p className="text-muted-foreground font-medium italic text-sm">No bills found for your account.</p>
-                                    <p className="text-xs text-muted-foreground/60">Create a bill or have a friend add your email to their bill!</p>
+                            isHistoryLoading ? (
+                                <div className="space-y-3">
+                                    <LandingCardSkeleton hint="Loading bills from database..." />
+                                    <LandingCardSkeleton />
+                                    <LandingCardSkeleton />
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12 sm:py-20 text-center space-y-3 sm:space-y-4 rounded-3xl border-2 border-dashed bg-muted/20 px-4">
+                                    <Receipt className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/30" />
+                                    <div className="space-y-1">
+                                        <p className="text-muted-foreground font-medium italic text-sm">No bills found for your account.</p>
+                                        <p className="text-xs text-muted-foreground/60">Create a bill or have a friend add your email to their bill!</p>
+                                    </div>
+                                </div>
+                            )
                         ) : (
                             <>
                                 {hasActiveDraft && (
@@ -412,6 +467,12 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         onDelete={() => setDeleteTarget({ type: 'bill', id: bill.id, name: bill.name || `Bill ${bill.id.slice(0, 8)}` })}
                                     />
                                 ))}
+
+                                {isHistoryLoading && (
+                                    <div className="space-y-3 pt-1">
+                                        <LandingCardSkeleton hint="Syncing other bills..." />
+                                    </div>
+                                )}
                             </>
                         )}
                     </motion.div>

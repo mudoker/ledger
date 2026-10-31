@@ -238,3 +238,36 @@ export function LandingCard({
         </Card>
     );
 }
+
+export function LandingCardSkeleton({ hint }: { hint?: string }) {
+    return (
+        <Card className="rounded-2xl sm:rounded-3xl border border-border/50 shadow-xs bg-card/60 select-none pointer-events-none">
+            <CardContent className="p-3.5 sm:p-4">
+                <div className="flex items-center justify-between gap-3 sm:gap-4">
+                    {/* Left Icon Placeholder */}
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-muted/70 animate-pulse shrink-0" />
+
+                    {/* Middle Info Placeholders */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                        <div className="h-4 w-32 sm:w-48 bg-muted/80 rounded-md animate-pulse" />
+                        <div className="flex items-center gap-2">
+                            <div className="h-3 w-14 sm:w-18 bg-muted/50 rounded-full animate-pulse" />
+                            <div className="h-3 w-20 sm:w-24 bg-muted/40 rounded-full animate-pulse" />
+                            {hint && (
+                                <span className="text-[10px] text-muted-foreground/60 italic animate-pulse">
+                                    {hint}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Right Amount Placeholder */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        <div className="h-4 sm:h-5 w-16 sm:w-20 bg-muted/70 rounded-md animate-pulse" />
+                        <div className="w-4 h-4 rounded bg-muted/30 animate-pulse" />
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}

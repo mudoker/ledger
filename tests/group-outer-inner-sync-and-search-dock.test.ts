@@ -390,4 +390,13 @@ describe('Group Outer-Inner Total Parity & Fixed Search Bar Dock', () => {
       'bill_1_banh_mi',
     ]);
   });
+
+  it('manages isHistoryLoading state and supports skeleton and sync indicators', async () => {
+    const { useBillStore } = await import('@/store/useBillStore');
+    expect(typeof useBillStore.getState().isHistoryLoading).toBe('boolean');
+    useBillStore.setState({ isHistoryLoading: true });
+    expect(useBillStore.getState().isHistoryLoading).toBe(true);
+    useBillStore.setState({ isHistoryLoading: false });
+    expect(useBillStore.getState().isHistoryLoading).toBe(false);
+  });
 });

@@ -72,6 +72,7 @@ interface BillState {
     lastSaved: string | null;
     isSaving: boolean;
     billHistory: BillHistoryItem[];
+    isHistoryLoading: boolean;
     dbStatus: DbStatus;
     billName: string;
     location: string;
@@ -135,6 +136,7 @@ export const useBillStore = create<BillState>()(
             lastSaved: null,
             isSaving: false,
             billHistory: [],
+            isHistoryLoading: true,
             dbStatus: {
                 configured: false,
                 type: 'sqlite',
@@ -1022,6 +1024,7 @@ export const useBillStore = create<BillState>()(
             },
 
             fetchHistory: async () => {
+                set({ isHistoryLoading: true });
                 get().fetchDbStatus();
                 const historyMap = new Map<string, BillHistoryItem>();
 
@@ -1056,6 +1059,16 @@ export const useBillStore = create<BillState>()(
                             visibility: b.visibility,
                             shareToken: b.shareToken,
                         });
+                    }
+
+                    // Fast initial display: if local bills exist, populate immediately
+                    if (historyMap.size > 0) {
+                        const localSorted = Array.from(historyMap.values()).sort((a, b) => {
+                            const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+                            const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+                            return timeB !== timeA ? timeB - timeA : a.id.localeCompare(b.id);
+                        });
+                        set({ billHistory: localSorted });
                     }
                 } catch (e) {
                     console.warn('Failed to load local bills for history:', e);
@@ -1098,12 +1111,14 @@ export const useBillStore = create<BillState>()(
                     }
                 } catch {
                     // Offline or server unavailable: local bills will still display!
+                } finally {
+                    const sorted = Array.from(historyMap.values()).sort((a, b) => {
+                        const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+                        const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+                        return timeB !== timeA ? timeB - timeA : a.id.localeCompare(b.id);
+                    });
+                    set({ billHistory: sorted, isHistoryLoading: false });
                 }
-
-                const sorted = Array.from(historyMap.values()).sort(
-                    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-                );
-                set({ billHistory: sorted });
             },
 
             fetchDbStatus: async () => {

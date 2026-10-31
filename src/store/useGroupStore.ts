@@ -44,6 +44,13 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       const pendingOps = await localDb.getPendingOps().catch(() => []);
       const pendingDeleteIds = new Set(pendingOps.filter(op => op.type === 'delete').map(op => op.billId));
       localBills = allLocalBills.filter(b => !pendingDeleteIds.has(b.id));
+
+      if (localGroups.length > 0 && get().groups.length === 0) {
+        const fastSummaries = aggregateGroupSummaries([], localGroups, localBills);
+        if (fastSummaries.length > 0) {
+          set({ groups: fastSummaries });
+        }
+      }
     } catch (e) {
       console.warn('Failed to load local groups/bills:', e);
     }
@@ -59,29 +66,28 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       }
     } catch (e: unknown) {
       fetchError = e instanceof Error ? e.message : 'Network error';
+    } finally {
+      // Unified group summaries aggregation
+      const unifiedSummaries = aggregateGroupSummaries(serverGroups, localGroups, localBills);
+
+      // Reconcile with currently loaded currentGroup if available in memory
+      const current = get().currentGroup;
+      const reconciledSummaries = current
+        ? unifiedSummaries.map(g => (g.id === current.id ? {
+            ...g,
+            total_amount: current.total_amount,
+            total_bills: current.total_bills,
+            total_items: current.total_items,
+            participants: current.participants || g.participants,
+          } : g))
+        : unifiedSummaries;
+
+      if (reconciledSummaries.length === 0 && fetchError && serverGroups.length === 0 && localGroups.length === 0) {
+        set({ error: fetchError, isLoading: false, groups: [] });
+      } else {
+        set({ groups: reconciledSummaries, isLoading: false, error: null });
+      }
     }
-
-    // Unified group summaries aggregation
-    const unifiedSummaries = aggregateGroupSummaries(serverGroups, localGroups, localBills);
-
-    // Reconcile with currently loaded currentGroup if available in memory
-    const current = get().currentGroup;
-    const reconciledSummaries = current
-      ? unifiedSummaries.map(g => (g.id === current.id ? {
-          ...g,
-          total_amount: current.total_amount,
-          total_bills: current.total_bills,
-          total_items: current.total_items,
-          participants: current.participants || g.participants,
-        } : g))
-      : unifiedSummaries;
-
-    if (reconciledSummaries.length === 0 && fetchError && serverGroups.length === 0 && localGroups.length === 0) {
-      set({ error: fetchError, isLoading: false, groups: [] });
-      return;
-    }
-
-    set({ groups: reconciledSummaries, isLoading: false, error: null });
   },
 
   fetchGroup: async (id: string) => {
