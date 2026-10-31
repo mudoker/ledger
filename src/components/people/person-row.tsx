@@ -11,6 +11,7 @@ import { CurrencyInput } from "@/components/shared/currency-input";
 import { cn } from "@/lib/utils";
 import { getAvatarColor, getInitials } from "@/constants/colors";
 import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
+import { ParticipantCard } from "@/components/shared/participant-card";
 
 interface PersonRowProps {
     person: Person;
@@ -157,63 +158,19 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
     }
 
     return (
-        <div
-            onClick={() => !isReadOnly && handleStartEdit()}
-            className={cn(
-                "group relative flex items-center justify-between gap-3 p-3 bg-card/70 backdrop-blur-xs border border-border/60 rounded-2xl hover:bg-card hover:border-foreground/20 hover:shadow-sm transition-all duration-200 animate-in fade-in slide-in-from-bottom-2",
-                !isReadOnly && "cursor-pointer"
-            )}
-            style={{ animationDelay: `${index * 40}ms` }}
-        >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-                {/* Modern Gradient Avatar with Crown for Host */}
-                <div className="relative shrink-0">
-                    <div className={cn(
-                        "w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-2xs border border-white/20 select-none",
-                        avatarGradient
-                    )}>
-                        {initials}
-                    </div>
-                    {isHost && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-xs border border-background">
-                            <Crown className="w-2.5 h-2.5" />
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm tracking-tight text-foreground truncate" title={person.name}>
-                            {person.name}
-                        </span>
-
-                        {/* Host Badge */}
-                        {isHost && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-semibold shrink-0">
-                                Host
-                            </span>
-                        )}
-
-                        {/* Registered Member Badge (Only if app user) */}
-                        {isAppMember && !isHost && (
-                            <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[10px] font-medium shrink-0"
-                                title={person.email ? `Registered user: ${person.email}` : "App User"}
-                            >
-                                <User className="w-2.5 h-2.5" /> Member
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Email subtitle if present */}
-                    {person.email && (
-                        <span className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
-                            {person.email}
-                        </span>
-                    )}
-
-                    {/* Financial Status Indicators */}
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+        <>
+            <ParticipantCard
+                name={person.name}
+                email={person.email}
+                isHost={isHost}
+                isAppMember={isAppMember}
+                index={index}
+                isReadOnly={isReadOnly}
+                onClick={!isReadOnly ? handleStartEdit : undefined}
+                onEdit={!isReadOnly ? handleStartEdit : undefined}
+                onRemove={!isReadOnly ? () => setShowRemoveModal(true) : undefined}
+                financialInfo={
+                    <>
                         {isHost && (
                             <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-foreground/[0.04] rounded-full border border-foreground/[0.08] text-[10px] font-medium text-muted-foreground">
                                 <span>Pays remaining</span>
@@ -246,38 +203,17 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/40 hover:bg-muted text-[10px] font-medium text-muted-foreground hover:text-foreground border border-border/40 transition-colors touch-manipulation active:scale-95"
-                                onClick={handleStartEdit}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEdit();
+                                }}
                             >
                                 <Plus className="w-2.5 h-2.5" /> Add sponsor / paid
                             </button>
                         )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Quick Actions */}
-            {!isReadOnly && (
-                <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-xl touch-manipulation active:scale-95 transition-colors"
-                        onClick={handleStartEdit}
-                        title="Edit participant"
-                    >
-                        <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl touch-manipulation active:scale-95 transition-colors"
-                        onClick={() => setShowRemoveModal(true)}
-                        title="Remove participant"
-                    >
-                        <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                </div>
-            )}
+                    </>
+                }
+            />
 
             <DeleteConfirmationModal
                 open={showRemoveModal}
@@ -291,6 +227,6 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                     setShowRemoveModal(false);
                 }}
             />
-        </div>
+        </>
     );
 }
