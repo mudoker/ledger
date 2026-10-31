@@ -284,4 +284,110 @@ describe('Group Outer-Inner Total Parity & Fixed Search Bar Dock', () => {
     expect(outerGroup.total_bills).toBe(innerTotalBills);
     expect(outerGroup.total_amount).toBe(innerTotalAmount);
   });
+
+  it('guarantees fixed, stable bill ordering in group view even when bills are edited or updated', () => {
+    // 3 bills created at sequential times:
+    // Bill 1: Banh mi breakfast (created 9 hours ago)
+    // Bill 2: Mongo Land afternoon (created 5 hours ago)
+    // Bill 3: Ga Nuong dinner (created 1 hour ago)
+    const t0 = new Date('2026-10-31T01:00:00Z').toISOString(); // 9h ago
+    const t1 = new Date('2026-10-31T05:00:00Z').toISOString(); // 5h ago
+    const t2 = new Date('2026-10-31T09:00:00Z').toISOString(); // 1h ago
+
+    const localBills: LocalBillRecord[] = [
+      {
+        id: 'bill_1_banh_mi',
+        name: "Banh mi xiu mai chen'",
+        location: 'Da Lat',
+        currency: 'VND',
+        hostId: null,
+        qrCode: null,
+        groupId: 'grp_dalat',
+        groupName: 'Da Lat Mong Mo',
+        ownerId: 'user_quoc',
+        createdAt: t0,
+        updatedAt: t0,
+        items: [{ id: 'i1', name: 'Banh mi', price: 360000, quantity: 1, assignments: {} }],
+        people: [],
+        globalCharges: [],
+        sharingStatus: 'local',
+        visibility: 'local',
+        shareToken: null,
+        lastSyncedAt: null,
+        syncError: null,
+      },
+      {
+        id: 'bill_2_mongo',
+        name: 'Mongo Land',
+        location: 'Da Lat',
+        currency: 'VND',
+        hostId: null,
+        qrCode: null,
+        groupId: 'grp_dalat',
+        groupName: 'Da Lat Mong Mo',
+        ownerId: 'user_quoc',
+        createdAt: t1,
+        updatedAt: t1,
+        items: [{ id: 'i2', name: 'Ticket', price: 700000, quantity: 1, assignments: {} }],
+        people: [],
+        globalCharges: [],
+        sharingStatus: 'local',
+        visibility: 'local',
+        shareToken: null,
+        lastSyncedAt: null,
+        syncError: null,
+      },
+      {
+        id: 'bill_3_ga_nuong',
+        name: 'Ga Nuong Com Lam',
+        location: 'Da Lat',
+        currency: 'VND',
+        hostId: null,
+        qrCode: null,
+        groupId: 'grp_dalat',
+        groupName: 'Da Lat Mong Mo',
+        ownerId: 'user_quoc',
+        createdAt: t2,
+        updatedAt: t2,
+        items: [{ id: 'i3', name: 'Chicken', price: 590000, quantity: 1, assignments: {} }],
+        people: [],
+        globalCharges: [],
+        sharingStatus: 'local',
+        visibility: 'local',
+        shareToken: null,
+        lastSyncedAt: null,
+        syncError: null,
+      },
+    ];
+
+    // Initial order should be newest created first: Ga Nuong -> Mongo Land -> Banh mi
+    const initialMerged = mergeBillsForGroup([], localBills, 'grp_dalat');
+    expect(initialMerged.map(b => b.id)).toEqual([
+      'bill_3_ga_nuong',
+      'bill_2_mongo',
+      'bill_1_banh_mi',
+    ]);
+
+    // Now user edits "Banh mi xiu mai chen'" at 10:00:00Z (after Ga Nuong)
+    // In previous buggy version (ordering by updated_at DESC), Banh mi jumped to the top (#1).
+    // In fixed version (ordering by created_at DESC), Banh mi remains at its fixed place (#3)!
+    const tEdited = new Date('2026-10-31T10:00:00Z').toISOString();
+    localBills[0].updatedAt = tEdited;
+
+    const afterEditMerged = mergeBillsForGroup([], localBills, 'grp_dalat');
+    expect(afterEditMerged.map(b => b.id)).toEqual([
+      'bill_3_ga_nuong',
+      'bill_2_mongo',
+      'bill_1_banh_mi',
+    ]);
+
+    // Even if Mongo Land is also touched or edited later, the list order is completely fixed and stable
+    localBills[1].updatedAt = new Date('2026-10-31T11:00:00Z').toISOString();
+    const afterSecondEditMerged = mergeBillsForGroup([], localBills, 'grp_dalat');
+    expect(afterSecondEditMerged.map(b => b.id)).toEqual([
+      'bill_3_ga_nuong',
+      'bill_2_mongo',
+      'bill_1_banh_mi',
+    ]);
+  });
 });

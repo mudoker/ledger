@@ -118,7 +118,7 @@ function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillC
               <div className="flex items-center gap-1 shrink-0">
                 <Clock className="w-2.5 h-2.5 shrink-0" />
                 <span className="whitespace-nowrap">
-                  {formatConciseRelativeTime(bill.updated_at)}
+                  {formatConciseRelativeTime(bill.created_at || bill.updated_at)}
                 </span>
               </div>
               {(bill as any).isLocal && (
@@ -232,12 +232,19 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
     }
   };
 
-  // Filter bills and items by in-page search query
+  // Filter bills and items by in-page search query with fixed deterministic ordering by creation time
   const filteredBills = useMemo(() => {
-    if (!filterQuery.trim()) return group.bills;
+    const sorted = [...(group.bills || [])].sort((a, b) => {
+      const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+      const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      return a.id.localeCompare(b.id);
+    });
+
+    if (!filterQuery.trim()) return sorted;
     const q = filterQuery.toLowerCase().trim();
 
-    return group.bills
+    return sorted
       .map((bill) => {
         const matchesBill =
           bill.name.toLowerCase().includes(q) ||

@@ -704,7 +704,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       SELECT id, name, location, currency, host_id, created_at, updated_at
       FROM bills
       WHERE group_id = ?
-      ORDER BY updated_at DESC
+      ORDER BY created_at DESC, id ASC
     `).all(id) as unknown as Array<{
       id: string;
       name: string | null;

@@ -235,9 +235,14 @@ export function mergeBillsForGroup(
     }
   }
 
-  return Array.from(billMap.values()).sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  );
+  return Array.from(billMap.values()).sort((a, b) => {
+    const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
+    const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+    if (timeB !== timeA) {
+      return timeB - timeA;
+    }
+    return a.id.localeCompare(b.id);
+  });
 }
 
 /**
