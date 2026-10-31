@@ -8,17 +8,19 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { LogOut, Sparkles } from 'lucide-react';
+import { LogOut, Sparkles, Settings } from 'lucide-react';
 import { IS_DEV } from '@/lib/env';
 import { DevLoginModal } from '@/components/layout/dev-login-modal';
 
 interface AuthButtonProps {
   avatarOnly?: boolean;
+  onOpenSettings?: () => void;
 }
 
-export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
+export function AuthButton({ avatarOnly = true, onOpenSettings }: AuthButtonProps = {}) {
   const { user, isLoading, signOut } = useAuthStore();
   const [isDevLoginOpen, setIsDevLoginOpen] = useState(false);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   // Do not render anything in header when loading or when user is not logged in
   if (isLoading || !user) {
@@ -31,7 +33,7 @@ export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
 
   return (
     <>
-      <Popover>
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -81,6 +83,21 @@ export function AuthButton({ avatarOnly = true }: AuthButtonProps = {}) {
             </div>
 
             <div className="space-y-1">
+              {onOpenSettings && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start text-xs font-bold gap-2 text-foreground hover:bg-muted h-8"
+                  onClick={() => {
+                    setPopoverOpen(false);
+                    onOpenSettings();
+                  }}
+                >
+                  <Settings className="w-4 h-4 text-primary" />
+                  App Settings
+                </Button>
+              )}
+
               {IS_DEV && (
                 <Button
                   variant="ghost"
