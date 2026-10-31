@@ -41,6 +41,8 @@ import { DeleteConfirmationModal } from '@/components/shared/delete-confirmation
 import { ModeToggle } from '@/components/layout/mode-toggle';
 import { GroupSummary } from './group-summary';
 import type { BillGroupDetail } from '@/../db/types';
+import { ParticipantCard } from '@/components/shared/participant-card';
+import { BottomNav } from '@/components/layout/bottom-nav';
 
 interface GroupOverviewProps {
   group: BillGroupDetail;
@@ -150,15 +152,15 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   }, [group.bills, filterQuery]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-background">
+    <div className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden">
       {/* Top Header / Sticky Nav */}
       <div className="flex-none px-4 sm:px-6 md:px-8 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={onBack}
-            className="gap-1.5 h-8 text-xs font-bold -ml-2 text-muted-foreground hover:text-foreground rounded-xl"
+            className="gap-1.5 h-8 text-xs font-bold -ml-2 text-muted-foreground hover:text-foreground rounded-xl shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>All Groups</span>
@@ -276,60 +278,46 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         </div>
       </div>
 
-      {/* Main Content Area - pb-36 ensures ample clearance above floating bottom search bar */}
-      <div className="flex-1 px-4 sm:px-6 md:px-8 pt-5 pb-36 w-full max-w-4xl mx-auto space-y-4">
-        {/* Top-Level Navigation Switcher: Bills vs Summary */}
-        <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-3">
-          <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-2xl border border-border/50">
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('bills')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                activeMainTab === 'bills'
-                  ? 'bg-background text-foreground shadow-2xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Receipt className="w-3.5 h-3.5 text-primary" />
-              <span>Bills ({group.total_bills})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('members')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                activeMainTab === 'members'
-                  ? 'bg-background text-foreground shadow-2xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-primary" />
-              <span>Members ({group.participants?.length || 0})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('summary')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                activeMainTab === 'summary'
-                  ? 'bg-background text-foreground shadow-2xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Scale className="w-3.5 h-3.5 text-primary" />
-              <span>Summary</span>
-            </button>
-          </div>
-
-          {activeMainTab === 'bills' && onNewBill && (
-            <Button
-              onClick={() => setIsCreateBillModalOpen(true)}
-              size="sm"
-              className="gap-1.5 h-8 rounded-xl font-bold text-xs bg-foreground text-background hover:bg-foreground/90 shrink-0 shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Add Bill to Group</span>
-              <span className="sm:hidden">Add Bill</span>
-            </Button>
-          )}
+      {/* Main Content Area - pb-36 ensures ample clearance above floating bottom nav */}
+      <div className="flex-1 px-4 sm:px-6 md:px-8 pt-5 pb-36 w-full max-w-4xl mx-auto space-y-4 min-w-0">
+        {/* Desktop-Only Top Navigation Switcher (Mobile uses BottomNav) */}
+        <div className="hidden md:flex items-center gap-1 bg-muted/40 p-1 rounded-2xl border border-border/50 w-fit">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('bills')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeMainTab === 'bills'
+                ? 'bg-background text-foreground shadow-2xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5 text-primary" />
+            <span>Bills ({group.total_bills})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('members')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeMainTab === 'members'
+                ? 'bg-background text-foreground shadow-2xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 text-primary" />
+            <span>Members ({group.participants?.length || 0})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('summary')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeMainTab === 'summary'
+                ? 'bg-background text-foreground shadow-2xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5 text-primary" />
+            <span>Summary</span>
+          </button>
         </div>
 
         {/* Tab 1: Group Summary View */}
@@ -389,36 +377,16 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               </div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
-                {group.participants.map((person) => (
-                  <div
+                {group.participants.map((person, index) => (
+                  <ParticipantCard
                     key={person.id}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-card border border-border/70 hover:border-border transition-all"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0">
-                        {person.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-foreground truncate">{person.name}</p>
-                        {person.email ? (
-                          <p className="text-[10px] text-muted-foreground truncate">{person.email}</p>
-                        ) : (
-                          <p className="text-[10px] text-muted-foreground/60 italic">Local Participant</p>
-                        )}
-                      </div>
-                    </div>
-                    {group.is_owner && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveMember(person.id, person.name)}
-                        className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
-                        title="Remove member"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                    id={person.id}
+                    name={person.name}
+                    email={person.email}
+                    index={index}
+                    isReadOnly={!group.is_owner}
+                    onRemove={group.is_owner ? () => handleRemoveMember(person.id, person.name) : undefined}
+                  />
                 ))}
               </div>
             )}
@@ -448,14 +416,21 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               )}
             </div>
 
-            {/* Section Title */}
+            {/* Section Title & Add Bill Action */}
             <div className="flex items-center justify-between pt-1">
               <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                 <Receipt className="w-3.5 h-3.5 text-primary" /> Bills ({filteredBills.length})
               </h2>
-              <span className="text-[10px] text-muted-foreground font-semibold">
-                Click bill to open
-              </span>
+              {onNewBill && (
+                <Button
+                  onClick={() => setIsCreateBillModalOpen(true)}
+                  size="sm"
+                  className="gap-1.5 h-8 px-3 rounded-xl font-bold text-xs bg-foreground text-background hover:bg-foreground/90 shrink-0 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Bill</span>
+                </Button>
+              )}
             </div>
 
             {/* Drill-down Bills */}
@@ -631,6 +606,33 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         confirmText={deleteTarget?.type === 'member' ? 'Remove' : 'Delete'}
         isLoading={isDeleteLoading}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Mobile Bottom Navigation for Group Page */}
+      <BottomNav
+        items={[
+          {
+            id: 'bills',
+            label: 'Bills',
+            icon: Receipt,
+            badge: group.total_bills,
+          },
+          {
+            id: 'members',
+            label: 'Members',
+            icon: Users,
+            badge: group.participants?.length || 0,
+          },
+          {
+            id: 'summary',
+            label: 'Summary',
+            icon: Scale,
+          },
+        ]}
+        activeId={activeMainTab}
+        onChange={(tabId) => setActiveMainTab(tabId as 'bills' | 'members' | 'summary')}
+        className="fixed bottom-0 left-0 right-0"
+        desktopHidden={true}
       />
     </div>
   );
