@@ -32,6 +32,7 @@ import { GroupOverview } from "@/components/groups/group-overview";
 import { BottomSearchBar } from "@/components/shared/bottom-search-bar";
 import { FuzzySearchModal } from "@/components/shared/fuzzy-search-modal";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BottomNav } from "@/components/layout/bottom-nav";
 
 function App() {
   const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group' | 'app-settings' | 'not-found' | 'access-denied'>(() => {
@@ -543,7 +544,7 @@ function App() {
       <TooltipProvider delayDuration={100} skipDelayDuration={0}>
         <div className={cn(
         "bg-background font-sans text-foreground antialiased selection:bg-foreground/20 flex flex-col items-stretch",
-        view === 'landing' || view === 'group' ? "min-h-[100dvh] overflow-y-auto" : "h-[100dvh] max-h-[100dvh] overflow-hidden fixed inset-0"
+        view === 'landing' || view === 'group' ? "min-h-[100dvh] overflow-y-auto overflow-x-hidden" : "h-[100dvh] max-h-[100dvh] overflow-hidden fixed inset-0"
       )}>
 
         {view === 'landing' ? (
@@ -599,7 +600,6 @@ function App() {
                 onSelectBill={handleSelectBill}
                 onNewBill={handleStartNewBill}
               />
-              <BottomSearchBar onClick={() => setIsGroupSearchOpen(true)} />
               <FuzzySearchModal
                 open={isGroupSearchOpen}
                 onOpenChange={setIsGroupSearchOpen}
@@ -788,169 +788,50 @@ function App() {
               </main>
 
               {/* Mobile Bottom Nav */}
-              <nav
-                aria-label="Mobile Navigation"
-                className="md:hidden flex-none bg-card/95 dark:bg-[#121215]/95 backdrop-blur-2xl border-t border-border/80 select-none pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgba(0,0,0,0.35)] z-30 transition-all duration-200 [html[data-keyboard-open='true']_&]:hidden"
-              >
-                <div className="flex h-14 max-w-md mx-auto items-center justify-around px-2">
-                  <button
-                    type="button"
-                    className={cn(
-                      "group flex flex-1 flex-col items-center justify-center py-1 touch-manipulation transition-all duration-150 active:scale-95 relative",
-                      mobileTab === 'people'
-                        ? "text-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    onClick={() => {
+              <BottomNav
+                items={[
+                  {
+                    id: 'people',
+                    label: 'People',
+                    icon: Users,
+                    badge: people.length,
+                    onClick: () => {
                       setMobileTab('people');
                       setView('editor');
-                    }}
-                  >
-                    <div className="relative flex items-center justify-center">
-                      <div className={cn(
-                        "p-1 rounded-xl transition-all",
-                        mobileTab === 'people' ? "bg-primary/10 text-primary" : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        <Users
-                          className="w-5 h-5 transition-colors duration-150"
-                          strokeWidth={mobileTab === 'people' ? 2.5 : 2}
-                        />
-                      </div>
-                      {people.length > 0 && (
-                        <span className={cn(
-                          "absolute -top-1 -right-2 text-[9px] font-black h-4 min-w-4 px-1 rounded-full flex items-center justify-center shadow-sm",
-                          mobileTab === 'people'
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-foreground/20 text-foreground"
-                        )}>
-                          {people.length}
-                        </span>
-                      )}
-                    </div>
-                    <span className={cn(
-                      "mt-0.5 text-[10px] leading-tight tracking-tight transition-colors duration-150",
-                      mobileTab === 'people' ? "font-black text-primary" : "font-semibold text-muted-foreground group-hover:text-foreground"
-                    )}>
-                      People
-                    </span>
-                    {mobileTab === 'people' && (
-                      <span className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "group flex flex-1 flex-col items-center justify-center py-1 touch-manipulation transition-all duration-150 active:scale-95 relative",
-                      mobileTab === 'items'
-                        ? "text-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    onClick={() => {
+                    },
+                  },
+                  {
+                    id: 'items',
+                    label: 'Items',
+                    icon: Receipt,
+                    badge: items.length,
+                    onClick: () => {
                       setMobileTab('items');
                       setView('editor');
-                    }}
-                  >
-                    <div className="relative flex items-center justify-center">
-                      <div className={cn(
-                        "p-1 rounded-xl transition-all",
-                        mobileTab === 'items' ? "bg-primary/10 text-primary" : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        <Receipt
-                          className="w-5 h-5 transition-colors duration-150"
-                          strokeWidth={mobileTab === 'items' ? 2.5 : 2}
-                        />
-                      </div>
-                      {items.length > 0 && (
-                        <span className={cn(
-                          "absolute -top-1 -right-2 text-[9px] font-black h-4 min-w-4 px-1 rounded-full flex items-center justify-center shadow-sm",
-                          mobileTab === 'items'
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-foreground/20 text-foreground"
-                        )}>
-                          {items.length}
-                        </span>
-                      )}
-                    </div>
-                    <span className={cn(
-                      "mt-0.5 text-[10px] leading-tight tracking-tight transition-colors duration-150",
-                      mobileTab === 'items' ? "font-black text-primary" : "font-semibold text-muted-foreground group-hover:text-foreground"
-                    )}>
-                      Items
-                    </span>
-                    {mobileTab === 'items' && (
-                      <span className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "group flex flex-1 flex-col items-center justify-center py-1 touch-manipulation transition-all duration-150 active:scale-95 relative",
-                      mobileTab === 'summary'
-                        ? "text-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    onClick={() => {
+                    },
+                  },
+                  {
+                    id: 'summary',
+                    label: 'Summary',
+                    icon: CreditCard,
+                    onClick: () => {
                       setMobileTab('summary');
                       setView('summary');
-                    }}
-                  >
-                    <div className="relative flex items-center justify-center">
-                      <div className={cn(
-                        "p-1 rounded-xl transition-all",
-                        mobileTab === 'summary' ? "bg-primary/10 text-primary" : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        <CreditCard
-                          className="w-5 h-5 transition-colors duration-150"
-                          strokeWidth={mobileTab === 'summary' ? 2.5 : 2}
-                        />
-                      </div>
-                    </div>
-                    <span className={cn(
-                      "mt-0.5 text-[10px] leading-tight tracking-tight transition-colors duration-150",
-                      mobileTab === 'summary' ? "font-black text-primary" : "font-semibold text-muted-foreground group-hover:text-foreground"
-                    )}>
-                      Summary
-                    </span>
-                    {mobileTab === 'summary' && (
-                      <span className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "group flex flex-1 flex-col items-center justify-center py-1 touch-manipulation transition-all duration-150 active:scale-95 relative",
-                      mobileTab === 'settings'
-                        ? "text-primary"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    onClick={() => {
+                    },
+                  },
+                  {
+                    id: 'settings',
+                    label: 'Settings',
+                    icon: Settings,
+                    onClick: () => {
                       setMobileTab('settings');
                       setView('settings');
-                    }}
-                  >
-                    <div className="relative flex items-center justify-center">
-                      <div className={cn(
-                        "p-1 rounded-xl transition-all",
-                        mobileTab === 'settings' ? "bg-primary/10 text-primary" : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        <Settings
-                          className="w-5 h-5 transition-colors duration-150"
-                          strokeWidth={mobileTab === 'settings' ? 2.5 : 2}
-                        />
-                      </div>
-                    </div>
-                    <span className={cn(
-                      "mt-0.5 text-[10px] leading-tight tracking-tight transition-colors duration-150",
-                      mobileTab === 'settings' ? "font-black text-primary" : "font-semibold text-muted-foreground group-hover:text-foreground"
-                    )}>
-                      Settings
-                    </span>
-                    {mobileTab === 'settings' && (
-                      <span className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-                    )}
-                  </button>
-                </div>
-              </nav>
+                    },
+                  },
+                ]}
+                activeId={mobileTab}
+                desktopHidden={true}
+              />
 
               {/* Desktop Footer */}
               <footer className="hidden md:flex flex-col items-center gap-1 mt-2 text-center text-[11px] text-muted-foreground shrink-0 pb-2">
