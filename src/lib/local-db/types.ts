@@ -61,6 +61,9 @@ export interface LocalGroupRecord {
   currency: string;
   ownerId: string | null;
   participants?: LocalPerson[];
+  totalAmount?: number;
+  totalBills?: number;
+  totalItems?: number;
   createdAt: string;
   updatedAt: string;
 }

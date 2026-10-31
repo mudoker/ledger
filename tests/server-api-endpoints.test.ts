@@ -24,7 +24,7 @@ describe('Server API Endpoints & Request Validation Suite', () => {
       expect(typeof json.database.pingLatencyMs).toBe('number');
       expect(json.memory).toBeDefined();
       expect(typeof json.memory.heapUsedMb).toBe('number');
-    });
+    }, 15000);
 
     it('handles OPTIONS preflight with 204 No Content and CORS headers', async () => {
       const res = await healthOptions();

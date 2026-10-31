@@ -108,6 +108,8 @@ export interface BillGroupSummary {
   updated_at: string;
   participants?: PersonData[];
   bill_ids?: string[];
+  bill_amounts?: Record<string, number>;
+  bill_item_counts?: Record<string, number>;
 }
 
 export interface SearchResults {

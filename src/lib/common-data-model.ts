@@ -254,36 +254,106 @@ export function aggregateGroupSummaries(
   const safeLocalBills = Array.isArray(localBills) ? localBills : [];
   const groupMap = new Map<string, BillGroupSummary>();
 
+  const localGroupMap = new Map<string, LocalGroupRecord>();
+  for (const lg of safeLocalGroups) {
+    localGroupMap.set(lg.id, lg);
+  }
+
   // 1. Process server groups and fold in local bills
   for (const sg of safeServerGroups) {
-    const serverBillIdSet = new Set(sg.bill_ids || []);
+    const matchingLocalGroup = localGroupMap.get(sg.id);
     const linkedLocalBills = safeLocalBills.filter(
       b => b.groupId === sg.id || (b as any).group_id === sg.id
     );
 
-    // Identify local bills that are not already accounted for on server
-    const localOnlyBills = linkedLocalBills.filter(lb => {
-      if (serverBillIdSet.size > 0) {
-        return !serverBillIdSet.has(lb.id);
+    // Track per-bill accounting
+    const billMap = new Map<string, { totalAmount: number; itemCount: number }>();
+
+    // 1a. Seed with server bill stats
+    if (sg.bill_amounts && sg.bill_ids && sg.bill_ids.length > 0) {
+      for (const bid of sg.bill_ids) {
+        billMap.set(bid, {
+          totalAmount: sg.bill_amounts[bid] ?? 0,
+          itemCount: sg.bill_item_counts?.[bid] ?? 0,
+        });
       }
-      return lb.sharingStatus === 'local' ||
-        lb.sharingStatus === 'uploading' ||
-        lb.sharingStatus === 'sync_error';
-    });
+    } else {
+      billMap.set('__server_aggregate__', {
+        totalAmount: sg.total_amount || 0,
+        itemCount: sg.total_items || 0,
+      });
+    }
 
-    const localBillsAmount = localOnlyBills.reduce((sum, b) => {
-      return sum + calculateBillTotals(b).totalAmount;
-    }, 0);
-    const localBillsItemCount = localOnlyBills.reduce(
-      (sum, b) => sum + (b.items?.length || 0),
-      0
-    );
+    const serverBillIdSet = new Set(sg.bill_ids || []);
+    let localOnlyBillsCount = 0;
 
-    const totalAmount = sg.total_amount + localBillsAmount;
-    const totalBills = sg.total_bills + localOnlyBills.length;
-    const totalItems = sg.total_items + localBillsItemCount;
+    // 1b. Merge linked local bills
+    for (const lb of linkedLocalBills) {
+      const totals = calculateBillTotals(lb);
+      const isKnownServerBill = serverBillIdSet.has(lb.id);
 
-    const matchingLocalGroup = safeLocalGroups.find(lg => lg.id === sg.id);
+      if (billMap.has('__server_aggregate__')) {
+        // If we only have server aggregate, fold in local-only bills
+        if (!isKnownServerBill) {
+          billMap.set(lb.id, {
+            totalAmount: totals.totalAmount,
+            itemCount: totals.itemCount,
+          });
+          localOnlyBillsCount++;
+        }
+      } else {
+        // Detailed per-bill mode
+        const existing = billMap.get(lb.id);
+
+        if (!existing) {
+          // Local-only bill: add to group
+          billMap.set(lb.id, {
+            totalAmount: totals.totalAmount,
+            itemCount: totals.itemCount,
+          });
+        } else {
+          // Bill exists on both server and local.
+          // Prefer local calculation if local has items or non-zero total, or is pending sync
+          const isLocalPreferred =
+            totals.totalAmount > 0 ||
+            totals.itemCount > 0 ||
+            lb.sharingStatus === 'local' ||
+            lb.sharingStatus === 'uploading' ||
+            lb.sharingStatus === 'sync_error';
+
+          if (isLocalPreferred) {
+            billMap.set(lb.id, {
+              totalAmount: totals.totalAmount,
+              itemCount: totals.itemCount,
+            });
+          }
+        }
+      }
+    }
+
+    let calculatedTotalAmount = 0;
+    let calculatedTotalItems = 0;
+    for (const b of billMap.values()) {
+      calculatedTotalAmount += b.totalAmount;
+      calculatedTotalItems += b.itemCount;
+    }
+    const calculatedTotalBills = billMap.has('__server_aggregate__')
+      ? sg.total_bills + localOnlyBillsCount
+      : billMap.size;
+
+    // If local group snapshot was cached from a full fetchGroup and is equal or larger, prefer the cached detail
+    let finalTotalAmount = calculatedTotalAmount;
+    let finalTotalBills = calculatedTotalBills;
+    let finalTotalItems = calculatedTotalItems;
+
+    if (matchingLocalGroup?.totalAmount !== undefined && matchingLocalGroup.totalBills !== undefined) {
+      if (matchingLocalGroup.totalBills >= calculatedTotalBills && matchingLocalGroup.totalAmount >= calculatedTotalAmount) {
+        finalTotalAmount = matchingLocalGroup.totalAmount;
+        finalTotalBills = matchingLocalGroup.totalBills;
+        finalTotalItems = matchingLocalGroup.totalItems ?? calculatedTotalItems;
+      }
+    }
+
     const participants = ensureGroupParticipantsSuperset(
       (sg as any).participants || [],
       [
@@ -300,9 +370,9 @@ export function aggregateGroupSummaries(
       ...sg,
       name: isLocalNewer ? (matchingLocalGroup?.name || sg.name) : sg.name,
       description: isLocalNewer ? (matchingLocalGroup?.description ?? sg.description) : sg.description,
-      total_amount: totalAmount,
-      total_bills: totalBills,
-      total_items: totalItems,
+      total_amount: finalTotalAmount,
+      total_bills: finalTotalBills,
+      total_items: finalTotalItems,
       participants,
     });
   }
@@ -327,6 +397,10 @@ export function aggregateGroupSummaries(
         linkedBills.map(b => ({ people: b.people }))
       );
 
+      const finalAmount = (lg.totalAmount !== undefined && (lg.totalBills || 0) === linkedBills.length && lg.totalAmount >= totalAmount)
+        ? lg.totalAmount
+        : totalAmount;
+
       groupMap.set(lg.id, {
         id: lg.id,
         name: lg.name,
@@ -334,7 +408,7 @@ export function aggregateGroupSummaries(
         owner_id: lg.ownerId || 'local',
         is_owner: true,
         currency: lg.currency,
-        total_amount: totalAmount,
+        total_amount: finalAmount,
         total_bills: linkedBills.length,
         total_items: totalItems,
         created_at: lg.createdAt,

@@ -64,12 +64,24 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     // Unified group summaries aggregation
     const unifiedSummaries = aggregateGroupSummaries(serverGroups, localGroups, localBills);
 
-    if (unifiedSummaries.length === 0 && fetchError && serverGroups.length === 0 && localGroups.length === 0) {
+    // Reconcile with currently loaded currentGroup if available in memory
+    const current = get().currentGroup;
+    const reconciledSummaries = current
+      ? unifiedSummaries.map(g => (g.id === current.id ? {
+          ...g,
+          total_amount: current.total_amount,
+          total_bills: current.total_bills,
+          total_items: current.total_items,
+          participants: current.participants || g.participants,
+        } : g))
+      : unifiedSummaries;
+
+    if (reconciledSummaries.length === 0 && fetchError && serverGroups.length === 0 && localGroups.length === 0) {
       set({ error: fetchError, isLoading: false, groups: [] });
       return;
     }
 
-    set({ groups: unifiedSummaries, isLoading: false, error: null });
+    set({ groups: reconciledSummaries, isLoading: false, error: null });
   },
 
   fetchGroup: async (id: string) => {
@@ -180,6 +192,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       currency: finalDetail.currency || 'VND',
       ownerId: finalDetail.owner_id || null,
       participants: localParticipantsSnapshot,
+      totalAmount: finalDetail.total_amount,
+      totalBills: finalDetail.total_bills,
+      totalItems: finalDetail.total_items,
       createdAt: finalDetail.created_at,
       updatedAt: finalDetail.updated_at,
     }).catch(() => {});

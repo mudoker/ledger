@@ -901,23 +901,40 @@ export class SqliteAdapter implements DatabaseAdapter {
       WHERE b.group_id IN (${placeholders})
     `).all(...groupsRaw.map(g => g.id)) as unknown as Array<{ id: string; group_id: string; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
 
-    const statsByGroup = new Map<string, { totalAmount: number; totalItems: number; billsCount: number; billIds: string[] }>();
+    const statsByGroup = new Map<string, {
+      totalAmount: number;
+      totalItems: number;
+      billsCount: number;
+      billIds: string[];
+      billAmounts: Record<string, number>;
+      billItemCounts: Record<string, number>;
+    }>();
     for (const bs of billStats) {
       const gid = String(bs.group_id);
       let curr = statsByGroup.get(gid);
       if (!curr) {
-        curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [] };
+        curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {} };
         statsByGroup.set(gid, curr);
       }
       const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
       curr.totalAmount += billTotal;
       curr.totalItems += Number(bs.item_count || 0);
       curr.billsCount += 1;
-      curr.billIds.push(String(bs.id));
+      const bid = String(bs.id);
+      curr.billIds.push(bid);
+      curr.billAmounts[bid] = billTotal;
+      curr.billItemCounts[bid] = Number(bs.item_count || 0);
     }
 
     return groupsRaw.map(g => {
-      const stats = statsByGroup.get(String(g.id)) || { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [] };
+      const stats = statsByGroup.get(String(g.id)) || {
+        totalAmount: 0,
+        totalItems: 0,
+        billsCount: 0,
+        billIds: [],
+        billAmounts: {},
+        billItemCounts: {},
+      };
       return {
         id: String(g.id),
         name: String(g.name),
@@ -931,6 +948,8 @@ export class SqliteAdapter implements DatabaseAdapter {
         total_bills: stats.billsCount,
         total_items: stats.totalItems,
         bill_ids: stats.billIds,
+        bill_amounts: stats.billAmounts,
+        bill_item_counts: stats.billItemCounts,
         created_at: typeof g.created_at === 'string' ? g.created_at : new Date(g.created_at).toISOString(),
         updated_at: typeof g.updated_at === 'string' ? g.updated_at : new Date(g.updated_at).toISOString(),
         participants: Array.isArray((g as any).participants)
@@ -1084,7 +1103,15 @@ export class SqliteAdapter implements DatabaseAdapter {
     const groupsRaw = this.db.prepare(`
       SELECT g.id, g.name, g.description,
         (SELECT COUNT(*) FROM bills WHERE group_id = g.id) as total_bills,
-        (SELECT COALESCE(SUM(i.price * i.quantity), 0) FROM items i JOIN bills b ON b.id = i.bill_id WHERE b.group_id = g.id) as total_amount
+        (
+          SELECT COALESCE(SUM(
+            ROUND(
+              (SELECT COALESCE(SUM(i.price * i.quantity), 0) FROM items i WHERE i.bill_id = b.id) *
+              (1 + (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') / 100.0) +
+              (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed')
+            )
+          ), 0) FROM bills b WHERE b.group_id = g.id
+        ) as total_amount
       FROM bill_groups g
       WHERE (LOWER(g.name) LIKE ? OR LOWER(COALESCE(g.description, '')) LIKE ?)
         AND (
@@ -1102,7 +1129,11 @@ export class SqliteAdapter implements DatabaseAdapter {
     // Search bills
     const billsRaw = this.db.prepare(`
       SELECT b.id, b.name, b.location, b.group_id, bg.name as group_name,
-        (SELECT COALESCE(SUM(i.price * i.quantity), 0) FROM items i WHERE i.bill_id = b.id) as total_amount
+        ROUND(
+          (SELECT COALESCE(SUM(i.price * i.quantity), 0) FROM items i WHERE i.bill_id = b.id) *
+          (1 + (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') / 100.0) +
+          (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed')
+        ) as total_amount
       FROM bills b
       LEFT JOIN bill_groups bg ON bg.id = b.group_id
       WHERE (LOWER(COALESCE(b.name, '')) LIKE ? OR LOWER(COALESCE(b.location, '')) LIKE ?)
