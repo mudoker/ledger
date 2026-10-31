@@ -32,7 +32,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
 import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
@@ -43,6 +43,105 @@ import { GroupSummary } from './group-summary';
 import type { BillGroupDetail } from '@/../db/types';
 import { ParticipantCard } from '@/components/shared/participant-card';
 import { BottomNav } from '@/components/layout/bottom-nav';
+
+interface SwipeableBillCardProps {
+  bill: BillGroupDetail['bills'][number];
+  isOwner: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}
+
+function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillCardProps) {
+  const controls = useAnimation();
+
+  const handleDragEnd = async (_: unknown, info: { offset: { x: number }; velocity: { x: number } }) => {
+    if (info.offset.x < -60 || info.velocity.x < -300) {
+      controls.start({ x: 0, transition: { type: 'spring', damping: 25, stiffness: 300 } });
+      onDelete();
+    } else {
+      controls.start({ x: 0, transition: { type: 'spring', damping: 25, stiffness: 300 } });
+    }
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/70 hover:border-foreground/30 transition-all shadow-xs group bg-destructive">
+      {/* Background Delete Action (Revealed on Swipe Left) */}
+      {isOwner && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute inset-y-0 right-0 w-24 bg-destructive text-destructive-foreground flex flex-col items-center justify-center gap-1 font-bold text-xs cursor-pointer select-none z-0 hover:bg-destructive/90 transition-colors"
+          title="Delete Bill"
+        >
+          <Trash2 className="w-4 h-4 animate-in zoom-in-75 duration-150" />
+          <span className="text-[10px] font-bold uppercase tracking-wider">Delete</span>
+        </div>
+      )}
+
+      {/* Foreground Draggable Card Surface */}
+      <motion.div
+        drag={isOwner ? 'x' : false}
+        dragDirectionLock
+        dragConstraints={{ left: -96, right: 0 }}
+        dragElastic={0.15}
+        animate={controls}
+        onDragEnd={handleDragEnd}
+        onClick={onSelect}
+        className="relative z-10 bg-card hover:bg-muted/20 transition-colors p-3.5 sm:p-4 flex items-center justify-between cursor-pointer border-r border-border/40"
+      >
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 group-hover:scale-105 transition-transform">
+            <Receipt className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            {/* Title Line (Full width for title) */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
+                {bill.name}
+              </h3>
+              <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </div>
+
+            {/* Subtitle Line (Timestamp, Local badge moved here, Location, Items) */}
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
+              <div className="flex items-center gap-1 shrink-0">
+                <Clock className="w-2.5 h-2.5 shrink-0" />
+                <span className="whitespace-nowrap">
+                  {formatConciseRelativeTime(bill.updated_at)}
+                </span>
+              </div>
+              {(bill as any).isLocal && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1">
+                  <Shield className="w-2.5 h-2.5 text-emerald-500" />
+                  <span>Local</span>
+                </span>
+              )}
+              {bill.location && (
+                <div className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-[150px] shrink-0">
+                  <MapPin className="w-2.5 h-2.5 shrink-0" />
+                  <span className="truncate">{bill.location}</span>
+                </div>
+              )}
+              <span className="text-primary font-bold shrink-0 whitespace-nowrap">
+                • {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Amount & Chevron (Trash icon removed to maximize space) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-3">
+          <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
+            {formatCurrency(bill.totalAmount)}
+          </span>
+          <ChevronRight className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 interface GroupOverviewProps {
   group: BillGroupDetail;
@@ -284,18 +383,6 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         <div className="hidden md:flex items-center gap-1 bg-muted/40 p-1 rounded-2xl border border-border/50 w-fit">
           <button
             type="button"
-            onClick={() => setActiveMainTab('bills')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              activeMainTab === 'bills'
-                ? 'bg-background text-foreground shadow-2xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Receipt className="w-3.5 h-3.5 text-primary" />
-            <span>Bills ({group.total_bills})</span>
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveMainTab('members')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeMainTab === 'members'
@@ -305,6 +392,18 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
           >
             <Users className="w-3.5 h-3.5 text-primary" />
             <span>Members ({group.participants?.length || 0})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('bills')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeMainTab === 'bills'
+                ? 'bg-background text-foreground shadow-2xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5 text-primary" />
+            <span>Bills ({group.total_bills})</span>
           </button>
           <button
             type="button"
@@ -473,71 +572,13 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             ) : (
               <div className="space-y-2.5">
                 {filteredBills.map((bill) => (
-                  <Card
+                  <SwipeableBillCard
                     key={bill.id}
-                    onClick={() => onSelectBill(bill.id)}
-                    className="overflow-hidden border border-border/70 hover:border-foreground/30 transition-all rounded-2xl shadow-xs bg-card group cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between p-3.5 sm:p-4 bg-muted/20 hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 group-hover:scale-105 transition-transform">
-                          <Receipt className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap">
-                            <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
-                              {bill.name}
-                            </h3>
-                            {(bill as any).isLocal && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1">
-                                <Shield className="w-2.5 h-2.5 text-emerald-500" />
-                                <span>Local</span>
-                              </span>
-                            )}
-                            <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                          </div>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
-                            <div className="flex items-center gap-1 shrink-0">
-                              <Clock className="w-2.5 h-2.5 shrink-0" />
-                              <span className="whitespace-nowrap">
-                                {formatConciseRelativeTime(bill.updated_at)}
-                              </span>
-                            </div>
-                            {bill.location && (
-                              <div className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-[150px] shrink-0">
-                                <MapPin className="w-2.5 h-2.5 shrink-0" />
-                                <span className="truncate">{bill.location}</span>
-                              </div>
-                            )}
-                            <span className="text-primary font-bold shrink-0 whitespace-nowrap">
-                              • {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-3">
-                        <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
-                          {formatCurrency(bill.totalAmount)}
-                        </span>
-                        {group.is_owner && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget({ type: 'bill', id: bill.id, name: bill.name });
-                            }}
-                            className="p-1 rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            title="Delete Bill"
-                            aria-label="Delete Bill"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <ChevronRight className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
-                      </div>
-                    </div>
-                  </Card>
+                    bill={bill}
+                    isOwner={group.is_owner}
+                    onSelect={() => onSelectBill(bill.id)}
+                    onDelete={() => setDeleteTarget({ type: 'bill', id: bill.id, name: bill.name })}
+                  />
                 ))}
               </div>
             )}
