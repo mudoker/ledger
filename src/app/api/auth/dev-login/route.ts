@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/../db';
-import { signSessionToken } from '@/lib/auth';
+import { signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +39,8 @@ export async function POST(req: Request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
       path: '/',
     });
 

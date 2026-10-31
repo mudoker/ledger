@@ -19,6 +19,8 @@ async function getHmacKey(): Promise<CryptoKey> {
   return cachedCryptoKey;
 }
 
+export const SESSION_MAX_AGE_SECONDS = 20 * 365 * 24 * 60 * 60; // 20 years - effectively permanent
+
 export interface SessionPayload {
   sub: string;
   email: string;
@@ -35,7 +37,7 @@ export async function signSessionToken(payload: { sub: string; email: string; na
   const fullPayload: SessionPayload = {
     ...payload,
     iat: now,
-    exp: now + 30 * 24 * 60 * 60, // 30 days
+    exp: now + SESSION_MAX_AGE_SECONDS,
   };
 
   const headerB64 = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -148,8 +150,8 @@ export function getGoogleAuthUrl(state: string, redirectUri: string): string {
     response_type: 'code',
     scope: 'openid email profile',
     state,
-    access_type: 'online',
-    prompt: 'select_account',
+    access_type: 'offline',
+    prompt: 'consent',
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }

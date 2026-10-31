@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBaseUrl, getGoogleRedirectUri, exchangeGoogleCode, getGoogleUserInfo, signSessionToken } from '@/lib/auth';
+import { getBaseUrl, getGoogleRedirectUri, exchangeGoogleCode, getGoogleUserInfo, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/auth';
 import { getDb } from '@/../db';
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +69,8 @@ export async function GET(req: Request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
       path: '/',
     });
     res.cookies.delete('oauth_state');
