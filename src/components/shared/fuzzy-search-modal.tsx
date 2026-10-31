@@ -178,7 +178,13 @@ export function FuzzySearchModal({
       <DialogContent
         showClose={false}
         onKeyDown={handleKeyDown}
-        className="w-[calc(100vw-24px)] sm:w-full max-w-xl max-h-[85vh] max-h-[85dvh] flex flex-col p-0 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card"
+        style={{
+          top: 'var(--search-modal-top, calc(env(safe-area-inset-top, 0px) + 0.75rem))',
+          transform: 'translateX(-50%)',
+          transition: 'none',
+          maxHeight: 'min(85vh, calc(var(--visual-viewport-height, 100dvh) - env(safe-area-inset-top, 0px) - 1.5rem))',
+        }}
+        className="w-[calc(100vw-24px)] sm:w-full max-w-xl flex flex-col p-0 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card translate-y-0 sm:[--search-modal-top:4rem] duration-150 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2"
       >
         {/* Top Search Bar */}
         <div className="p-3.5 sm:p-4 border-b border-border/60 flex items-center gap-3 shrink-0 bg-muted/20">
