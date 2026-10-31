@@ -32,7 +32,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform } from 'framer-motion';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
 import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
@@ -53,6 +53,13 @@ interface SwipeableBillCardProps {
 
 function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillCardProps) {
   const controls = useAnimation();
+  const x = useMotionValue(0);
+
+  // Gradually reveal delete button as card is swiped left:
+  // At x = 0 (tap or resting), opacity is 0 (completely invisible, never overlaps or flashes on tap).
+  // As user swipes left (x moves from -10px to -60px), delete smoothly fades in underneath the sliding card.
+  const deleteOpacity = useTransform(x, [-10, -60], [0, 1]);
+  const deleteScale = useTransform(x, [-10, -60], [0.8, 1]);
 
   const handleDragEnd = async (_: unknown, info: { offset: { x: number }; velocity: { x: number } }) => {
     if (info.offset.x < -60 || info.velocity.x < -300) {
@@ -64,41 +71,43 @@ function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillC
   };
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 hover:border-foreground/30 transition-all shadow-xs group bg-destructive">
-      {/* Background Delete Action (Revealed on Swipe Left) */}
+    <div className="relative overflow-hidden rounded-2xl border border-border/70 hover:border-foreground/30 transition-colors shadow-xs bg-card select-none">
+      {/* Background Delete Action (Revealed underneath only upon swiping left) */}
       {isOwner && (
-        <div
+        <motion.div
+          style={{ opacity: deleteOpacity, scale: deleteScale }}
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          className="absolute inset-y-0 right-0 w-24 bg-destructive text-destructive-foreground flex flex-col items-center justify-center gap-1 font-bold text-xs cursor-pointer select-none z-0 hover:bg-destructive/90 transition-colors"
+          className="absolute inset-y-0 right-0 w-24 bg-destructive text-destructive-foreground flex flex-col items-center justify-center gap-1 font-bold text-xs cursor-pointer select-none z-0 rounded-r-2xl"
           title="Delete Bill"
         >
-          <Trash2 className="w-4 h-4 animate-in zoom-in-75 duration-150" />
+          <Trash2 className="w-4 h-4" />
           <span className="text-[10px] font-bold uppercase tracking-wider">Delete</span>
-        </div>
+        </motion.div>
       )}
 
       {/* Foreground Draggable Card Surface */}
       <motion.div
+        style={{ x }}
         drag={isOwner ? 'x' : false}
         dragDirectionLock
         dragConstraints={{ left: -96, right: 0 }}
-        dragElastic={0.15}
+        dragElastic={0.12}
         animate={controls}
         onDragEnd={handleDragEnd}
         onClick={onSelect}
-        className="relative z-10 bg-card hover:bg-muted/20 transition-colors p-3.5 sm:p-4 flex items-center justify-between cursor-pointer border-r border-border/40"
+        className="relative z-10 bg-card hover:bg-muted/20 transition-colors p-3.5 sm:p-4 flex items-center justify-between cursor-pointer"
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0 group-hover:scale-105 transition-transform">
+          <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0">
             <Receipt className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
             {/* Title Line (Full width for title) */}
             <div className="flex items-center gap-1.5 min-w-0">
-              <h3 className="font-bold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
+              <h3 className="font-bold text-sm sm:text-base text-foreground truncate">
                 {bill.name}
               </h3>
               <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
@@ -131,12 +140,12 @@ function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillC
           </div>
         </div>
 
-        {/* Amount & Chevron (Trash icon removed to maximize space) */}
+        {/* Amount & Chevron */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-3">
           <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
             {formatCurrency(bill.totalAmount)}
           </span>
-          <ChevronRight className="w-4 h-4 text-muted-foreground/60 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
         </div>
       </motion.div>
     </div>
