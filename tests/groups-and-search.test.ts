@@ -387,6 +387,61 @@ describe('Bill Groups, Aggregation, and Search Feature', () => {
       expect(billAfter?.data.name).toBe('Lunch Bill');
       expect(billAfter?.isReadOnly).toBe(true);
     });
+
+    it('does NOT make unshared/local bills public or leak them to non-owners when group is public or updated', async () => {
+      // 1. Create a public group
+      const group = await adapter.createGroup('Public Trip Group', 'user_alice', null, 'VND', 'public');
+
+      // 2. Alice has an unshared local bill linked to the group
+      await adapter.saveBill(
+        'bill_strictly_local',
+        {
+          name: 'Private Personal Expense',
+          currency: 'VND',
+          groupId: group.id,
+          isShared: false,
+          visibility: 'local',
+          people: [{ id: 'p_loc', name: 'Alice' }],
+          items: [{ id: 'item_priv', name: 'Private Medication', price: 150000, quantity: 1 }],
+        },
+        'user_alice'
+      );
+
+      // 3. Alice also has a shared cloud bill linked to the group
+      await adapter.saveBill(
+        'bill_shared_cloud',
+        {
+          name: 'Team Dinner',
+          currency: 'VND',
+          groupId: group.id,
+          isShared: true,
+          visibility: 'public',
+          people: [{ id: 'p_cld', name: 'Alice' }],
+          items: [{ id: 'item_din', name: 'BBQ', price: 300000, quantity: 1 }],
+        },
+        'user_alice'
+      );
+
+      // 4. Alice (owner) sees all bills in getGroup
+      const aliceGroup = await adapter.getGroup(group.id, 'user_alice');
+      expect(aliceGroup?.bills.length).toBe(2);
+
+      // 5. Charlie (non-owner) only sees the cloud-synced bill, never the local unshared bill
+      const charlieGroup = await adapter.getGroup(group.id, 'user_charlie');
+      expect(charlieGroup?.bills.length).toBe(1);
+      expect(charlieGroup?.bills[0].id).toBe('bill_shared_cloud');
+
+      // 6. Charlie cannot read the unshared bill
+      const charlieReadUnshared = await adapter.getBill('bill_strictly_local', 'user_charlie');
+      expect(charlieReadUnshared).toBeNull();
+
+      // 7. Updating group to public again does NOT convert the unshared bill to public
+      await adapter.updateGroup(group.id, { visibility: 'public' }, 'user_alice');
+
+      // Verify unshared bill remains unshared
+      const charlieStillBlocked = await adapter.getBill('bill_strictly_local', 'user_charlie');
+      expect(charlieStillBlocked).toBeNull();
+    });
   });
 
   describe('Owner-Only Administration & Transferable Ownership', () => {

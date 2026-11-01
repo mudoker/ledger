@@ -791,6 +791,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         SELECT id, name, location, currency, host_id, created_at, updated_at
         FROM bills
         WHERE group_id = $1
+          ${isOwner ? '' : 'AND is_shared = 1 AND revoked_at IS NULL'}
         ORDER BY created_at DESC, id ASC
       `, [id]);
 
@@ -985,7 +986,8 @@ export class PostgresAdapter implements DatabaseAdapter {
           (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
         FROM bills b
         WHERE b.group_id = ANY($1)
-      `, [groupIds]);
+          AND (b.owner_id = $2 OR (b.is_shared = 1 AND b.revoked_at IS NULL))
+      `, [groupIds, userId || 'none']);
 
       const statsByGroup = new Map<string, {
         totalAmount: number;
@@ -1080,12 +1082,12 @@ export class PostgresAdapter implements DatabaseAdapter {
         id
       ]);
 
-      // When group is made public or shared, ensure all cloud-synced bills linked to this group are set to public
+      // When group is made public or shared, ensure only active cloud-synced bills are set to public
       if (visibility === 'public') {
         await client.query(`
           UPDATE bills
           SET visibility = 'public', updated_at = CURRENT_TIMESTAMP
-          WHERE group_id = $1 AND (is_shared = 1 OR is_shared IS NULL)
+          WHERE group_id = $1 AND is_shared = 1 AND revoked_at IS NULL
         `, [id]);
       }
     } finally {
@@ -1202,7 +1204,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         if (groupRes.rows.length > 0) {
           const gVis = groupRes.rows[0].visibility;
           if (gVis === 'public' || !gVis || gVis !== 'restricted') {
-            await client.query("UPDATE bills SET visibility = 'public' WHERE id = $1 AND (is_shared = 1 OR is_shared IS NULL)", [billId]);
+            await client.query("UPDATE bills SET visibility = 'public' WHERE id = $1 AND is_shared = 1 AND revoked_at IS NULL", [billId]);
           }
         }
       }

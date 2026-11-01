@@ -260,9 +260,15 @@ export const useBillStore = create<BillState>()(
                 // Save locally immediately
                 await get().saveToLocal();
 
-                // Also notify server of group assignment/unassignment if bill has an ID
+                // Only notify server of group assignment/unassignment if cloud sync is enabled or bill is explicitly shared
+                const storageMode = useAppSettingsStore.getState().storageMode;
+                const shouldCloudSync =
+                    storageMode === 'cloud' ||
+                    storageMode === 'hybrid' ||
+                    get().sharingStatus === 'shared';
+
                 const billId = get().currentBillId;
-                if (billId) {
+                if (billId && shouldCloudSync) {
                     try {
                         await fetch('/api/bills', {
                             method: 'POST',

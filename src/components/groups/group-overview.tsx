@@ -235,6 +235,10 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
       .filter((b): b is NonNullable<typeof b> => b !== null);
   }, [group.bills, filterQuery]);
 
+  const localBillsCount = useMemo(() => {
+    return (group.bills || []).filter((b: any) => b.isLocal).length;
+  }, [group.bills]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden">
       {/* Top Header / Sticky Nav */}
@@ -512,10 +516,21 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             </div>
 
             {/* Section Title & Add Bill Action */}
-            <div className="flex items-center justify-between pt-1">
-              <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Receipt className="w-3.5 h-3.5 text-primary" /> Bills ({filteredBills.length})
-              </h2>
+            <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Receipt className="w-3.5 h-3.5 text-primary" /> Bills ({filteredBills.length})
+                </h2>
+                {localBillsCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20"
+                    title="Local bills are kept on this device only and will not be visible to members when shared unless explicitly synced"
+                  >
+                    <Shield className="w-2.5 h-2.5 text-emerald-500" />
+                    <span>{localBillsCount} local (device only)</span>
+                  </span>
+                )}
+              </div>
               {onNewBill && (
                 <Button
                   onClick={() => setIsCreateBillModalOpen(true)}

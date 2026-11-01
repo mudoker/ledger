@@ -764,6 +764,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       SELECT id, name, location, currency, host_id, created_at, updated_at
       FROM bills
       WHERE group_id = ?
+        ${isOwner ? '' : 'AND is_shared = 1 AND revoked_at IS NULL'}
       ORDER BY created_at DESC, id ASC
     `).all(id) as unknown as Array<{
       id: string;
@@ -961,7 +962,8 @@ export class SqliteAdapter implements DatabaseAdapter {
         (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
       FROM bills b
       WHERE b.group_id IN (${placeholders})
-    `).all(...groupsRaw.map(g => g.id)) as unknown as Array<{ id: string; group_id: string; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
+        AND (b.owner_id = ? OR (b.is_shared = 1 AND b.revoked_at IS NULL))
+    `).all(...groupsRaw.map(g => g.id), userId || 'none') as unknown as Array<{ id: string; group_id: string; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
 
     const statsByGroup = new Map<string, {
       totalAmount: number;
@@ -1055,12 +1057,12 @@ export class SqliteAdapter implements DatabaseAdapter {
       id
     );
 
-    // When group is made public or shared, ensure all cloud-synced bills linked to this group are set to public
+    // When group is made public or shared, ensure only active cloud-synced bills are set to public
     if (visibility === 'public') {
       this.db.prepare(`
         UPDATE bills
         SET visibility = 'public', updated_at = CURRENT_TIMESTAMP
-        WHERE group_id = ? AND (is_shared = 1 OR is_shared IS NULL)
+        WHERE group_id = ? AND is_shared = 1 AND revoked_at IS NULL
       `).run(id);
     }
   }
@@ -1157,7 +1159,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       if (groupId) {
         const group = this.db.prepare('SELECT visibility FROM bill_groups WHERE id = ?').get(groupId) as any;
         if (group && (group.visibility === 'public' || !group.visibility || group.visibility !== 'restricted')) {
-          this.db.prepare("UPDATE bills SET visibility = 'public' WHERE id = ? AND (is_shared = 1 OR is_shared IS NULL)").run(billId);
+          this.db.prepare("UPDATE bills SET visibility = 'public' WHERE id = ? AND is_shared = 1 AND revoked_at IS NULL").run(billId);
         }
       }
       this.db.exec('COMMIT;');
