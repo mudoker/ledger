@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/../db';
-import { signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/auth';
+import { signSessionToken, SESSION_MAX_AGE_SECONDS, getBaseUrl } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,11 +33,13 @@ export async function POST(req: Request) {
     };
 
     const sessionToken = await signSessionToken(sessionPayload);
+    const baseUrl = getBaseUrl(req);
+    const isHttps = baseUrl.startsWith('https://');
 
     const res = NextResponse.json({ success: true, user });
     res.cookies.set('session_token', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: SESSION_MAX_AGE_SECONDS,
       expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),

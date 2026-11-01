@@ -53,7 +53,7 @@ function App() {
   const [isGroupSearchOpen, setIsGroupSearchOpen] = useState(false);
   const [returnToGroupId, setReturnToGroupId] = useState<string | null>(null);
   const [notFoundError, setNotFoundError] = useState<string>('');
-  const { user, fetchUser, signOut } = useAuthStore();
+  const { user, isInitialized: isAuthInitialized, fetchUser, signOut } = useAuthStore();
   const { currentGroup, fetchGroup } = useGroupStore();
   const {
     isReadOnly,
@@ -484,8 +484,8 @@ function App() {
     });
   };
 
-  if (!isHydrated) {
-    return <LoadingScreen />;
+  if (!isHydrated || !isAuthInitialized) {
+    return <LoadingScreen message="Resuming session..." />;
   }
 
   // Mandatory Authentication Gate (Online & Offline)

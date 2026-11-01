@@ -36,11 +36,27 @@ export const useAuthStore = create<AuthState>()(
           const res = await fetch('/api/auth/me');
           if (res.ok) {
             const data = await res.json();
-            set({ user: data.user || null, isLoading: false, isInitialized: true });
-            return data.user || null;
+            if (data.user) {
+              set({ user: data.user, isLoading: false, isInitialized: true });
+              return data.user;
+            }
+            // If server returned null, but an authenticated or offline user session is cached in localStorage:
+            const currentUser = get().user;
+            if (currentUser) {
+              // Preserve the permanent user session
+              set({ isLoading: false, isInitialized: true });
+              return currentUser;
+            }
+            set({ user: null, isLoading: false, isInitialized: true });
+            return null;
           }
           if (res.status === 401) {
-            // Explicitly unauthorized by server
+            // Keep local offline user sessions active even on 401
+            const currentUser = get().user;
+            if (currentUser?.id?.startsWith('local_user_')) {
+              set({ isLoading: false, isInitialized: true });
+              return currentUser;
+            }
             set({ user: null, isLoading: false, isInitialized: true });
             return null;
           }
@@ -112,6 +128,11 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isInitialized = true;
+        }
+      },
     }
   )
 );

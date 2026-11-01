@@ -63,11 +63,12 @@ export async function GET(req: Request) {
     };
 
     const sessionToken = await signSessionToken(sessionPayload);
+    const isHttps = baseUrl.startsWith('https://');
 
     const res = NextResponse.redirect(`${baseUrl}/`);
     res.cookies.set('session_token', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: SESSION_MAX_AGE_SECONDS,
       expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),

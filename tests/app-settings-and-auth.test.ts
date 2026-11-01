@@ -207,6 +207,54 @@ describe('App Settings & Offline Authentication Suite', () => {
             expect(user?.name).toBe('Dev Tester');
         });
 
+        it('maintains permanent session when fetchUser receives null user from /api/auth/me', async () => {
+            const fetchUser = useAuthStore.getState().fetchUser;
+
+            // Set up active user session
+            useAuthStore.setState({
+                user: {
+                    id: 'usr_permanent_123',
+                    email: 'huuquoc@example.com',
+                    name: 'Huu Quoc',
+                    avatar_url: null,
+                },
+                isInitialized: true,
+            });
+
+            // Mock /api/auth/me returning 200 with { user: null } (e.g. cookie dropped or server restart)
+            globalThis.fetch = mock(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ user: null }),
+            })) as any;
+
+            const res = await fetchUser();
+            expect(res).not.toBeNull();
+            expect(res?.email).toBe('huuquoc@example.com');
+            expect(useAuthStore.getState().user).not.toBeNull();
+            expect(useAuthStore.getState().user?.email).toBe('huuquoc@example.com');
+        });
+
+        it('preserves offline user session permanently across fetchUser invocations', async () => {
+            const offlineLogin = useAuthStore.getState().offlineLogin;
+            const fetchUser = useAuthStore.getState().fetchUser;
+
+            await offlineLogin('traveler@offline.local', 'Offline Traveler');
+            expect(useAuthStore.getState().user).not.toBeNull();
+
+            // Mock /api/auth/me returning null or 401
+            globalThis.fetch = mock(async () => ({
+                ok: false,
+                status: 401,
+                json: async () => ({ error: 'Unauthorized' }),
+            })) as any;
+
+            const res = await fetchUser();
+            expect(res).not.toBeNull();
+            expect(res?.name).toBe('Offline Traveler');
+            expect(useAuthStore.getState().user?.id.startsWith('local_user_')).toBe(true);
+        });
+
         it('clears session on logout', async () => {
             const offlineLogin = useAuthStore.getState().offlineLogin;
             const signOut = useAuthStore.getState().signOut;
