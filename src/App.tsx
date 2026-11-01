@@ -21,6 +21,11 @@ import { CreateBillModal, type CreateBillFormData } from "@/components/shared/cr
 import { ResizableSplit } from "@/components/layout/resizable-split";
 import { AuthButton } from "@/components/layout/auth-button";
 import { ShareButton } from "@/components/layout/share-button";
+import { AppSettingsPage } from "@/components/settings/app-settings-page";
+import { LoginGateScreen } from "@/components/layout/login-gate-screen";
+import { UnavailableBillPage } from "@/components/shared/unavailable-bill-page";
+import { AccessDeniedPage } from "@/components/shared/access-denied-page";
+import { syncManager } from "@/lib/local-db/sync-manager";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useGroupStore } from "@/store/useGroupStore";
 import { GroupOverview } from "@/components/groups/group-overview";
@@ -29,7 +34,7 @@ import { FuzzySearchModal } from "@/components/shared/fuzzy-search-modal";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 function App() {
-  const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group'>(() => {
+  const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group' | 'app-settings' | 'not-found' | 'access-denied'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('id') || params.get('v') || params.get('e')) {
@@ -41,10 +46,12 @@ function App() {
     }
     return 'landing';
   });
+  const [requestedBillId, setRequestedBillId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'people' | 'items' | 'summary' | 'settings'>('items');
   const [isReadOnlyModalOpen, setIsReadOnlyModalOpen] = useState(false);
   const [isGroupSearchOpen, setIsGroupSearchOpen] = useState(false);
   const [returnToGroupId, setReturnToGroupId] = useState<string | null>(null);
+  const [notFoundError, setNotFoundError] = useState<string>('');
   const { user, fetchUser, signOut } = useAuthStore();
   const { currentGroup, fetchGroup } = useGroupStore();
   const {
@@ -75,9 +82,10 @@ function App() {
     setCurrency
   } = useBillStore();
 
-  // Fetch current user on mount
+  // Fetch current user and initialize sync manager on mount
   useEffect(() => {
     fetchUser();
+    syncManager.init();
   }, [fetchUser]);
 
   // Handle URL parameters (Legacy v/e and New id, share mode)
@@ -89,14 +97,22 @@ function App() {
     const groupId = params.get('groupId');
     const viewData = params.get('v');
     const editData = params.get('e');
-    const isShare = params.get('share') === '1' || params.get('share') === 'true' || Boolean(viewData);
+    const token = params.get('token') || params.get('shareToken');
+    const isShare = params.get('share') === '1' || params.get('share') === 'true' || Boolean(viewData) || Boolean(token);
 
     if (id && groupId) {
       setView('editor');
       setReturnToGroupId(groupId);
       fetchGroup(groupId);
-      fetchBill(id, isShare).catch((err) => {
+      fetchBill(id, isShare, token).catch((err) => {
         console.error("Fetch bill error:", err);
+        setRequestedBillId(id);
+        if (err?.status === 403 || err?.isForbidden) {
+          setView('access-denied');
+        } else {
+          setNotFoundError(err.message || 'Shared bill is unavailable');
+          setView('not-found');
+        }
       });
     } else if (groupId) {
       fetchGroup(groupId).then((g) => {
@@ -107,9 +123,15 @@ function App() {
         setView('editor');
         setReturnToGroupId(null);
         useGroupStore.getState().clearCurrentGroup();
-        fetchBill(id, isShare).catch((err) => {
+        fetchBill(id, isShare, token).catch((err) => {
           console.error("Fetch bill error:", err);
-          setView('landing');
+          setRequestedBillId(id);
+          if (err?.status === 403 || err?.isForbidden) {
+            setView('access-denied');
+          } else {
+            setNotFoundError(err.message || 'Shared bill is unavailable');
+            setView('not-found');
+          }
         });
       } else if (viewData || editData) {
         const state = deserializeState(viewData || editData || '');
@@ -352,6 +374,57 @@ function App() {
     return <LoadingScreen />;
   }
 
+  // Mandatory Authentication Gate (Online & Offline)
+  if (!user) {
+    return (
+      <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
+        <TooltipProvider delayDuration={100} skipDelayDuration={0}>
+          <LoginGateScreen />
+        </TooltipProvider>
+      </ThemeProvider>
+    );
+  }
+
+  // Dedicated 404 Unavailable Shared Bill View
+  if (view === 'not-found') {
+    return (
+      <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
+        <TooltipProvider delayDuration={100} skipDelayDuration={0}>
+          <UnavailableBillPage
+            message={notFoundError}
+            onGoHome={() => handleBackToLanding(true)}
+          />
+        </TooltipProvider>
+      </ThemeProvider>
+    );
+  }
+
+  // Access Denied / Blocked View with Request Access Push Notification
+  if (view === 'access-denied') {
+    return (
+      <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
+        <TooltipProvider delayDuration={100} skipDelayDuration={0}>
+          <AccessDeniedPage
+            billId={requestedBillId || currentBillId || undefined}
+            billName={billName || undefined}
+            onBackToHome={() => handleBackToLanding(true)}
+          />
+        </TooltipProvider>
+      </ThemeProvider>
+    );
+  }
+
+  // App Settings View
+  if (view === 'app-settings') {
+    return (
+      <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
+        <TooltipProvider delayDuration={100} skipDelayDuration={0}>
+          <AppSettingsPage onBack={() => setView('landing')} />
+        </TooltipProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider defaultTheme="dark-emerald" storageKey="vite-ui-theme">
       <TooltipProvider delayDuration={100} skipDelayDuration={0}>
@@ -388,7 +461,7 @@ function App() {
                       <span className="hidden sm:inline">GitHub</span>
                     </Button>
                   </a>
-                  <AuthButton />
+                  <AuthButton onOpenSettings={() => setView('app-settings')} />
                   <ModeToggle />
                 </div>
               </header>
@@ -397,6 +470,7 @@ function App() {
               onNewBill={handleStartNewBill}
               onSelectBill={handleSelectBill}
               onSelectGroup={handleSelectGroup}
+              onOpenSettings={() => setView('app-settings')}
               onLoadDemo={() => {
                 loadSeedData();
                 setView('editor');
@@ -540,7 +614,7 @@ function App() {
                         <Github className="w-4 h-4" />
                       </Button>
                     </a>
-                    <AuthButton />
+                    <AuthButton onOpenSettings={() => setView('app-settings')} />
                     <ModeToggle />
                   </div>
                 </header>
