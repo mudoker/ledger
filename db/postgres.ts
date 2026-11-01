@@ -76,6 +76,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           description TEXT,
           owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           currency TEXT DEFAULT 'VND',
+          visibility VARCHAR(32) DEFAULT 'public',
           created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
@@ -145,6 +146,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         ALTER TABLE bills ADD COLUMN IF NOT EXISTS is_shared INTEGER DEFAULT 1;
         ALTER TABLE bills ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
         ALTER TABLE bill_groups ADD COLUMN IF NOT EXISTS participants JSONB DEFAULT '[]'::jsonb;
+        ALTER TABLE bill_groups ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) DEFAULT 'public';
 
         -- Performance Indexes
         CREATE INDEX IF NOT EXISTS idx_bills_owner ON bills(owner_id);
@@ -345,6 +347,49 @@ export class PostgresAdapter implements DatabaseAdapter {
       );
       const isParticipant = participantCheck.rows.length > 0;
 
+      // Check group access if bill belongs to a group
+      let isGroupAccessible = false;
+      let isGroupOwner = false;
+      let groupVisibility: string | null = null;
+      if (bill.group_id) {
+        const groupRes = await client.query(
+          'SELECT id, owner_id, visibility, participants FROM bill_groups WHERE id = $1',
+          [bill.group_id]
+        );
+        if (groupRes.rows.length > 0) {
+          const group = groupRes.rows[0];
+          groupVisibility = group.visibility || 'public';
+          if (userId && group.owner_id === userId) {
+            isGroupOwner = true;
+            isGroupAccessible = true;
+          }
+
+          let groupParts: Array<{ userId?: string | null; email?: string | null; id?: string }> = [];
+          try {
+            if (group.participants) {
+              groupParts = typeof group.participants === 'string' ? JSON.parse(group.participants) : group.participants;
+            }
+          } catch {
+            // ignore malformed participants JSON
+          }
+
+          if (userId || userEmail) {
+            const inGroup = groupParts.some(p =>
+              (userId && p.userId === userId) ||
+              (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase())
+            );
+            if (inGroup) {
+              isGroupAccessible = true;
+            }
+          }
+
+          // If the group is public, anyone with access to the group can view its synced bills
+          if (groupVisibility === 'public' || groupVisibility !== 'restricted') {
+            isGroupAccessible = true;
+          }
+        }
+      }
+
       let role: 'owner' | 'participant' | 'viewer' = 'viewer';
       let isReadOnly = true;
 
@@ -353,6 +398,12 @@ export class PostgresAdapter implements DatabaseAdapter {
         isReadOnly = Boolean(isShare);
       } else if (isParticipant) {
         role = 'participant';
+        isReadOnly = true;
+      } else if (isGroupOwner) {
+        role = 'viewer';
+        isReadOnly = true;
+      } else if (isGroupAccessible && (bill.is_shared === 1 || bill.is_shared === null || bill.is_shared === undefined || bill.is_shared !== 0)) {
+        role = 'viewer';
         isReadOnly = true;
       } else if (isShare) {
         if (bill.visibility === 'restricted') {
@@ -426,7 +477,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         owner_id: bill.owner_id ? String(bill.owner_id) : null,
         role,
         isReadOnly,
-        visibility: bill.visibility || 'restricted',
+        visibility: (isGroupAccessible && (groupVisibility === 'public' || !groupVisibility)) ? 'public' : (bill.visibility || 'restricted'),
         shareToken: bill.share_token || null,
         isShared: bill.is_shared !== 0,
         shareRevokedAt: bill.revoked_at ? String(bill.revoked_at) : null,
@@ -703,14 +754,14 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async createGroup(name: string, ownerId: string, description: string | null = null, currency: string = 'VND'): Promise<BillGroupDetail> {
+  async createGroup(name: string, ownerId: string, description: string | null = null, currency: string = 'VND', visibility: 'public' | 'restricted' = 'public'): Promise<BillGroupDetail> {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
       const id = crypto.randomUUID();
       await client.query(
-        'INSERT INTO bill_groups (id, name, description, owner_id, currency) VALUES ($1, $2, $3, $4, $5)',
-        [id, name.trim(), description ? description.trim() : null, ownerId, currency]
+        'INSERT INTO bill_groups (id, name, description, owner_id, currency, visibility) VALUES ($1, $2, $3, $4, $5, $6)',
+        [id, name.trim(), description ? description.trim() : null, ownerId, currency, visibility]
       );
       const group = await this.getGroup(id, ownerId);
       if (!group) throw new Error('Failed to create group');
@@ -874,6 +925,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         owner_email: group.owner_email ? String(group.owner_email) : null,
         is_owner: isOwner,
         currency: group.currency ? String(group.currency) : 'VND',
+        visibility: (group.visibility || 'public') as 'public' | 'restricted',
         total_amount: totalGroupAmount,
         total_bills: bills.length,
         total_items: totalItemsCount,
@@ -903,6 +955,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           g.description,
           g.owner_id,
           g.currency,
+          g.visibility,
           g.created_at,
           g.updated_at,
           u.name as owner_name,
@@ -977,6 +1030,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           owner_email: g.owner_email ? String(g.owner_email) : null,
           is_owner: g.owner_id === userId,
           currency: g.currency ? String(g.currency) : 'VND',
+          visibility: (g.visibility || 'public') as 'public' | 'restricted',
           total_amount: stats.totalAmount,
           total_bills: stats.billsCount,
           total_items: stats.totalItems,
@@ -997,7 +1051,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; participants?: PersonData[] }, userId?: string | null): Promise<void> {
+  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void> {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
@@ -1007,22 +1061,33 @@ export class PostgresAdapter implements DatabaseAdapter {
         throw new Error('Forbidden: Only the group owner can update this group');
       }
 
-      const { name, description, currency, participants } = data;
+      const { name, description, currency, visibility, participants } = data;
       await client.query(`
         UPDATE bill_groups
         SET name = COALESCE($1, name),
             description = COALESCE($2, description),
             currency = COALESCE($3, currency),
-            participants = CASE WHEN $4::text IS NOT NULL THEN $4::jsonb ELSE participants END,
+            visibility = COALESCE($4, visibility),
+            participants = CASE WHEN $5::text IS NOT NULL THEN $5::jsonb ELSE participants END,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $5
+        WHERE id = $6
       `, [
         name !== undefined ? name.trim() : null,
         description !== undefined ? description : null,
         currency || null,
+        visibility || null,
         participants !== undefined ? JSON.stringify(participants) : null,
         id
       ]);
+
+      // When group is made public or shared, ensure all cloud-synced bills linked to this group are set to public
+      if (visibility === 'public') {
+        await client.query(`
+          UPDATE bills
+          SET visibility = 'public', updated_at = CURRENT_TIMESTAMP
+          WHERE group_id = $1 AND (is_shared = 1 OR is_shared IS NULL)
+        `, [id]);
+      }
     } finally {
       client.release();
     }
@@ -1126,12 +1191,21 @@ export class PostgresAdapter implements DatabaseAdapter {
       }
 
       if (groupId) {
-        const groupRes = await client.query('SELECT id FROM bill_groups WHERE id = $1', [groupId]);
+        const groupRes = await client.query('SELECT id, visibility FROM bill_groups WHERE id = $1', [groupId]);
         if (groupRes.rows.length === 0) throw new Error('Group not found');
       }
 
       await client.query('BEGIN');
       await client.query('UPDATE bills SET group_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [groupId, billId]);
+      if (groupId) {
+        const groupRes = await client.query('SELECT visibility FROM bill_groups WHERE id = $1', [groupId]);
+        if (groupRes.rows.length > 0) {
+          const gVis = groupRes.rows[0].visibility;
+          if (gVis === 'public' || !gVis || gVis !== 'restricted') {
+            await client.query("UPDATE bills SET visibility = 'public' WHERE id = $1 AND (is_shared = 1 OR is_shared IS NULL)", [billId]);
+          }
+        }
+      }
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');

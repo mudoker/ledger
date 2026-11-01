@@ -83,6 +83,7 @@ export interface BillGroupDetail {
   owner_email?: string | null;
   is_owner: boolean;
   currency: string;
+  visibility?: 'public' | 'restricted';
   total_amount: number;
   total_bills: number;
   total_items: number;
@@ -101,6 +102,7 @@ export interface BillGroupSummary {
   owner_email?: string | null;
   is_owner: boolean;
   currency: string;
+  visibility?: 'public' | 'restricted';
   total_amount: number;
   total_bills: number;
   total_items: number;
@@ -208,10 +210,10 @@ export interface DatabaseAdapter {
   deleteBill?(billId: string, userId?: string | null): Promise<boolean>;
   revokeBillShare?(billId: string, userId?: string | null): Promise<boolean>;
   listBills(userId?: string | null): Promise<BillSummary[]>;
-  createGroup?(name: string, ownerId: string, description?: string | null, currency?: string): Promise<BillGroupDetail>;
+  createGroup?(name: string, ownerId: string, description?: string | null, currency?: string, visibility?: 'public' | 'restricted'): Promise<BillGroupDetail>;
   getGroup?(id: string, userId?: string | null): Promise<BillGroupDetail | null>;
   listGroups?(userId?: string | null): Promise<BillGroupSummary[]>;
-  updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string; participants?: PersonData[] }, userId?: string | null): Promise<void>;
+  updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void>;
   deleteGroup?(id: string, userId?: string | null): Promise<boolean>;
   transferGroupOwnership?(id: string, newOwnerId: string, userId?: string | null): Promise<void>;
   transferBillOwnership?(billId: string, newOwnerId: string, userId?: string | null): Promise<void>;

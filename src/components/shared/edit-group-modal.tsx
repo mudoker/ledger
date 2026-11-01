@@ -12,7 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Tag, AlignLeft, ArrowRight, Coins } from "lucide-react";
+import { Settings2, Tag, AlignLeft, ArrowRight, Coins, Globe, Lock } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useGroupStore } from "@/store/useGroupStore";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import type { BillGroupDetail } from '@/../db/types';
@@ -28,6 +29,7 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
   const [currency, setCurrency] = useState(group.currency || 'VND');
+  const [visibility, setVisibility] = useState<'public' | 'restricted'>(group.visibility || 'public');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { updateGroup } = useGroupStore();
@@ -37,6 +39,7 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
       setName(group.name);
       setDescription(group.description || '');
       setCurrency(group.currency || 'VND');
+      setVisibility(group.visibility || 'public');
       setError('');
     }
   }, [open, group]);
@@ -55,6 +58,7 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
         name: name.trim(),
         description: description.trim() || null,
         currency,
+        visibility,
       });
       onOpenChange(false);
       onSuccess?.();
@@ -127,6 +131,52 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
                 onChange={(c) => setCurrency(c)}
                 variant="default"
               />
+            </div>
+
+            {/* Visibility Selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5" /> Group Visibility & Access
+              </Label>
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setVisibility('public')}
+                  className={cn(
+                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all",
+                    visibility === 'public'
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <Globe className={cn("w-3.5 h-3.5", visibility === 'public' ? "text-primary" : "text-muted-foreground")} />
+                    <span>Public</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    Anyone with link can view group & synced bills
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVisibility('restricted')}
+                  className={cn(
+                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all",
+                    visibility === 'restricted'
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <Lock className={cn("w-3.5 h-3.5", visibility === 'restricted' ? "text-primary" : "text-muted-foreground")} />
+                    <span>Restricted</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    Only participants added to this group can view
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
 

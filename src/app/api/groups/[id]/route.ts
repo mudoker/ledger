@@ -65,14 +65,14 @@ export async function PUT(
       return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400, headers: corsHeaders });
     }
 
-    const { name, description, currency, participants } = body || {};
+    const { name, description, currency, visibility, participants } = body || {};
 
     const db = await getDb();
     if (!db.updateGroup || !db.getGroup) {
       return NextResponse.json({ error: 'Groups not supported' }, { status: 500, headers: corsHeaders });
     }
 
-    await db.updateGroup(id, { name, description, currency, participants }, user.id);
+    await db.updateGroup(id, { name, description, currency, visibility, participants }, user.id);
     const updated = await db.getGroup(id, user.id);
     return NextResponse.json(updated, { headers: corsHeaders });
   } catch (error: unknown) {

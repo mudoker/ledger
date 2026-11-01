@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400, headers: corsHeaders });
     }
 
-    const { name, description, currency } = body || {};
+    const { name, description, currency, visibility } = body || {};
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json({ error: 'Group name is required' }, { status: 400, headers: corsHeaders });
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Group creation not supported' }, { status: 500, headers: corsHeaders });
     }
 
-    const group = await db.createGroup(name.trim(), user.id, description || null, cleanCurrency);
+    const group = await db.createGroup(name.trim(), user.id, description || null, cleanCurrency, visibility || 'public');
     return NextResponse.json(group, { status: 201, headers: corsHeaders });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to create group';

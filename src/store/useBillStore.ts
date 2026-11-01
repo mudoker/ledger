@@ -958,7 +958,11 @@ export const useBillStore = create<BillState>()(
                 try {
                     let url = isShare ? `/api/bills/${id}?share=1` : `/api/bills/${id}`;
                     if (token) {
-                        url += `&token=${encodeURIComponent(token)}`;
+                        url += `${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+                    }
+                    const activeGroupId = get().groupId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('groupId') : null);
+                    if (activeGroupId) {
+                        url += `${url.includes('?') ? '&' : '?'}groupId=${encodeURIComponent(activeGroupId)}`;
                     }
                     const response = await fetch(url);
                     if (!response.ok) {

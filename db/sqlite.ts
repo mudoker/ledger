@@ -40,6 +40,7 @@ interface BillGroupRow {
   description: string | null;
   owner_id: string;
   currency: string;
+  visibility?: 'public' | 'restricted' | null;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +124,8 @@ export class SqliteAdapter implements DatabaseAdapter {
         description TEXT,
         owner_id TEXT NOT NULL,
         currency TEXT DEFAULT 'VND',
+        visibility TEXT DEFAULT 'public',
+        participants TEXT DEFAULT '[]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -223,6 +226,15 @@ export class SqliteAdapter implements DatabaseAdapter {
     }
     if (!peopleColNames.has('email')) {
       this.db.exec('ALTER TABLE people ADD COLUMN email TEXT;');
+    }
+
+    const groupColumns = this.db.prepare("PRAGMA table_info(bill_groups)").all() as Array<{ name: string }>;
+    const groupColNames = new Set(groupColumns.map(c => c.name));
+    if (!groupColNames.has('visibility')) {
+      this.db.exec("ALTER TABLE bill_groups ADD COLUMN visibility TEXT DEFAULT 'public';");
+    }
+    if (!groupColNames.has('participants')) {
+      this.db.exec("ALTER TABLE bill_groups ADD COLUMN participants TEXT DEFAULT '[]';");
     }
 
     this.db.exec(`
@@ -376,6 +388,48 @@ export class SqliteAdapter implements DatabaseAdapter {
     ).all(id, userId || 'none', userEmail || 'none');
     const isParticipant = participantCheck.length > 0;
 
+    // Check group access if bill belongs to a group
+    let isGroupAccessible = false;
+    let isGroupOwner = false;
+    let groupVisibility: string | null = null;
+    if (bill.group_id) {
+      const group = this.db.prepare(
+        'SELECT id, owner_id, visibility, participants FROM bill_groups WHERE id = ?'
+      ).get(bill.group_id) as { id: string; owner_id: string; visibility?: string | null; participants?: string | null } | undefined;
+
+      if (group) {
+        groupVisibility = group.visibility || 'public';
+        if (userId && group.owner_id === userId) {
+          isGroupOwner = true;
+          isGroupAccessible = true;
+        }
+
+        let groupParts: Array<{ userId?: string | null; email?: string | null; id?: string }> = [];
+        try {
+          if (group.participants) {
+            groupParts = typeof group.participants === 'string' ? JSON.parse(group.participants) : group.participants;
+          }
+        } catch {
+          // ignore malformed participants JSON
+        }
+
+        if (userId || userEmail) {
+          const inGroup = groupParts.some(p =>
+            (userId && p.userId === userId) ||
+            (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase())
+          );
+          if (inGroup) {
+            isGroupAccessible = true;
+          }
+        }
+
+        // If the group is public, anyone with access to the group can view its synced bills
+        if (groupVisibility === 'public' || groupVisibility !== 'restricted') {
+          isGroupAccessible = true;
+        }
+      }
+    }
+
     let role: 'owner' | 'participant' | 'viewer' = 'viewer';
     let isReadOnly = true;
 
@@ -384,6 +438,12 @@ export class SqliteAdapter implements DatabaseAdapter {
       isReadOnly = Boolean(isShare);
     } else if (isParticipant) {
       role = 'participant';
+      isReadOnly = true;
+    } else if (isGroupOwner) {
+      role = 'viewer';
+      isReadOnly = true;
+    } else if (isGroupAccessible && (bill.is_shared === 1 || bill.is_shared === null || bill.is_shared === undefined || bill.is_shared !== 0)) {
+      role = 'viewer';
       isReadOnly = true;
     } else if (isShare) {
       // Check restricted mode
@@ -450,7 +510,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       owner_id: bill.owner_id ? String(bill.owner_id) : null,
       role,
       isReadOnly,
-      visibility: bill.visibility || 'restricted',
+      visibility: (isGroupAccessible && (groupVisibility === 'public' || !groupVisibility)) ? 'public' : (bill.visibility || 'restricted'),
       shareToken: bill.share_token || null,
       isShared: bill.is_shared !== 0,
       shareRevokedAt: bill.revoked_at ? String(bill.revoked_at) : null,
@@ -677,11 +737,11 @@ export class SqliteAdapter implements DatabaseAdapter {
     });
   }
 
-  async createGroup(name: string, ownerId: string, description: string | null = null, currency: string = 'VND'): Promise<BillGroupDetail> {
+  async createGroup(name: string, ownerId: string, description: string | null = null, currency: string = 'VND', visibility: 'public' | 'restricted' = 'public'): Promise<BillGroupDetail> {
     const id = crypto.randomUUID();
     this.db.prepare(
-      'INSERT INTO bill_groups (id, name, description, owner_id, currency) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, name.trim(), description ? description.trim() : null, ownerId, currency);
+      'INSERT INTO bill_groups (id, name, description, owner_id, currency, visibility) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(id, name.trim(), description ? description.trim() : null, ownerId, currency, visibility);
 
     const group = await this.getGroup(id, ownerId);
     if (!group) throw new Error('Failed to create group');
@@ -849,6 +909,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       owner_email: group.owner_email ? String(group.owner_email) : null,
       is_owner: isOwner,
       currency: group.currency ? String(group.currency) : 'VND',
+      visibility: ((group as any).visibility || 'public') as 'public' | 'restricted',
       total_amount: totalGroupAmount,
       total_bills: bills.length,
       total_items: totalItemsCount,
@@ -872,6 +933,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         g.description,
         g.owner_id,
         g.currency,
+        g.visibility,
         g.created_at,
         g.updated_at,
         u.name as owner_name,
@@ -944,6 +1006,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         owner_email: g.owner_email ? String(g.owner_email) : null,
         is_owner: g.owner_id === userId,
         currency: g.currency ? String(g.currency) : 'VND',
+        visibility: ((g as any).visibility || 'public') as 'public' | 'restricted',
         total_amount: stats.totalAmount,
         total_bills: stats.billsCount,
         total_items: stats.totalItems,
@@ -959,23 +1022,26 @@ export class SqliteAdapter implements DatabaseAdapter {
     });
   }
 
-  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; participants?: PersonData[] }, userId?: string | null): Promise<void> {
+  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void> {
     const existing = this.db.prepare('SELECT owner_id FROM bill_groups WHERE id = ?').get(id) as { owner_id: string } | undefined;
     if (!existing) throw new Error('Group not found');
     if (userId && existing.owner_id !== userId) {
       throw new Error('Forbidden: Only the group owner can update this group');
     }
 
-    const { name, description, currency, participants } = data;
+    const { name, description, currency, visibility, participants } = data;
     try {
       this.db.prepare('ALTER TABLE bill_groups ADD COLUMN participants TEXT DEFAULT \'[]\'').run();
-    } catch {}
+    } catch {
+      // Column may already exist
+    }
 
     this.db.prepare(`
       UPDATE bill_groups
       SET name = COALESCE(?, name),
           description = COALESCE(?, description),
           currency = COALESCE(?, currency),
+          visibility = COALESCE(?, visibility),
           participants = CASE WHEN ? IS NOT NULL THEN ? ELSE participants END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
@@ -983,10 +1049,20 @@ export class SqliteAdapter implements DatabaseAdapter {
       name !== undefined ? name.trim() : null,
       description !== undefined ? description : null,
       currency || null,
+      visibility || null,
       participants !== undefined ? JSON.stringify(participants) : null,
       participants !== undefined ? JSON.stringify(participants) : null,
       id
     );
+
+    // When group is made public or shared, ensure all cloud-synced bills linked to this group are set to public
+    if (visibility === 'public') {
+      this.db.prepare(`
+        UPDATE bills
+        SET visibility = 'public', updated_at = CURRENT_TIMESTAMP
+        WHERE group_id = ? AND (is_shared = 1 OR is_shared IS NULL)
+      `).run(id);
+    }
   }
 
   async deleteGroup(id: string, userId?: string | null): Promise<boolean> {
@@ -1071,13 +1147,19 @@ export class SqliteAdapter implements DatabaseAdapter {
     }
 
     if (groupId) {
-      const group = this.db.prepare('SELECT id FROM bill_groups WHERE id = ?').get(groupId);
+      const group = this.db.prepare('SELECT id, visibility FROM bill_groups WHERE id = ?').get(groupId) as any;
       if (!group) throw new Error('Group not found');
     }
 
     this.db.exec('BEGIN TRANSACTION;');
     try {
       this.db.prepare('UPDATE bills SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(groupId, billId);
+      if (groupId) {
+        const group = this.db.prepare('SELECT visibility FROM bill_groups WHERE id = ?').get(groupId) as any;
+        if (group && (group.visibility === 'public' || !group.visibility || group.visibility !== 'restricted')) {
+          this.db.prepare("UPDATE bills SET visibility = 'public' WHERE id = ? AND (is_shared = 1 OR is_shared IS NULL)").run(billId);
+        }
+      }
       this.db.exec('COMMIT;');
     } catch (err) {
       this.db.exec('ROLLBACK;');

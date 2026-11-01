@@ -17,8 +17,8 @@ interface GroupState {
   fetchGroups: () => Promise<void>;
   fetchGroup: (id: string) => Promise<BillGroupDetail | null>;
   syncGroupWithBills: (groupId: string) => Promise<void>;
-  createGroup: (name: string, description?: string | null, currency?: string) => Promise<BillGroupDetail>;
-  updateGroup: (id: string, data: { name?: string; description?: string | null; currency?: string; participants?: any[] }) => Promise<void>;
+  createGroup: (name: string, description?: string | null, currency?: string, visibility?: 'public' | 'restricted') => Promise<BillGroupDetail>;
+  updateGroup: (id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: any[] }) => Promise<void>;
   deleteGroup: (id: string) => Promise<boolean>;
   transferOwnership: (id: string, newOwnerId: string) => Promise<boolean>;
   addGroupParticipant: (groupId: string, name: string, email?: string | null) => Promise<void>;
@@ -238,7 +238,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 
-  createGroup: async (name: string, description: string | null = null, currency: string = 'VND') => {
+  createGroup: async (name: string, description: string | null = null, currency: string = 'VND', visibility: 'public' | 'restricted' = 'public') => {
     set({ isLoading: true, error: null });
     const localDb = getLocalDb();
     const newId = crypto.randomUUID();
@@ -262,7 +262,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       const res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description, currency }),
+        body: JSON.stringify({ name, description, currency, visibility }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

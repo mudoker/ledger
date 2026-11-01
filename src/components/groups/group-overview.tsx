@@ -30,6 +30,8 @@ import {
   Scale,
   Users,
   Shield,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -160,6 +162,13 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
       const url = `${window.location.origin}${window.location.pathname}?groupId=${group.id}`;
       await navigator.clipboard.writeText(url);
       setCopiedLink(true);
+
+      // If owner shares group link and group is not yet explicitly public, ensure group is marked public so all synced bills are ready to read
+      if (group.is_owner && group.visibility !== 'public') {
+        const { useGroupStore } = await import('@/store/useGroupStore');
+        useGroupStore.getState().updateGroup(group.id, { visibility: 'public' }).catch(() => {});
+      }
+
       setTimeout(() => setCopiedLink(false), 2000);
     } catch {
       // fallback
@@ -313,6 +322,17 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                   {group.name}
                 </h1>
                 <RoleBadge role={group.is_owner ? 'owner' : 'participant'} />
+                {group.visibility === 'restricted' ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>Restricted</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                    <Globe className="w-2.5 h-2.5" />
+                    <span>Public</span>
+                  </span>
+                )}
               </div>
               {group.description && (
                 <p className="text-xs text-muted-foreground mt-0.5">{group.description}</p>

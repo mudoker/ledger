@@ -285,6 +285,108 @@ describe('Bill Groups, Aggregation, and Search Feature', () => {
       expect(bill).not.toBeNull();
       expect(bill!.group_id).toBeNull();
     });
+
+    it('allows anyone with group access to read all cloud-synced bills linked to a public or shared group', async () => {
+      // 1. Alice creates a group and links a bill with people, items, assignments, and charges
+      const group = await adapter.createGroup('Shared Roadtrip', 'user_alice', 'Trip details', 'VND', 'public');
+
+      await adapter.saveBill(
+        'bill_roadtrip_1',
+        {
+          name: 'Highway Toll & Snacks',
+          location: 'Station 10',
+          currency: 'VND',
+          groupId: group.id,
+          visibility: 'restricted', // Initially restricted on bill level
+          people: [
+            { id: 'p1', name: 'Alice', sponsorAmount: 0, paidAmount: 0 },
+            { id: 'p2', name: 'Bob', sponsorAmount: 0, paidAmount: 0 },
+          ],
+          items: [
+            { id: 'item_t1', name: 'Toll Pass', price: 45000, quantity: 1, assignments: { p1: 1, p2: 1 } },
+            { id: 'item_t2', name: 'Energy Drink', price: 20000, quantity: 2, assignments: { p1: 2 } },
+          ],
+          charges: [
+            { id: 'ch1', name: 'Service Fee', type: 'fixed', amount: 5000 },
+          ],
+        },
+        'user_alice'
+      );
+
+      // 2. Charlie is NOT the bill owner and NOT in bill people
+      const charlieBill = await adapter.getBill('bill_roadtrip_1', 'user_charlie');
+      expect(charlieBill).not.toBeNull();
+      expect(charlieBill?.id).toBe('bill_roadtrip_1');
+      expect(charlieBill?.data.name).toBe('Highway Toll & Snacks');
+      expect(charlieBill?.data.location).toBe('Station 10');
+      expect(charlieBill?.isReadOnly).toBe(true);
+      expect(charlieBill?.role).toBe('viewer');
+      expect(charlieBill?.data.items.length).toBe(2);
+      expect(charlieBill?.data.people.length).toBe(2);
+      expect(charlieBill?.data.globalCharges.length).toBe(1);
+
+      // 3. Anonymous / guest viewer (null userId) can also read synced bills in public group
+      const anonBill = await adapter.getBill('bill_roadtrip_1', null);
+      expect(anonBill).not.toBeNull();
+      expect(anonBill?.data.name).toBe('Highway Toll & Snacks');
+      expect(anonBill?.isReadOnly).toBe(true);
+      expect(anonBill?.data.items.length).toBe(2);
+    });
+
+    it('prevents non-owners from reading bills when cloud sync is revoked (is_shared = 0)', async () => {
+      const group = await adapter.createGroup('Private Group', 'user_alice');
+
+      await adapter.saveBill(
+        'bill_unshared_local',
+        {
+          name: 'Secret Personal Receipt',
+          currency: 'VND',
+          groupId: group.id,
+          isShared: false, // Cloud sharing revoked
+          people: [{ id: 'p1', name: 'Alice' }],
+          items: [{ id: 'item_s', name: 'Private Item', price: 10000, quantity: 1 }],
+        },
+        'user_alice'
+      );
+
+      // Owner can read
+      const ownerBill = await adapter.getBill('bill_unshared_local', 'user_alice');
+      expect(ownerBill).not.toBeNull();
+
+      // Charlie cannot read unsynced/revoked bill even if in group
+      const charlieBill = await adapter.getBill('bill_unshared_local', 'user_charlie');
+      expect(charlieBill).toBeNull();
+    });
+
+    it('updating a group to public marks all linked synced bills with visibility public', async () => {
+      const group = await adapter.createGroup('Restricted Group', 'user_alice', null, 'VND', 'restricted');
+
+      await adapter.saveBill(
+        'bill_initially_restricted',
+        {
+          name: 'Lunch Bill',
+          currency: 'VND',
+          groupId: group.id,
+          visibility: 'restricted',
+          people: [{ id: 'p1', name: 'Alice' }],
+          items: [{ id: 'item_l', name: 'Pho', price: 60000, quantity: 1 }],
+        },
+        'user_alice'
+      );
+
+      // Initially restricted group: Charlie cannot read
+      const billBefore = await adapter.getBill('bill_initially_restricted', 'user_charlie');
+      expect(billBefore).toBeNull();
+
+      // Alice updates group visibility to 'public' (sharing group)
+      await adapter.updateGroup(group.id, { visibility: 'public' }, 'user_alice');
+
+      // Now Charlie can read the bill
+      const billAfter = await adapter.getBill('bill_initially_restricted', 'user_charlie');
+      expect(billAfter).not.toBeNull();
+      expect(billAfter?.data.name).toBe('Lunch Bill');
+      expect(billAfter?.isReadOnly).toBe(true);
+    });
   });
 
   describe('Owner-Only Administration & Transferable Ownership', () => {
