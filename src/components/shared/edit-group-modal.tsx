@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Settings2, Tag, AlignLeft, ArrowRight, Coins } from "lucide-react";
 import { useGroupStore } from "@/store/useGroupStore";
+import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import type { BillGroupDetail } from '@/../db/types';
 
 interface EditGroupModalProps {
@@ -22,8 +23,6 @@ interface EditGroupModalProps {
   group: BillGroupDetail;
   onSuccess?: () => void;
 }
-
-const CURRENCIES = ['VND', 'USD', 'EUR', 'SGD', 'JPY'];
 
 export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGroupModalProps) {
   const [name, setName] = useState(group.name);
@@ -118,27 +117,16 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
               />
             </div>
 
-            {/* Currency Selector Chips */}
+            {/* Currency Selector Dropdown */}
             <div className="space-y-1.5">
               <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Coins className="w-3.5 h-3.5" /> Group Currency
               </Label>
-              <div className="flex flex-wrap gap-2 pt-0.5">
-                {CURRENCIES.map((curr) => (
-                  <button
-                    key={curr}
-                    type="button"
-                    onClick={() => setCurrency(curr)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      currency === curr
-                        ? 'bg-foreground text-background border-foreground shadow-xs'
-                        : 'border-border/70 hover:border-foreground/30 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {curr}
-                  </button>
-                ))}
-              </div>
+              <CurrencyDropdown
+                value={currency}
+                onChange={(c) => setCurrency(c)}
+                variant="default"
+              />
             </div>
           </div>
 

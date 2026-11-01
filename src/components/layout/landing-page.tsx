@@ -23,9 +23,10 @@ interface LandingPageProps {
     onSelectBill: (id: string | 'current') => void;
     onSelectGroup?: (id: string) => void;
     onLoadDemo?: () => void;
+    onOpenSettings?: () => void;
 }
 
-export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo }: LandingPageProps) {
+export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo, onOpenSettings }: LandingPageProps) {
     const {
         billHistory,
         fetchHistory,
@@ -381,6 +382,8 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         icon={<Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground transition-colors group-hover:text-inherit" />}
                                         iconVariant="muted"
                                         role={bill.role}
+                                        sharingStatus={bill.sharingStatus || 'local'}
+                                        visibility={bill.visibility || 'local'}
                                         groupName={bill.group_name}
                                         timestamp={bill.updated_at}
                                         location={bill.location}

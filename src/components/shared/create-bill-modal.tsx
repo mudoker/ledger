@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tag, MapPin, User, ArrowRight, ReceiptText, Coins, Folder } from "lucide-react";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import { useGroupStore } from "@/store/useGroupStore";
+import { useAppSettingsStore } from "@/store/useAppSettingsStore";
 
 export interface CreateBillFormData {
   name: string;
@@ -32,17 +33,19 @@ interface CreateBillModalProps {
 }
 
 export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, initialGroupId }: CreateBillModalProps) {
+  const defaultCurrency = useAppSettingsStore((state) => state.defaultCurrency) || 'VND';
   const effectiveGroupId = defaultGroupId || initialGroupId || 'none';
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [hostName, setHostName] = useState('');
-  const [currency, setCurrency] = useState<string>('VND');
+  const [currency, setCurrency] = useState<string>(defaultCurrency);
   const [groupId, setGroupId] = useState<string>(effectiveGroupId);
   const [error, setError] = useState('');
   const { groups, fetchGroups } = useGroupStore();
 
   useEffect(() => {
     if (open) {
+      setCurrency(defaultCurrency);
       fetchGroups();
       const initial = defaultGroupId || initialGroupId;
       if (initial) {

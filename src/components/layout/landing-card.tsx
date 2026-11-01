@@ -1,8 +1,9 @@
 import React from 'react';
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronRight, Clock, MapPin, Folder, Crown, Sparkles } from "lucide-react";
+import { ChevronRight, Clock, MapPin, Folder, Crown, Sparkles, Shield, Globe, Users, AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
+import type { BillSharingStatus, BillVisibility } from '@/lib/local-db/types';
 
 export interface RoleBadgeProps {
     role?: 'owner' | 'participant' | 'draft' | string | null;
@@ -55,6 +56,8 @@ export interface LandingCardProps {
     iconVariant?: 'primary' | 'muted' | 'amber';
     role?: 'owner' | 'participant' | 'draft' | string | null;
     isOwner?: boolean;
+    sharingStatus?: BillSharingStatus;
+    visibility?: BillVisibility;
     groupName?: string | null;
     timestamp?: string | Date;
     location?: string | null;
@@ -71,6 +74,8 @@ export function LandingCard({
     iconVariant = 'muted',
     role,
     isOwner,
+    sharingStatus,
+    visibility,
     groupName,
     timestamp,
     location,
@@ -157,6 +162,32 @@ export function LandingCard({
 
                             {/* Role Badge (Owner, Participant, Draft) */}
                             <RoleBadge role={role} isOwner={isOwner} />
+
+                            {/* Sharing Status Badge */}
+                            {sharingStatus === 'local' && (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/70 shrink-0 inline-flex items-center gap-1 shadow-2xs">
+                                    <Shield className="w-2.5 h-2.5 text-muted-foreground" />
+                                    <span>Only on this device</span>
+                                </span>
+                            )}
+                            {sharingStatus === 'shared' && visibility === 'public' && (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0 inline-flex items-center gap-1 shadow-2xs">
+                                    <Globe className="w-2.5 h-2.5 text-blue-500" />
+                                    <span>Shared (Public)</span>
+                                </span>
+                            )}
+                            {sharingStatus === 'shared' && visibility === 'restricted' && (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0 inline-flex items-center gap-1 shadow-2xs">
+                                    <Users className="w-2.5 h-2.5 text-emerald-500" />
+                                    <span>Shared (Participants)</span>
+                                </span>
+                            )}
+                            {sharingStatus === 'revocation_pending' && (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0 inline-flex items-center gap-1 shadow-2xs">
+                                    <AlertTriangle className="w-2.5 h-2.5 text-amber-500" />
+                                    <span>Revocation Pending</span>
+                                </span>
+                            )}
 
                             {/* Timestamp */}
                             {timestamp && (
