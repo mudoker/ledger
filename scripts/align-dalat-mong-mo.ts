@@ -170,7 +170,7 @@ async function alignDalatMongMo() {
     },
     {
       id: 'dalat_tien_xe_ve',
-      ...createBillPayload('Tiền xe về', 2570000, 'Qui', fiveNoChauNames),
+      ...createBillPayload('Tiền xe về', 2570000, 'Qui', fourGrabNames), // 4 attendants: Dat, Qui, Lan, Luong (excluding Quoc and Alice)
     },
     {
       id: '18b07d6a-a573-4d94-ba27-37bebfc3c170', // Banh Can Co Hoa

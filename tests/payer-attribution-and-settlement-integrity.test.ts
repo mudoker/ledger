@@ -84,7 +84,7 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     const tripBills: GroupBillOverview[] = [
       createTripBill('b1', 'Tiền nhà', 7428189, 'p_dat', all6),
       createTripBill('b2', 'Tiền xe đi', 3250000, 'p_qui', fiveNoAlice),
-      createTripBill('b3', 'Tiền xe về', 2570000, 'p_qui', fiveNoAlice),
+      createTripBill('b3', 'Tiền xe về', 2570000, 'p_qui', fourGrab), // 4 attendants per latest spreadsheet: Dat, Qui, Lan, Luong
       createTripBill('b4', 'Ăn sáng (D1)', 280000, 'p_dat', fiveNoAlice),
       createTripBill('b5', 'Xăng (D1)', 150000, 'p_dat', fiveNoAlice),
       createTripBill('b6', 'Vé mongo', 700000, 'p_dat', fiveNoAlice),
