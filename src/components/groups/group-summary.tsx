@@ -34,15 +34,17 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
     return calculateGroupSettlement(group);
   }, [group]);
 
+  const groupCurrency = group.currency;
+
   const handleCopySummary = async () => {
     try {
       let text = `🧾 ${group.name} — Expenses & Settlement\n`;
-      text += `💰 Total Expenses: ${formatCurrency(settlement.totalExpenses)} across ${settlement.totalBills} bill${settlement.totalBills === 1 ? '' : 's'}\n\n`;
+      text += `💰 Total Expenses: ${formatCurrency(settlement.totalExpenses, groupCurrency)} across ${settlement.totalBills} bill${settlement.totalBills === 1 ? '' : 's'}\n\n`;
 
       if (settlement.transfers.length > 0) {
         text += `💸 Simplified Settlements:\n`;
         settlement.transfers.forEach(t => {
-          text += `• ${t.fromName} ➔ ${t.toName}: ${formatCurrency(t.amount)}\n`;
+          text += `• ${t.fromName} ➔ ${t.toName}: ${formatCurrency(t.amount, groupCurrency)}\n`;
         });
         text += `\n`;
       } else {
@@ -53,7 +55,7 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
       settlement.participants.forEach(p => {
         const sign = p.netBalance > 0 ? '+' : '';
         const status = p.status === 'receive' ? 'To receive' : p.status === 'pay' ? 'To pay' : 'Settled';
-        text += `• ${p.name}: ${sign}${formatCurrency(p.netBalance)} (${status}) [Paid: ${formatCurrency(p.totalPaid)}, Share: ${formatCurrency(p.totalShare)}]\n`;
+        text += `• ${p.name}: ${sign}${formatCurrency(p.netBalance, groupCurrency)} (${status}) [Paid: ${formatCurrency(p.totalPaid, groupCurrency)}, Share: ${formatCurrency(p.totalShare, groupCurrency)}]\n`;
       });
 
       await navigator.clipboard.writeText(text);
@@ -151,7 +153,7 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
                 {/* Amount with directional shimmer track */}
                 <div className="flex-1 flex flex-col items-center gap-0.5 sm:gap-1 min-w-0 px-1">
                   <div className="text-[11px] xs:text-xs sm:text-sm font-black text-primary tabular-nums italic truncate max-w-full">
-                    {formatCurrency(t.amount)}
+                    {formatCurrency(t.amount, groupCurrency)}
                   </div>
                   <div className="w-full h-1 bg-primary/10 rounded-full overflow-hidden relative">
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/50 to-transparent animate-shimmer" />
@@ -190,7 +192,7 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
           <div className="font-semibold">
             Group Expenses:{' '}
             <strong className="text-foreground tabular-nums">
-              {formatCurrency(settlement.totalExpenses)}
+              {formatCurrency(settlement.totalExpenses, groupCurrency)}
             </strong>
           </div>
         </div>
@@ -261,12 +263,12 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
 
                       {/* Total Paid */}
                       <TableCell className="text-right px-3 sm:px-4 py-3 whitespace-nowrap text-xs font-semibold tabular-nums text-foreground">
-                        {formatCurrency(p.totalPaid)}
+                        {formatCurrency(p.totalPaid, groupCurrency)}
                       </TableCell>
 
                       {/* Total Share */}
                       <TableCell className="text-right px-3 sm:px-4 py-3 whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground">
-                        {formatCurrency(p.totalShare)}
+                        {formatCurrency(p.totalShare, groupCurrency)}
                       </TableCell>
 
                       {/* Net Balance & Status Badge */}
@@ -281,7 +283,7 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
                                 : 'text-muted-foreground'
                             }`}
                           >
-                            {p.netBalance > 0 ? `+${formatCurrency(p.netBalance)}` : p.netBalance < 0 ? `-${formatCurrency(Math.abs(p.netBalance))}` : formatCurrency(0)}
+                            {p.netBalance > 0 ? `+${formatCurrency(p.netBalance, groupCurrency)}` : p.netBalance < 0 ? `-${formatCurrency(Math.abs(p.netBalance), groupCurrency)}` : formatCurrency(0, groupCurrency)}
                           </span>
                           <span
                             className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md ${

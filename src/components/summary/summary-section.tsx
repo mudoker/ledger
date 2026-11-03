@@ -13,6 +13,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/format";
+import { MoneyDisplay } from "@/components/shared/money-display";
 import { CostPieChart, buildChartData } from "./summary-charts";
 import { PersonalReceipt } from "./personal-receipt";
 
@@ -76,16 +77,22 @@ export function SummarySection() {
                         <div className="grid grid-cols-3 gap-1.5 sm:gap-3 w-full min-w-0">
                             <div className="bg-card/30 rounded-xl sm:rounded-2xl p-2 sm:p-4 border border-foreground/5 transition-all hover:border-primary/20 group min-w-0 overflow-hidden" title={`Items Subtotal: ${formatCurrency(totalItemCost)}`}>
                                 <div className="text-[9px] sm:text-[10px] text-muted-foreground uppercase font-black tracking-wider mb-0.5 sm:mb-1 group-hover:text-primary transition-colors truncate">Items</div>
-                                <div className="text-[11px] xs:text-xs sm:text-sm font-bold text-foreground tabular-nums truncate tracking-tight">{formatCurrency(totalItemCost)}</div>
+                                <div className="text-[11px] xs:text-xs sm:text-sm font-bold text-foreground tabular-nums truncate tracking-tight">
+                                    <MoneyDisplay amount={totalItemCost} />
+                                </div>
                             </div>
                             <div className="bg-amber-500/10 rounded-xl sm:rounded-2xl p-2 sm:p-4 border border-amber-500/20 transition-all hover:bg-amber-500/20 min-w-0 overflow-hidden" title={`Extras/Taxes: ${formatCurrency(totalExtras)}`}>
                                 <div className="text-[9px] sm:text-[10px] text-amber-600 dark:text-amber-400 uppercase font-black tracking-wider mb-0.5 sm:mb-1 truncate">Extras</div>
-                                <div className="text-[11px] xs:text-xs sm:text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums truncate tracking-tight">+{formatCurrency(totalExtras)}</div>
+                                <div className="text-[11px] xs:text-xs sm:text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums truncate tracking-tight">
+                                    <MoneyDisplay amount={totalExtras} prefix="+" />
+                                </div>
                             </div>
                             <div className="relative overflow-hidden bg-primary/10 rounded-xl sm:rounded-2xl p-2 sm:p-4 border border-primary/20 transition-all hover:bg-primary/20 group text-primary min-w-0" title={`Total Bill: ${formatCurrency(totalBill)}`}>
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-8 -mt-8 transition-transform group-hover:scale-110 pointer-events-none" />
                                 <div className="text-[9px] sm:text-[10px] uppercase font-black tracking-wider mb-0.5 sm:mb-1 opacity-90 text-primary truncate">Total</div>
-                                <div className="text-[11px] xs:text-xs sm:text-sm md:text-xl font-black tabular-nums tracking-tight drop-shadow-sm text-primary truncate">{formatCurrency(totalBill)}</div>
+                                <div className="text-[11px] xs:text-xs sm:text-sm md:text-xl font-black tabular-nums tracking-tight drop-shadow-sm text-primary truncate">
+                                    <MoneyDisplay amount={totalBill} />
+                                </div>
                             </div>
                         </div>
 

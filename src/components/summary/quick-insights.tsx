@@ -3,6 +3,7 @@
 import { useBillState } from "@/hooks/useBillState";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/format";
+import { MoneyDisplay } from "@/components/shared/money-display";
 import { Receipt, Users, ArrowUpRight } from "lucide-react";
 
 export function QuickInsights() {
@@ -25,9 +26,10 @@ export function QuickInsights() {
                         <ArrowUpRight className="w-3 h-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                        <span className="text-base sm:text-lg font-bold text-foreground tabular-nums truncate max-w-full">
-                            {formatCurrency(totalBill)}
-                        </span>
+                        <MoneyDisplay
+                            amount={totalBill}
+                            className="text-base sm:text-lg font-bold text-foreground tabular-nums truncate max-w-full"
+                        />
                     </div>
                     <p className="text-[10px] text-muted-foreground/75 mt-0.5 truncate" title={totalExtras > 0 ? `Includes +${formatCurrency(totalExtras)} charges` : 'No extra charges'}>
                         {totalExtras > 0 ? (
@@ -51,9 +53,10 @@ export function QuickInsights() {
                         <ArrowUpRight className="w-3 h-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                        <span className="text-base sm:text-lg font-bold text-foreground tabular-nums truncate max-w-full">
-                            {formatCurrency(avgCommitment)}
-                        </span>
+                        <MoneyDisplay
+                            amount={avgCommitment}
+                            className="text-base sm:text-lg font-bold text-foreground tabular-nums truncate max-w-full"
+                        />
                     </div>
                     <p className="text-[10px] text-muted-foreground/75 mt-0.5 truncate">
                         {people.length} active {people.length === 1 ? 'member' : 'members'}

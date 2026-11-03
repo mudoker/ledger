@@ -57,7 +57,14 @@ export const parseFormattedNumber = (str: string): number => {
  */
 export const formatConciseRelativeTime = (timestamp: Date | string | number | null | undefined): string => {
     if (!timestamp) return 'recent';
-    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    let normalized = timestamp;
+    if (typeof timestamp === 'string') {
+        const trimmed = timestamp.trim();
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)) {
+            normalized = trimmed.replace(' ', 'T') + 'Z';
+        }
+    }
+    const date = normalized instanceof Date ? normalized : new Date(normalized);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
 
