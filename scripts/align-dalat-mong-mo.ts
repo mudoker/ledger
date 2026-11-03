@@ -191,7 +191,7 @@ async function alignDalatMongMo() {
       ...createBillPayload('Tối lẩu bò (Lẩu Bò)', 1357000, 'Dat', all6Names),
     },
     {
-      id: '5c956d97-ba7d-48f1-aaf2-24cddd135f8f', // Dem Lao Xao
+      id: '1d47a330-1a53-4a7f-93e3-4021f14db0d9', // Dem Lao Xao from user's phone
       ...createBillPayload('Ăn vặt (Đêm Lao Xao)', 140000, 'Luong', all6Names),
     },
     {
