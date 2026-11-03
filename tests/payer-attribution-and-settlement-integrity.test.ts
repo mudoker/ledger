@@ -94,7 +94,7 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
       createTripBill('b10', 'Ăn tối', 1524700, 'p_dat', fiveNoAlice),
       createTripBill('b11', 'Đậu nành', 130000, 'p_dat', fiveNoAlice),
       createTripBill('b11_an_sang_d2', 'Ăn sáng (D2)', 360000, 'p_dat', all6),
-      createTripBill('b12', 'Xăng (D2)', 150000, ['p_dat', 'p_qui', 'p_quoc'], all6), // 50k each
+      createTripBill('b12', 'Xăng (D2)', 150000, 'p_dat', all6), // 1 payer for gas per instruction
       createTripBill('b13', 'Farm', 480000, 'p_dat', all6),
       createTripBill('b14', 'Langfarm', 1289520, 'p_dat', all6),
       createTripBill('b15', 'Cafe', 316000, 'p_quoc', all6), // Quốc pays cafe
@@ -133,20 +133,19 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     expect(luongSummary).toBeDefined();
     expect(aliceSummary).toBeDefined();
 
-    // 1. Đạt paid 15+ major bills (~15.4M VND)
-    // 7,428,189 + 280k + 150k + 700k + 750k + 23k + 1,524,700 + 130k + 50k + 480k + 1,289,520 + 590k + 400k + 1,357,000 + 248k + 40k = 15,440,409
+    // 1. Đạt paid major bills (~15.9M VND)
     expect(datSummary!.totalPaid).toBeGreaterThan(15000000);
     expect(datSummary!.status).toBe('receive');
-    expect(datSummary!.netBalance).toBeGreaterThan(10000000);
+    expect(datSummary!.netBalance).toBeGreaterThan(11000000);
 
-    // 2. Quí paid travel and grab bills (~6.8M VND)
-    // 3,250,000 + 2,570,000 + 954,000 + 50k + 49,000 = 6,873,000
-    expect(quiSummary!.totalPaid).toBeGreaterThan(6800000);
+    // 2. Quí paid travel and grab bills (~6.82M VND)
+    // 3,250,000 + 2,570,000 + 954,000 + 49,000 = 6,823,000
+    expect(quiSummary!.totalPaid).toBe(6823000);
     expect(quiSummary!.status).toBe('receive');
     expect(quiSummary!.netBalance).toBeGreaterThan(2000000);
 
-    // 3. Quốc paid Cafe (316k) and 50k gas = 366,000 VND
-    expect(quocSummary!.totalPaid).toBe(366000);
+    // 3. Quốc paid Cafe = 316,000 VND
+    expect(quocSummary!.totalPaid).toBe(316000);
     expect(quocSummary!.status).toBe('pay');
     expect(quocSummary!.netBalance).toBeLessThan(-3000000);
 
