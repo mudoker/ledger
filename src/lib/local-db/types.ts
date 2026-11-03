@@ -59,6 +59,7 @@ export interface LocalGroupRecord {
   name: string;
   description: string | null;
   currency: string;
+  visibility?: 'public' | 'restricted';
   ownerId: string | null;
   participants?: LocalPerson[];
   totalAmount?: number;

@@ -21,6 +21,7 @@ describe('Offline Queue Synchronization & Multi-Store Integration Suite', () => 
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    useAppSettingsStore.setState({ storageMode: 'local' });
   });
 
   describe('Offline Queue Enqueueing & FIFO Processing', () => {

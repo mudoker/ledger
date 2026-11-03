@@ -20,7 +20,7 @@ describe('Optimistic Background Sync & Local-Cloud Data Integrity Suite', () => 
     await engine.init();
     setLocalDb(engine);
 
-    useAppSettingsStore.setState({ storageMode: 'cloud' });
+    useAppSettingsStore.setState({ storageMode: 'hybrid' });
     useBillStore.setState({
       people: [],
       items: [],
@@ -55,6 +55,7 @@ describe('Optimistic Background Sync & Local-Cloud Data Integrity Suite', () => 
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    useAppSettingsStore.setState({ storageMode: 'local' });
   });
 
   describe('SyncCoordinator Serialized Execution & Trailing Coalescing', () => {

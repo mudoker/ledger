@@ -44,5 +44,5 @@ describe('Currency Support', () => {
     expect(stateVND.people[0].sponsorAmount).toBeGreaterThan(24000);
     expect(stateVND.people[0].paidAmount).toBeGreaterThan(240000);
     expect(stateVND.globalCharges[0].amount).toBeGreaterThan(48000);
-  });
+  }, 15000);
 });

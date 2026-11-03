@@ -11,8 +11,13 @@ class SyncManager {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
         this.processPendingOperations();
+        this.syncAllLocalDataToCloud().catch(() => {});
       });
       this.isListening = true;
+      const mode = useAppSettingsStore.getState().storageMode;
+      if (mode === 'cloud' || mode === 'hybrid') {
+        this.syncAllLocalDataToCloud().catch(() => {});
+      }
     }
   }
 
@@ -67,13 +72,14 @@ class SyncManager {
               continue;
             }
 
+            const effectiveVisibility = !bill.visibility || bill.visibility === 'local' ? 'restricted' : bill.visibility;
             const res = await fetch('/api/bills', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 id: bill.id,
                 isShared: true,
-                visibility: bill.visibility,
+                visibility: effectiveVisibility,
                 shareToken: bill.shareToken,
                 data: {
                   name: bill.name,
@@ -85,7 +91,7 @@ class SyncManager {
                   people: bill.people,
                   items: bill.items,
                   globalCharges: bill.globalCharges,
-                  visibility: bill.visibility,
+                  visibility: effectiveVisibility,
                   shareToken: bill.shareToken,
                 },
               }),
@@ -94,6 +100,7 @@ class SyncManager {
             if (res.ok) {
               await db.removePendingOp(op.id);
               bill.sharingStatus = 'shared';
+              bill.visibility = effectiveVisibility;
               bill.lastSyncedAt = new Date().toISOString();
               bill.syncError = null;
               await db.saveBill(bill);
@@ -147,6 +154,7 @@ class SyncManager {
       return;
     }
 
+    const effectiveVisibility = !bill.visibility || bill.visibility === 'local' ? 'restricted' : bill.visibility;
     try {
       const res = await fetch('/api/bills', {
         method: 'POST',
@@ -154,7 +162,7 @@ class SyncManager {
         body: JSON.stringify({
           id: bill.id,
           isShared: true,
-          visibility: bill.visibility,
+          visibility: effectiveVisibility,
           shareToken: bill.shareToken,
           data: {
             name: bill.name,
@@ -166,7 +174,7 @@ class SyncManager {
             people: bill.people,
             items: bill.items,
             globalCharges: bill.globalCharges,
-            visibility: bill.visibility,
+            visibility: effectiveVisibility,
             shareToken: bill.shareToken,
           },
         }),
@@ -175,6 +183,7 @@ class SyncManager {
       const db = getLocalDb();
       if (res.ok) {
         bill.sharingStatus = 'shared';
+        bill.visibility = effectiveVisibility;
         bill.lastSyncedAt = new Date().toISOString();
         bill.syncError = null;
         await db.saveBill(bill);
@@ -190,6 +199,183 @@ class SyncManager {
         billId: bill.id,
         type: 'update',
       });
+    }
+  }
+
+  /**
+   * Synchronizes all existing local groups and bills to the cloud when transitioning
+   * to 'cloud' or 'hybrid' mode, without wiping localDb data, and clears any stale 'Local' badges.
+   */
+  async syncAllLocalDataToCloud(): Promise<void> {
+    const storageMode = useAppSettingsStore.getState().storageMode;
+    if (storageMode !== 'cloud' && storageMode !== 'hybrid') return;
+
+    const db = getLocalDb();
+    const [pendingOps, localGroups, localBills] = await Promise.all([
+      db.getPendingOps().catch(() => []),
+      db.listGroups().catch(() => []),
+      db.listBills().catch(() => []),
+    ]);
+
+    const pendingDeleteIds = new Set(
+      pendingOps.filter(op => op.type === 'delete').map(op => op.billId)
+    );
+    const pendingRevokeIds = new Set(
+      pendingOps.filter(op => op.type === 'revoke').map(op => op.billId)
+    );
+
+    const billsToSync = localBills.filter(
+      b =>
+        !pendingDeleteIds.has(b.id) &&
+        !pendingRevokeIds.has(b.id) &&
+        b.sharingStatus !== 'revocation_pending' &&
+        (b.sharingStatus !== 'shared' || !b.lastSyncedAt || b.visibility === 'local')
+    );
+
+    // Also update in-memory stores immediately so UI badges update without delay
+    let hasStoreLocalItems = false;
+    try {
+      const { useBillStore } = await import('@/store/useBillStore');
+      const { useGroupStore } = await import('@/store/useGroupStore');
+
+      const billState = useBillStore.getState();
+      if (
+        billState.sharingStatus === 'local' ||
+        billState.visibility === 'local' ||
+        billState.billHistory.some(b => b.sharingStatus === 'local' || b.visibility === 'local')
+      ) {
+        hasStoreLocalItems = true;
+        useBillStore.setState(s => ({
+          sharingStatus: s.sharingStatus === 'local' ? 'shared' : s.sharingStatus,
+          visibility: s.visibility === 'local' ? 'restricted' : s.visibility,
+          billHistory: s.billHistory.map(b =>
+            b.sharingStatus === 'revocation_pending'
+              ? b
+              : {
+                  ...b,
+                  sharingStatus: 'shared',
+                  visibility: !b.visibility || b.visibility === 'local' ? 'restricted' : b.visibility,
+                }
+          ),
+        }));
+      }
+
+      const groupState = useGroupStore.getState();
+      if (groupState.currentGroup?.bills?.some(b => b.isLocal)) {
+        hasStoreLocalItems = true;
+        const curGroup = groupState.currentGroup;
+        const localBillsOnServer = curGroup.bills.filter(b => b.isLocal);
+        useGroupStore.setState({
+          currentGroup: {
+            ...curGroup,
+            bills: curGroup.bills.map(b => ({ ...b, isLocal: false })),
+          },
+        });
+        if (curGroup.is_owner && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+          for (const lb of localBillsOnServer) {
+            fetch(`/api/bills/${lb.id}/share`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ visibility: curGroup.visibility || 'public' }),
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch {}
+
+    if (
+      pendingOps.length === 0 &&
+      localGroups.length === 0 &&
+      billsToSync.length === 0 &&
+      !hasStoreLocalItems
+    ) {
+      return;
+    }
+
+    const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (isOffline) {
+      for (const bill of billsToSync) {
+        const effectiveVis = !bill.visibility || bill.visibility === 'local' ? 'restricted' : bill.visibility;
+        bill.sharingStatus = 'shared';
+        bill.visibility = effectiveVis;
+        await db.saveBill(bill);
+        await this.enqueueOperation({
+          billId: bill.id,
+          type: 'update',
+        });
+      }
+      return;
+    }
+
+    if (pendingOps.length > 0) {
+      await this.processPendingOperations();
+    }
+
+    // 1. Sync local groups to cloud (preserving group IDs)
+    for (const lg of localGroups) {
+      try {
+        const res = await fetch('/api/groups', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: lg.id,
+            name: lg.name,
+            description: lg.description,
+            currency: lg.currency || 'VND',
+            visibility: lg.visibility || 'public',
+            participants: lg.participants || [],
+          }),
+        });
+        if (res.ok) {
+          const serverGroup = await res.json().catch(() => null);
+          if (serverGroup && serverGroup.owner_id && (!lg.ownerId || lg.ownerId === 'local')) {
+            lg.ownerId = serverGroup.owner_id;
+            await db.saveGroup(lg);
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Sync local bills to cloud and mark them as shared in localDb
+    for (const bill of billsToSync) {
+      const effectiveVisibility = !bill.visibility || bill.visibility === 'local' ? 'restricted' : bill.visibility;
+      try {
+        const res = await fetch('/api/bills', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: bill.id,
+            isShared: true,
+            visibility: effectiveVisibility,
+            shareToken: bill.shareToken,
+            data: {
+              name: bill.name,
+              location: bill.location,
+              currency: bill.currency,
+              hostId: bill.hostId,
+              qrCode: bill.qrCode,
+              groupId: bill.groupId,
+              people: bill.people,
+              items: bill.items,
+              globalCharges: bill.globalCharges,
+              visibility: effectiveVisibility,
+              shareToken: bill.shareToken,
+            },
+          }),
+        });
+        if (res.ok) {
+          bill.sharingStatus = 'shared';
+          bill.visibility = effectiveVisibility;
+          bill.lastSyncedAt = new Date().toISOString();
+          bill.syncError = null;
+          await db.saveBill(bill);
+        }
+      } catch {
+        await this.enqueueOperation({
+          billId: bill.id,
+          type: 'update',
+        });
+      }
     }
   }
 }

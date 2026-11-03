@@ -48,14 +48,21 @@ export async function POST(req: Request) {
     }
 
     const billId = id || crypto.randomUUID();
+    const resolvedIsShared = isShared !== undefined
+      ? Boolean(isShared)
+      : (data?.isShared !== undefined ? Boolean(data.isShared) : true);
+    const rawVisibility = visibility || data?.visibility;
+    const resolvedVisibility = resolvedIsShared && (!rawVisibility || rawVisibility === 'local')
+      ? 'restricted'
+      : rawVisibility;
 
     const db = await getDb();
     await db.saveBill(
       billId,
       {
         ...(data || {}),
-        isShared: isShared !== undefined ? isShared : data?.isShared,
-        visibility: visibility || data?.visibility,
+        isShared: resolvedIsShared,
+        visibility: resolvedVisibility,
         shareToken: shareToken !== undefined ? shareToken : data?.shareToken,
       },
       user?.id || null

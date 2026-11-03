@@ -22,7 +22,7 @@ export async function POST(
     const { id } = await params;
     const user = await getSessionUser();
     const body = await req.json().catch(() => ({}));
-    const { visibility = 'public', regenerateToken = false } = body;
+    const { visibility = 'public', regenerateToken = false, shareToken: requestedShareToken, data: payloadData } = body;
 
     const db = await getDb();
     const bill = await db.getBill(id, user?.id || null);
@@ -35,14 +35,20 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Only the owner can share this bill' }, { status: 403, headers: corsHeaders });
     }
 
-    const shareToken = (regenerateToken || !bill.shareToken)
-      ? crypto.randomUUID().replace(/-/g, '')
-      : bill.shareToken;
+    const shareToken = (typeof requestedShareToken === 'string' && requestedShareToken.trim().length > 0)
+      ? requestedShareToken.trim()
+      : ((regenerateToken || !bill.shareToken)
+          ? crypto.randomUUID().replace(/-/g, '')
+          : bill.shareToken);
+
+    const mergedData = payloadData && typeof payloadData === 'object'
+      ? { ...bill.data, ...payloadData }
+      : bill.data;
 
     await db.saveBill(
       id,
       {
-        ...bill.data,
+        ...mergedData,
         visibility,
         shareToken,
         isShared: true,
