@@ -22,7 +22,7 @@ interface PersonRowProps {
 }
 
 export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove }: PersonRowProps) {
-    const { isReadOnly, hostId } = useBillStore();
+    const { isReadOnly, hostId, setHostId } = useBillStore();
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(person.name);
     const [editEmail, setEditEmail] = useState(person.email || '');
@@ -202,13 +202,28 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                         {!(person.paidAmount > 0) && !(person.sponsorAmount > 0) && !isReadOnly && !isHost && (
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/40 hover:bg-muted text-[10px] font-medium text-muted-foreground hover:text-foreground border border-border/40 transition-colors touch-manipulation active:scale-95"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/40 hover:bg-muted text-[10px] font-medium text-muted-foreground hover:text-foreground border border-border/40 transition-colors touch-manipulation active:scale-95 cursor-pointer"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleStartEdit();
                                 }}
                             >
                                 <Plus className="w-2.5 h-2.5" /> Add sponsor / paid
+                            </button>
+                        )}
+
+                        {!isHost && !isReadOnly && (
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-[10px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/25 transition-colors touch-manipulation active:scale-95 cursor-pointer"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHostId(person.id);
+                                }}
+                                title={`Set ${person.name} as Primary Payer (Host)`}
+                            >
+                                <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                                <span>Set Host</span>
                             </button>
                         )}
                     </>

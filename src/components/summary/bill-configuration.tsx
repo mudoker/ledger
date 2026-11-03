@@ -317,52 +317,6 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                             </div>
                         </div>
 
-                        {/* Host Selection */}
-                        <div className="space-y-2 sm:space-y-3">
-                            <Label className="text-[11px] font-black text-foreground/60 uppercase tracking-[0.2em] pl-1">Primary Payer (Host)</Label>
-                            <Select value={hostId || ""} onValueChange={setHostId} disabled={isReadOnly}>
-                                <SelectTrigger className="w-full h-9 sm:h-10 bg-muted/20 border-foreground/5 rounded-xl hover:bg-foreground/5 hover:border-foreground/20 transition-all font-semibold text-xs sm:text-sm">
-                                    <SelectValue placeholder="Who paid the bill?" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl border-foreground/10 bg-background">
-                                    {people.map((p) => (
-                                        <SelectItem key={p.id} value={p.id} className="rounded-lg font-bold">{p.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        {/* Upfront Payments */}
-                        <div className="space-y-3">
-                            <Label className="text-[11px] font-black text-foreground/60 uppercase tracking-[0.2em] pl-1">Upfront Payments</Label>
-                            <div className="grid gap-2 sm:gap-2.5">
-                                {people.map((p) => (
-                                    <div key={p.id} className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-muted/10 border border-foreground/[0.03] gap-2">
-                                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-                                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-foreground/5 flex items-center justify-center font-black text-xs text-foreground/80 border border-foreground/10 shrink-0">
-                                                {p.name[0]}
-                                            </div>
-                                            <span className="text-xs font-bold truncate">{p.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            {p.id === hostId ? (
-                                                <div className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center justify-center bg-foreground/5 rounded-lg border border-foreground/10">
-                                                    <span className="text-[9px] sm:text-[10px] font-black text-foreground/80 uppercase">Pays Remaining</span>
-                                                </div>
-                                            ) : (
-                                                <CurrencyInput
-                                                    value={p.paidAmount || 0}
-                                                    onChange={(val) => updatePerson(p.id, { paidAmount: val })}
-                                                    className="w-24 xs:w-28 sm:w-32 h-8 sm:h-9 text-right text-xs bg-background border-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-lg font-bold tabular-nums"
-                                                    showCurrencySymbol={true}
-                                                />
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
                         {/* Extra Charges */}
                         <div className="space-y-3">
                             <div className="flex items-center justify-between px-1">

@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Users, UserPlus, Sparkles, UserCheck, Plus, Folder } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Users, UserPlus, Sparkles, UserCheck, Plus, Folder, Crown } from "lucide-react";
 import { useBillStore } from "@/store/useBillStore";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useBillState } from "@/hooks/useBillState";
+import { getInitials } from "@/constants/colors";
 import { PersonRow } from "./person-row";
 import { QuickInsights } from "../summary/quick-insights";
 
@@ -20,7 +22,7 @@ interface UserSuggestion {
 }
 
 export function PeopleSection() {
-    const { people, addPerson, addPeople, updatePerson, removePerson, isReadOnly, loadSeedData, hostId, groupId } = useBillStore();
+    const { people, addPerson, addPeople, updatePerson, removePerson, isReadOnly, loadSeedData, hostId, setHostId, groupId } = useBillStore();
     const { groups, currentGroup } = useGroupStore();
     const { calculate } = useBillState();
     const { totalCosts } = calculate();
@@ -108,6 +110,35 @@ export function PeopleSection() {
                         </div>
                     </div>
 
+                    {people.length > 0 && (
+                        <Select value={hostId || ""} onValueChange={setHostId} disabled={isReadOnly}>
+                            <SelectTrigger
+                                className="h-8 w-auto max-w-[170px] sm:max-w-[220px] gap-1.5 px-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-bold shadow-2xs shrink-0 focus:ring-1 focus:ring-amber-500/40"
+                                title="Primary Payer (Host)"
+                            >
+                                <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span className="truncate">
+                                    {hostPerson ? hostPerson.name : "Select Host"}
+                                </span>
+                            </SelectTrigger>
+                            <SelectContent align="end" className="rounded-xl border-border bg-popover">
+                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                    Primary Payer (Host)
+                                </div>
+                                {people.map((p) => (
+                                    <SelectItem key={p.id} value={p.id} className="rounded-lg text-xs font-semibold cursor-pointer">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[9px] font-bold flex items-center justify-center shrink-0">
+                                                {getInitials(p.name)}
+                                            </span>
+                                            <span className="truncate">{p.name}</span>
+                                        </div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+
                     {people.length === 0 && !isReadOnly && (
                         <Button
                             variant="outline"
@@ -125,88 +156,103 @@ export function PeopleSection() {
             <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col container-query-pane">
                 <ScrollArea className="flex-1 min-h-0 h-full px-2 sm:px-4 md:px-5">
                     <div className="space-y-3 sm:space-y-4 py-1 pr-1 sm:pr-2">
-                        {/* Unified Modern Add Participant Bar */}
+                        {/* Unified Modern Add Participant & Group Quick-Add */}
                         {!isReadOnly && (
-                            <div className="relative group">
-                                <div className="relative flex items-center">
-                                    <UserPlus className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none group-focus-within:text-foreground transition-colors" />
-                                    <Input
-                                        placeholder="Add friend name or email..."
-                                        value={newName}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setNewName(val);
-                                            if (val.trim().length < 2) {
-                                                setSuggestions([]);
-                                                setShowSuggestions(false);
-                                            }
-                                        }}
-                                        onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                                        className="h-10 pl-10 pr-20 bg-background/80 backdrop-blur-sm border-border/80 rounded-2xl focus-visible:ring-1 focus-visible:ring-primary/40 font-medium text-xs sm:text-sm shadow-2xs hover:border-foreground/20 transition-all"
-                                    />
-                                    <Button
-                                        onClick={() => handleAdd()}
-                                        disabled={!newName.trim()}
-                                        size="sm"
-                                        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-3 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-2xs"
-                                    >
-                                        <Plus className="w-3.5 h-3.5 mr-1" />
-                                        <span>Add</span>
-                                    </Button>
-                                </div>
-
-                                {/* Autocomplete dropdown for app users */}
-                                {showSuggestions && suggestions.length > 0 && (
-                                    <div className="absolute z-30 left-0 right-0 mt-1.5 bg-card/98 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-1.5 max-h-48 overflow-y-auto">
-                                        <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                            Registered App Users
-                                        </div>
-                                        {suggestions.map((s) => (
-                                            <button
-                                                key={s.id}
-                                                type="button"
-                                                onClick={() => handleAdd(s.email, s.id, s.name || s.email.split('@')[0])}
-                                                className="w-full text-left px-2.5 py-2 hover:bg-muted/60 rounded-xl flex items-center justify-between text-xs transition-colors"
-                                            >
-                                                <div className="min-w-0 pr-2">
-                                                    <span className="font-semibold text-foreground block truncate">{s.name || s.email}</span>
-                                                    <span className="text-[10px] text-muted-foreground block truncate">{s.email}</span>
-                                                </div>
-                                                <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
-                                            </button>
-                                        ))}
+                            <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur-sm shadow-2xs focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
+                                <div className="relative group">
+                                    <div className="relative flex items-center">
+                                        <UserPlus className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none group-focus-within:text-primary transition-colors" />
+                                        <Input
+                                            placeholder="Add friend name or email..."
+                                            value={newName}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setNewName(val);
+                                                if (val.trim().length < 2) {
+                                                    setSuggestions([]);
+                                                    setShowSuggestions(false);
+                                                }
+                                            }}
+                                            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                                            className="h-10 pl-10 pr-20 bg-transparent border-0 rounded-2xl focus-visible:ring-0 focus-visible:ring-offset-0 font-medium text-xs sm:text-sm shadow-none"
+                                        />
+                                        <Button
+                                            onClick={() => handleAdd()}
+                                            disabled={!newName.trim()}
+                                            size="sm"
+                                            className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 px-3 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-35 disabled:pointer-events-none shadow-2xs"
+                                        >
+                                            <Plus className="w-3.5 h-3.5 mr-1" />
+                                            <span>Add</span>
+                                        </Button>
                                     </div>
-                                )}
-                            </div>
-                        )}
 
-                        {/* Quick Add Group Members */}
-                        {!isReadOnly && unaddedMembers.length > 0 && (
-                            <div className="flex items-center gap-1.5 flex-wrap p-2.5 rounded-2xl bg-primary/5 border border-primary/20 text-xs">
-                                <div className="flex items-center gap-1 text-[11px] font-bold text-primary mr-1 shrink-0">
-                                    <Folder className="w-3 h-3" />
-                                    <span>From Group:</span>
+                                    {/* Autocomplete dropdown for app users */}
+                                    {showSuggestions && suggestions.length > 0 && (
+                                        <div className="absolute z-30 left-0 right-0 mt-1.5 bg-card/98 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-1.5 max-h-48 overflow-y-auto">
+                                            <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                Registered App Users
+                                            </div>
+                                            {suggestions.map((s) => (
+                                                <button
+                                                    key={s.id}
+                                                    type="button"
+                                                    onClick={() => handleAdd(s.email, s.id, s.name || s.email.split('@')[0])}
+                                                    className="w-full text-left px-2.5 py-2 hover:bg-muted/60 rounded-xl flex items-center justify-between text-xs transition-colors"
+                                                >
+                                                    <div className="min-w-0 pr-2">
+                                                        <span className="font-semibold text-foreground block truncate">{s.name || s.email}</span>
+                                                        <span className="text-[10px] text-muted-foreground block truncate">{s.email}</span>
+                                                    </div>
+                                                    <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                                {unaddedMembers.map((m) => (
-                                    <button
-                                        key={m.id}
-                                        type="button"
-                                        onClick={() => addPerson(m.name, m.email || null, m.userId || null)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-background border border-primary/30 hover:border-primary text-foreground font-semibold text-xs shadow-2xs hover:scale-105 active:scale-95 transition-all"
-                                    >
-                                        <Plus className="w-3 h-3 text-primary" />
-                                        <span>{m.name}</span>
-                                    </button>
-                                ))}
-                                {unaddedMembers.length > 1 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => addPeople(unaddedMembers)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-2xs hover:bg-primary/90 active:scale-95 transition-all ml-auto"
-                                    >
-                                        <UserCheck className="w-3 h-3" />
-                                        <span>Add All ({unaddedMembers.length})</span>
-                                    </button>
+
+                                {/* Quick Add Group Members Tray */}
+                                {unaddedMembers.length > 0 && (
+                                    <div className="border-t border-border/60 bg-muted/20 px-3 py-2.5 rounded-b-2xl space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-semibold text-muted-foreground">
+                                                <span className="w-4 h-4 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                                    <Folder className="w-2.5 h-2.5" />
+                                                </span>
+                                                <span className="truncate">
+                                                    From <span className="text-foreground font-bold">{(matchedGroup as any)?.name || 'Group'}</span>
+                                                </span>
+                                            </div>
+
+                                            {unaddedMembers.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addPeople(unaddedMembers)}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground border border-primary/20 font-semibold text-[11px] transition-all active:scale-95 shrink-0 cursor-pointer"
+                                                >
+                                                    <UserCheck className="w-3 h-3" />
+                                                    <span>Add all ({unaddedMembers.length})</span>
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {unaddedMembers.map((m) => (
+                                                <button
+                                                    key={m.id}
+                                                    type="button"
+                                                    onClick={() => addPerson(m.name, m.email || null, m.userId || null)}
+                                                    className="group/chip inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full bg-background/90 hover:bg-primary/10 border border-border/80 hover:border-primary/40 text-foreground font-semibold text-xs shadow-2xs active:scale-95 transition-all cursor-pointer"
+                                                >
+                                                    <span className="w-5 h-5 rounded-full bg-primary/15 group-hover/chip:bg-primary text-primary group-hover/chip:text-primary-foreground font-bold text-[9px] flex items-center justify-center shrink-0 transition-colors">
+                                                        {getInitials(m.name)}
+                                                    </span>
+                                                    <span className="truncate max-w-[140px]">{m.name}</span>
+                                                    <Plus className="w-3 h-3 text-muted-foreground group-hover/chip:text-primary transition-colors shrink-0" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         )}
