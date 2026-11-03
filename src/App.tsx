@@ -164,7 +164,14 @@ function App() {
   // Ensures the outer page is 100% static, and only the active tab subpage scrolls
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    if (view === 'landing' || view === 'group') {
+    const isScrollablePage =
+      view === 'landing' ||
+      view === 'group' ||
+      view === 'app-settings' ||
+      view === 'not-found' ||
+      view === 'access-denied';
+
+    if (isScrollablePage) {
       document.documentElement.classList.remove('fixed-app');
       document.body.classList.remove('fixed-app');
       document.body.style.overflow = '';
@@ -173,7 +180,7 @@ function App() {
       document.documentElement.classList.add('fixed-app');
       document.body.classList.add('fixed-app');
       document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
+      document.body.style.touchAction = '';
     }
     return () => {
       document.documentElement.classList.remove('fixed-app');
@@ -187,12 +194,7 @@ function App() {
   // If the bill was opened from a group (outer -> group -> bill), going back returns to that group view.
   // Otherwise, it returns to the landing page (outer).
   const handleBackFromEditor = async () => {
-    // 1. Optimistic background save (non-blocking)
-    if (!isReadOnly && (people.length > 0 || items.length > 0)) {
-      saveToDb().catch(() => {});
-    }
-
-    // 2. Instantly transition view for 0-latency UI feedback
+    // 1. Transition view immediately for 0-latency UI feedback
     if (returnToGroupId) {
       const targetGroupId = returnToGroupId;
       setReturnToGroupId(null);
@@ -201,10 +203,16 @@ function App() {
       url.searchParams.set('groupId', targetGroupId);
       window.history.pushState({}, '', url.toString());
       setView('group');
+
+      // 2. Ensure local persistence completes before re-aggregating group & history
+      if (!isReadOnly && (people.length > 0 || items.length > 0)) {
+        await saveToDb().catch(() => {});
+      }
       fetchGroup(targetGroupId).catch(() => {});
       useGroupStore.getState().fetchGroups().catch(() => {});
+      fetchHistory().catch(() => {});
     } else {
-      await handleBackToLanding(true);
+      await handleBackToLanding(false);
     }
   };
 
@@ -239,9 +247,9 @@ function App() {
     // 3. Reset active group in store
     useGroupStore.getState().clearCurrentGroup();
 
-    // 4. Save and sync history in background optimistically without freezing
+    // 4. Save locally first so fetchHistory / fetchGroups read the freshest local snapshot
     if (!alreadySaved && !isReadOnly && (people.length > 0 || items.length > 0)) {
-      saveToDb().catch(() => {});
+      await saveToDb().catch(() => {});
     }
     fetchHistory().catch(() => {});
     useGroupStore.getState().fetchGroups().catch(() => {});
@@ -249,7 +257,7 @@ function App() {
 
   // Support native browser and mobile back/forward gestures
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = async () => {
       const params = new URLSearchParams(window.location.search);
       const id = params.get('id');
       const groupId = params.get('groupId');
@@ -283,13 +291,25 @@ function App() {
       } else if (groupId) {
         setView('group');
         setReturnToGroupId(null);
+        const billState = useBillStore.getState();
+        if (!billState.isReadOnly && (billState.people.length > 0 || billState.items.length > 0)) {
+          await billState.saveToDb().catch(() => {});
+        }
         fetchGroup(groupId).then((g) => {
           if (!g) setView('landing');
         });
+        useGroupStore.getState().fetchGroups().catch(() => {});
+        fetchHistory().catch(() => {});
       } else {
         setView('landing');
         setReturnToGroupId(null);
         useGroupStore.getState().clearCurrentGroup();
+        const billState = useBillStore.getState();
+        if (!billState.isReadOnly && (billState.people.length > 0 || billState.items.length > 0)) {
+          await billState.saveToDb().catch(() => {});
+        }
+        fetchHistory().catch(() => {});
+        useGroupStore.getState().fetchGroups().catch(() => {});
       }
     };
 
@@ -347,29 +367,38 @@ function App() {
       useGroupStore.getState().clearCurrentGroup();
     }
 
-    const hostName = data?.hostName?.trim() || user?.name || (user?.email ? user.email.split('@')[0] : 'Me');
+    const customHostName = data?.hostName?.trim();
+    const hostName = customHostName || user?.name || (user?.email ? user.email.split('@')[0] : 'Me');
     const hostId = crypto.randomUUID();
     const newBillId = crypto.randomUUID();
 
     const matchedGroup = targetGroupId ? useGroupStore.getState().groups.find(g => g.id === targetGroupId) : null;
-    const groupParticipants = (data as any)?.selectedMembers !== undefined
+    const groupParticipants: any[] = (data as any)?.selectedMembers !== undefined
       ? (data as any).selectedMembers
       : ((matchedGroup as any)?.participants || (currentGroup?.id === targetGroupId ? (currentGroup as any)?.participants : []) || []);
+
+    const matchedHostFromGroup = groupParticipants.find((gp) =>
+      customHostName
+        ? gp.name.trim().toLowerCase() === customHostName.toLowerCase()
+        : (gp.email && user?.email && gp.email.toLowerCase() === user.email.toLowerCase()) ||
+          gp.name.trim().toLowerCase() === hostName.trim().toLowerCase()
+    );
 
     const inheritedPeople = [
       {
         id: hostId,
-        name: hostName,
+        name: matchedHostFromGroup ? matchedHostFromGroup.name : hostName,
         sponsorAmount: 0,
         paidAmount: 0,
-        userId: user?.id || null,
-        email: user?.email || null,
+        userId: matchedHostFromGroup ? (matchedHostFromGroup.userId || null) : (customHostName ? null : (user?.id || null)),
+        email: matchedHostFromGroup ? (matchedHostFromGroup.email || null) : (customHostName ? null : (user?.email || null)),
       },
     ];
 
     for (const gp of groupParticipants) {
-      const isHost = (gp.email && user?.email && gp.email.toLowerCase() === user.email.toLowerCase()) ||
-                     (gp.name.trim().toLowerCase() === hostName.trim().toLowerCase());
+      const isHost = matchedHostFromGroup
+        ? gp.id === matchedHostFromGroup.id || gp.name.trim().toLowerCase() === matchedHostFromGroup.name.trim().toLowerCase()
+        : gp.name.trim().toLowerCase() === hostName.trim().toLowerCase();
       if (!isHost) {
         inheritedPeople.push({
           id: crypto.randomUUID(),

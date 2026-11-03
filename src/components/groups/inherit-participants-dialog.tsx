@@ -141,21 +141,26 @@ export function InheritParticipantsDialog({
               candidates.map((member) => {
                 const checked = selectedIds.has(member.id);
                 return (
-                  <label
+                  <button
                     key={member.id}
+                    type="button"
                     onClick={() => handleToggle(member.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none ${
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-colors cursor-pointer select-none text-left ${
                       checked
                         ? 'bg-primary/5 border-primary/30 text-foreground'
                         : 'bg-muted/10 border-border/60 text-muted-foreground hover:bg-muted/20'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={() => handleToggle(member.id)}
-                        className="rounded-md"
-                      />
+                      <div
+                        className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                          checked
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'border-primary/50 bg-background'
+                        }`}
+                      >
+                        {checked && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
                       <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0 border border-primary/20">
                         {member.name[0]?.toUpperCase() || '?'}
                       </div>
@@ -170,7 +175,7 @@ export function InheritParticipantsDialog({
                         )}
                       </div>
                     </div>
-                  </label>
+                  </button>
                 );
               })
             )}
