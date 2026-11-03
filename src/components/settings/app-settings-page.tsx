@@ -113,9 +113,9 @@ export function AppSettingsPage({ onBack }: AppSettingsPageProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-background text-foreground overflow-y-auto">
+    <div className="h-[100dvh] max-h-[100dvh] w-full flex flex-col bg-background text-foreground overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y">
       {/* Top Header */}
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-xl border-b border-border/60 px-4 sm:px-6 py-3.5">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-xl border-b border-border/60 px-4 sm:px-6 pt-[calc(env(safe-area-inset-top,0px)+0.875rem)] pb-3.5 shrink-0">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button

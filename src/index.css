@@ -177,6 +177,13 @@
     touch-action: pan-y !important;
   }
 
+  [data-radix-scroll-area-viewport] > div {
+    display: block !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
   html.fixed-app,
   body.fixed-app {
     overflow: hidden !important;
@@ -185,7 +192,7 @@
     position: fixed !important;
     width: 100% !important;
     inset: 0 !important;
-    touch-action: none !important;
+    overscroll-behavior: none !important;
   }
 }
 
