@@ -162,9 +162,7 @@ export function PersonalReceipt() {
     });
 
     // 2. Communal item split share
-    const effectiveSplitterIds = activePersonIds.size > 0
-        ? Array.from(activePersonIds)
-        : people.map(p => p.id);
+    const effectiveSplitterIds = people.map(p => p.id);
     const isCommunalSplitter = effectiveSplitterIds.includes(selectedPerson.id);
     const communalShare = (isCommunalSplitter && totalUnassignedPrice > 0.01 && effectiveSplitterIds.length > 0)
         ? totalUnassignedPrice / effectiveSplitterIds.length

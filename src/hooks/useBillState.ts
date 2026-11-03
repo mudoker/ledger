@@ -50,9 +50,7 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
         }
     });
 
-    const effectiveSplitterIds = activePersonIds.size > 0
-        ? Array.from(activePersonIds)
-        : people.map(p => p.id);
+    const effectiveSplitterIds = people.map(p => p.id);
 
     if (totalUnassignedPrice > 0.01 && effectiveSplitterIds.length > 0) {
         const sharedShare = totalUnassignedPrice / effectiveSplitterIds.length;

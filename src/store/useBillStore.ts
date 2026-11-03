@@ -380,9 +380,35 @@ export const useBillStore = create<BillState>()(
                     userId: userId || null,
                     email: email || null,
                 };
-                set((state) => ({
-                    people: [...state.people, newPerson],
-                }));
+                set((state) => {
+                    const prevCount = state.people.length;
+                    const updatedItems = state.items.map((item) => {
+                        const assignments = item.assignments || {};
+                        const assignedIds = Object.keys(assignments).filter((k) => assignments[k] > 0);
+                        const wasSplitForAll =
+                            prevCount === 0 ||
+                            (prevCount > 0 &&
+                                assignedIds.length === prevCount &&
+                                state.people.every((p) => assignments[p.id] === 1));
+                        if (wasSplitForAll && assignedIds.length > 0) {
+                            return {
+                                ...item,
+                                assignments: { ...assignments, [newPerson.id]: 1 },
+                            };
+                        }
+                        if (prevCount === 0 && assignedIds.length === 0) {
+                            return {
+                                ...item,
+                                assignments: { [newPerson.id]: 1 },
+                            };
+                        }
+                        return item;
+                    });
+                    return {
+                        people: [...state.people, newPerson],
+                        items: updatedItems,
+                    };
+                });
                 // Ensure group superset invariant
                 const currentGroupId = get().groupId;
                 if (currentGroupId && name.trim()) {
@@ -404,9 +430,33 @@ export const useBillStore = create<BillState>()(
                     });
                 }
                 if (created.length === 0) return;
-                set((state) => ({
-                    people: [...state.people, ...created],
-                }));
+                set((state) => {
+                    const prevCount = state.people.length;
+                    const updatedItems = state.items.map((item) => {
+                        const assignments = item.assignments || {};
+                        const assignedIds = Object.keys(assignments).filter((k) => assignments[k] > 0);
+                        const wasSplitForAll =
+                            prevCount === 0 ||
+                            (prevCount > 0 &&
+                                assignedIds.length === prevCount &&
+                                state.people.every((p) => assignments[p.id] === 1));
+                        if ((wasSplitForAll && assignedIds.length > 0) || (prevCount === 0 && assignedIds.length === 0)) {
+                            const nextAssignments = { ...assignments };
+                            for (const cp of created) {
+                                nextAssignments[cp.id] = 1;
+                            }
+                            return {
+                                ...item,
+                                assignments: nextAssignments,
+                            };
+                        }
+                        return item;
+                    });
+                    return {
+                        people: [...state.people, ...created],
+                        items: updatedItems,
+                    };
+                });
                 // Ensure group superset invariant
                 const currentGroupId = get().groupId;
                 if (currentGroupId) {
@@ -439,12 +489,24 @@ export const useBillStore = create<BillState>()(
                 })),
 
             addItem: (name, price, quantity = 1) =>
-                set((state) => ({
-                    items: [
-                        ...state.items,
-                        { id: crypto.randomUUID(), name, price, quantity, assignments: {} },
-                    ],
-                })),
+                set((state) => {
+                    const defaultAssignments: Record<string, number> = {};
+                    state.people.forEach((p) => {
+                        defaultAssignments[p.id] = 1;
+                    });
+                    return {
+                        items: [
+                            ...state.items,
+                            {
+                                id: crypto.randomUUID(),
+                                name,
+                                price,
+                                quantity,
+                                assignments: defaultAssignments,
+                            },
+                        ],
+                    };
+                }),
 
             updateItem: (id, data) =>
                 set((state) => ({
