@@ -206,6 +206,10 @@ async function alignDalatMongMo() {
       ...createBillPayload('Đậu nành', 130000, 'Dat', fiveNoChauNames),
     },
     {
+      id: 'dalat_an_sang_d2',
+      ...createBillPayload('Ăn sáng (Ngày 2 - Bánh mì)', 360000, 'Dat', all6Names),
+    },
+    {
       id: 'dalat_xang_d2',
       // Multi-payer: Dat 50k, Qui 50k, Quoc 50k
       ...createBillPayload('Xăng (Ngày 2)', 150000, ['Dat', 'Qui', 'Quốc Đoàn'], all6Names),

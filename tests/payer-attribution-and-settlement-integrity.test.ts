@@ -93,6 +93,7 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
       createTripBill('b9', 'Nước suối', 23000, 'p_dat', fiveNoAlice),
       createTripBill('b10', 'Ăn tối', 1524700, 'p_dat', fiveNoAlice),
       createTripBill('b11', 'Đậu nành', 130000, 'p_dat', fiveNoAlice),
+      createTripBill('b11_an_sang_d2', 'Ăn sáng (D2)', 360000, 'p_dat', all6),
       createTripBill('b12', 'Xăng (D2)', 150000, ['p_dat', 'p_qui', 'p_quoc'], all6), // 50k each
       createTripBill('b13', 'Farm', 480000, 'p_dat', all6),
       createTripBill('b14', 'Langfarm', 1289520, 'p_dat', all6),
@@ -113,6 +114,8 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     });
 
     expect(settlement.isBalanced).toBe(true);
+    expect(settlement.totalExpenses).toBe(23179409);
+    expect(settlement.totalBills).toBe(23);
 
     const datSummary = settlement.participants.find(p => p.name === 'Đạt');
     const quiSummary = settlement.participants.find(p => p.name === 'Quí');
