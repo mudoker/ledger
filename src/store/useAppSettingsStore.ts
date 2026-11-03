@@ -21,7 +21,27 @@ export const useAppSettingsStore = create<AppSettingsState>()(
       language: 'en',
       defaultCurrency: 'VND',
 
-      setStorageMode: (mode) => set({ storageMode: mode }),
+      setStorageMode: (mode) => {
+        set({ storageMode: mode });
+        if (mode === 'cloud' || mode === 'hybrid') {
+          try {
+            const { useGroupStore } = require('@/store/useGroupStore');
+            const groupState = useGroupStore.getState();
+            if (groupState.currentGroup?.bills?.some((b: any) => b.isLocal)) {
+              useGroupStore.setState({
+                currentGroup: {
+                  ...groupState.currentGroup,
+                  bills: groupState.currentGroup.bills.map((b: any) => ({ ...b, isLocal: false })),
+                },
+              });
+            }
+          } catch {}
+
+          import('@/lib/local-db/sync-manager')
+            .then(({ syncManager }) => syncManager.syncAllLocalDataToCloud())
+            .catch(() => {});
+        }
+      },
       setLanguage: (lang) => set({ language: lang }),
       setDefaultCurrency: (currency) => set({ defaultCurrency: currency }),
     }),

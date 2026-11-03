@@ -39,6 +39,7 @@ export interface BillHistoryItem {
     updated_at: string;
     name?: string;
     location?: string;
+    currency?: CurrencyCode;
     totalAmount?: number;
     owner_id?: string | null;
     group_id?: string | null;
@@ -257,9 +258,6 @@ export const useBillStore = create<BillState>()(
                     window.history.replaceState({}, '', url.toString());
                 }
 
-                // Save locally immediately
-                await get().saveToLocal();
-
                 // Only notify server of group assignment/unassignment if cloud sync is enabled or bill is explicitly shared
                 const storageMode = useAppSettingsStore.getState().storageMode;
                 const shouldCloudSync =
@@ -267,16 +265,30 @@ export const useBillStore = create<BillState>()(
                     storageMode === 'hybrid' ||
                     get().sharingStatus === 'shared';
 
+                if (shouldCloudSync) {
+                    const effectiveVis = !get().visibility || get().visibility === 'local' ? 'restricted' : get().visibility;
+                    set({
+                        sharingStatus: 'shared',
+                        visibility: effectiveVis,
+                    });
+                }
+
+                // Save locally immediately (except in cloud-only mode where local data is not updated on edits)
+                if (storageMode !== 'cloud') {
+                    await get().saveToLocal();
+                }
+
                 const billId = get().currentBillId;
                 if (billId && shouldCloudSync) {
+                    const effectiveVis = !get().visibility || get().visibility === 'local' ? 'restricted' : get().visibility;
                     try {
                         await fetch('/api/bills', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 id: billId,
-                                isShared: get().sharingStatus === 'shared',
-                                visibility: get().visibility,
+                                isShared: true,
+                                visibility: effectiveVis,
                                 shareToken: get().shareToken,
                                 data: {
                                     name: get().billName,
@@ -289,7 +301,7 @@ export const useBillStore = create<BillState>()(
                                     currency: get().currency,
                                     groupId: groupId || null,
                                     group_id: groupId || null,
-                                    visibility: get().visibility,
+                                    visibility: effectiveVis,
                                     shareToken: get().shareToken,
                                 }
                             })
@@ -547,27 +559,31 @@ export const useBillStore = create<BillState>()(
                 get().saveToDb();
             },
 
-            resetBill: () => set((state) => ({
-                people: [],
-                items: [],
-                globalCharges: [],
-                hostId: null,
-                isReadOnly: false,
-                isHydrated: true,
-                currentBillId: null,
-                lastSaved: null,
-                isSaving: false,
-                billHistory: state.billHistory,
-                billName: '',
-                location: '',
-                qrCode: null,
-                groupId: null,
-                groupName: null,
-                sharingStatus: 'local',
-                visibility: 'local',
-                shareToken: null,
-                syncError: null,
-            })),
+            resetBill: () => {
+                const storageMode = useAppSettingsStore.getState().storageMode;
+                const isAutoCloud = storageMode === 'cloud' || storageMode === 'hybrid';
+                return set((state) => ({
+                    people: [],
+                    items: [],
+                    globalCharges: [],
+                    hostId: null,
+                    isReadOnly: false,
+                    isHydrated: true,
+                    currentBillId: null,
+                    lastSaved: null,
+                    isSaving: false,
+                    billHistory: state.billHistory,
+                    billName: '',
+                    location: '',
+                    qrCode: null,
+                    groupId: null,
+                    groupName: null,
+                    sharingStatus: isAutoCloud ? 'shared' : 'local',
+                    visibility: isAutoCloud ? 'restricted' : 'local',
+                    shareToken: null,
+                    syncError: null,
+                }));
+            },
 
             loadState: (data, readonly) => set((state) => ({
                 ...state,
@@ -584,30 +600,34 @@ export const useBillStore = create<BillState>()(
                     set({ currentBillId: billId });
                 }
 
-                const localBill: LocalBillRecord = {
-                    id: billId,
-                    name: state.billName,
-                    location: state.location,
-                    currency: state.currency,
-                    hostId: state.hostId,
-                    qrCode: state.qrCode,
-                    groupId: state.groupId,
-                    groupName: state.groupName,
-                    ownerId: useAuthStore.getState().user?.id || null,
-                    people: state.people,
-                    items: state.items,
-                    globalCharges: state.globalCharges,
-                    sharingStatus: state.sharingStatus,
-                    visibility: state.visibility,
-                    shareToken: state.shareToken,
-                    lastSyncedAt: state.lastSaved,
-                    syncError: state.syncError,
-                    createdAt: state.lastSaved || new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                };
-
                 try {
                     const db = getLocalDb();
+                    const existingLocal = await db.getBill(billId).catch(() => null);
+                    const existingHistory = state.billHistory.find(b => b.id === billId);
+                    const nowIso = new Date().toISOString();
+
+                    const localBill: LocalBillRecord = {
+                        id: billId,
+                        name: state.billName,
+                        location: state.location,
+                        currency: state.currency,
+                        hostId: state.hostId,
+                        qrCode: state.qrCode,
+                        groupId: state.groupId,
+                        groupName: state.groupName,
+                        ownerId: existingLocal?.ownerId || useAuthStore.getState().user?.id || null,
+                        people: state.people,
+                        items: state.items,
+                        globalCharges: state.globalCharges,
+                        sharingStatus: state.sharingStatus,
+                        visibility: state.visibility,
+                        shareToken: state.shareToken,
+                        lastSyncedAt: state.lastSaved,
+                        syncError: state.syncError,
+                        createdAt: existingLocal?.createdAt || existingHistory?.created_at || state.lastSaved || nowIso,
+                        updatedAt: nowIso,
+                    };
+
                     await db.saveBill(localBill);
                     set({ lastSaved: localBill.updatedAt });
                     if (localBill.groupId) {
@@ -626,28 +646,63 @@ export const useBillStore = create<BillState>()(
                 if (state.isReadOnly) return null;
                 if (state.people.length === 0 && state.items.length === 0) return null;
 
-                // 1. Always persist to local IndexedDB first (instant & reliable)
-                const billId = (await get().saveToLocal()) || state.currentBillId;
+                const storageMode = useAppSettingsStore.getState().storageMode;
+                const shouldCloudSync =
+                    storageMode === 'cloud' ||
+                    storageMode === 'hybrid' ||
+                    state.sharingStatus === 'shared';
+
+                const effectiveSharingStatus = shouldCloudSync ? 'shared' : (state.sharingStatus || 'local');
+                const effectiveVisibility = shouldCloudSync
+                    ? (!state.visibility || state.visibility === 'local' ? 'restricted' : state.visibility)
+                    : (state.visibility || 'local');
+
+                if (state.sharingStatus !== effectiveSharingStatus || state.visibility !== effectiveVisibility) {
+                    set({
+                        sharingStatus: effectiveSharingStatus,
+                        visibility: effectiveVisibility,
+                    });
+                }
+
+                // 1. Persist to local IndexedDB in 'local' and 'hybrid' modes.
+                // In 'cloud' (Cloud Only) mode, do NOT continue updating localDb (while keeping existing localDb data intact).
+                let billId: string | null = null;
+                const nowIso = new Date().toISOString();
+                if (storageMode !== 'cloud') {
+                    billId = (await get().saveToLocal()) || state.currentBillId;
+                } else {
+                    billId = state.currentBillId || crypto.randomUUID();
+                    set({
+                        currentBillId: billId,
+                        lastSaved: nowIso,
+                    });
+                    if (state.groupId) {
+                        useGroupStore.getState().syncGroupWithBills(state.groupId);
+                    }
+                }
                 if (!billId) return null;
 
                 // Optimistically update in-memory bill history immediately without waiting for server
-                const totals = calculateBillTotals({ items: state.items, globalCharges: state.globalCharges });
-                const updatedAt = new Date().toISOString();
+                const currentState = get();
+                const totals = calculateBillTotals({ items: currentState.items, globalCharges: currentState.globalCharges });
+                const updatedAt = currentState.lastSaved || nowIso;
                 set((s) => {
                     const existingIndex = s.billHistory.findIndex((b) => b.id === billId);
+                    const existingItem = existingIndex >= 0 ? s.billHistory[existingIndex] : undefined;
                     const historyItem: BillHistoryItem = {
                         id: billId,
                         name: s.billName,
                         location: s.location || undefined,
-                        created_at: s.lastSaved || updatedAt,
+                        currency: s.currency || 'VND',
+                        created_at: existingItem?.created_at || s.lastSaved || updatedAt,
                         updated_at: updatedAt,
                         totalAmount: totals.totalAmount,
                         group_id: s.groupId,
                         group_name: s.groupName,
                         role: 'owner',
                         is_owner: true,
-                        sharingStatus: s.sharingStatus || 'local',
-                        visibility: s.visibility || 'local',
+                        sharingStatus: effectiveSharingStatus,
+                        visibility: effectiveVisibility,
                         shareToken: s.shareToken,
                     };
                     const newHistory = existingIndex >= 0
@@ -659,30 +714,80 @@ export const useBillStore = create<BillState>()(
                     };
                 });
 
-                // 2. Check storage mode configuration
-                const storageMode = useAppSettingsStore.getState().storageMode;
-                const shouldCloudSync =
-                    storageMode === 'cloud' ||
-                    storageMode === 'hybrid' ||
-                    state.sharingStatus === 'shared';
-
                 // In "Local Only" mode, do not transmit to server unless the bill has been explicitly shared
                 if (!shouldCloudSync) {
                     return billId;
                 }
 
+                // Capture snapshot for cloud upload (used when storageMode === 'cloud' or if active bill changes)
+                const capturedSnapshot: LocalBillRecord = {
+                    id: billId,
+                    name: currentState.billName,
+                    location: currentState.location,
+                    currency: currentState.currency,
+                    hostId: currentState.hostId,
+                    qrCode: currentState.qrCode,
+                    groupId: currentState.groupId,
+                    groupName: currentState.groupName,
+                    ownerId: useAuthStore.getState().user?.id || null,
+                    people: currentState.people,
+                    items: currentState.items,
+                    globalCharges: currentState.globalCharges,
+                    sharingStatus: 'shared',
+                    visibility: effectiveVisibility,
+                    shareToken: currentState.shareToken,
+                    lastSyncedAt: currentState.lastSaved,
+                    syncError: null,
+                    createdAt: currentState.lastSaved || nowIso,
+                    updatedAt: updatedAt,
+                };
+
                 // 3. Serialized background asynchronous cloud sync (non-blocking, 0ms freeze, zero race conditions)
                 syncCoordinator.scheduleSync(billId, async () => {
                     const db = getLocalDb();
-                    // Always read freshest snapshot from local storage to prevent stale writes
-                    const latestBill = await db.getBill(billId);
-                    if (!latestBill) return;
+                    const modeNow = useAppSettingsStore.getState().storageMode;
+                    let latestBill: LocalBillRecord | null = null;
+                    if (modeNow !== 'cloud') {
+                        latestBill = await db.getBill(billId);
+                    }
+                    if (!latestBill) {
+                        const live = get();
+                        latestBill = live.currentBillId === billId
+                            ? {
+                                id: billId,
+                                name: live.billName,
+                                location: live.location,
+                                currency: live.currency,
+                                hostId: live.hostId,
+                                qrCode: live.qrCode,
+                                groupId: live.groupId,
+                                groupName: live.groupName,
+                                ownerId: useAuthStore.getState().user?.id || null,
+                                people: live.people,
+                                items: live.items,
+                                globalCharges: live.globalCharges,
+                                sharingStatus: 'shared',
+                                visibility: !live.visibility || live.visibility === 'local' ? 'restricted' : live.visibility,
+                                shareToken: live.shareToken,
+                                lastSyncedAt: live.lastSaved,
+                                syncError: live.syncError,
+                                createdAt: capturedSnapshot.createdAt,
+                                updatedAt: live.lastSaved || new Date().toISOString(),
+                            }
+                            : capturedSnapshot;
+                    }
+
+                    const uploadVisibility = !latestBill.visibility || latestBill.visibility === 'local'
+                        ? 'restricted'
+                        : latestBill.visibility;
 
                     const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
                     if (isOffline) {
                         const errMsg = 'Offline: changes saved locally, queued for sync';
                         latestBill.syncError = errMsg;
-                        await db.saveBill(latestBill);
+                        if (modeNow !== 'cloud') {
+                            await db.saveBill(latestBill);
+                        }
                         set({ syncError: errMsg });
                         await syncManager.enqueueOperation({
                             billId,
@@ -697,8 +802,8 @@ export const useBillStore = create<BillState>()(
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 id: latestBill.id,
-                                isShared: latestBill.sharingStatus === 'shared',
-                                visibility: latestBill.visibility,
+                                isShared: true,
+                                visibility: uploadVisibility,
                                 shareToken: latestBill.shareToken,
                                 data: {
                                     name: latestBill.name,
@@ -710,7 +815,7 @@ export const useBillStore = create<BillState>()(
                                     qrCode: latestBill.qrCode,
                                     currency: latestBill.currency,
                                     groupId: latestBill.groupId,
-                                    visibility: latestBill.visibility,
+                                    visibility: uploadVisibility,
                                     shareToken: latestBill.shareToken,
                                 }
                             })
@@ -719,9 +824,13 @@ export const useBillStore = create<BillState>()(
                         if (response.ok) {
                             const result = await response.json();
                             const syncedAt = new Date().toISOString();
+                            latestBill.sharingStatus = 'shared';
+                            latestBill.visibility = uploadVisibility;
                             latestBill.lastSyncedAt = syncedAt;
                             latestBill.syncError = null;
-                            await db.saveBill(latestBill);
+                            if (modeNow !== 'cloud') {
+                                await db.saveBill(latestBill);
+                            }
 
                             // Clear any obsolete pending update ops for this bill in localDb
                             const pendingOps = await db.getPendingOps();
@@ -731,11 +840,19 @@ export const useBillStore = create<BillState>()(
                                 }
                             }
 
+                            set((s) => ({
+                                currentBillId: result.id || s.currentBillId,
+                                sharingStatus: s.currentBillId === billId ? 'shared' : s.sharingStatus,
+                                visibility: s.currentBillId === billId ? uploadVisibility : s.visibility,
+                                syncError: null,
+                                billHistory: s.billHistory.map((b) =>
+                                    b.id === billId
+                                        ? { ...b, sharingStatus: 'shared', visibility: uploadVisibility }
+                                        : b
+                                ),
+                            }));
+
                             if (result.id) {
-                                set({
-                                    currentBillId: result.id,
-                                    syncError: null,
-                                });
                                 if (typeof window !== 'undefined') {
                                     const url = new URL(window.location.href);
                                     if (url.searchParams.get('id') !== result.id && url.searchParams.get('view') !== 'landing') {
@@ -751,7 +868,9 @@ export const useBillStore = create<BillState>()(
                             const errBody = await response.json().catch(() => ({}));
                             const errMsg = errBody.error || `Server responded with ${response.status}`;
                             latestBill.syncError = errMsg;
-                            await db.saveBill(latestBill);
+                            if (modeNow !== 'cloud') {
+                                await db.saveBill(latestBill);
+                            }
                             set({ syncError: errMsg });
                             await syncManager.enqueueOperation({
                                 billId,
@@ -762,7 +881,9 @@ export const useBillStore = create<BillState>()(
                         const errMsg = error.message || 'Cloud sync network failure';
                         console.warn("Background cloud sync deferred:", error);
                         latestBill.syncError = errMsg;
-                        await db.saveBill(latestBill);
+                        if (modeNow !== 'cloud') {
+                            await db.saveBill(latestBill);
+                        }
                         set({ syncError: errMsg });
                         await syncManager.enqueueOperation({
                             billId,
@@ -840,10 +961,19 @@ export const useBillStore = create<BillState>()(
 
             enableSharing: async (visibility: BillVisibility) => {
                 const state = get();
-                const billId = state.currentBillId || (await get().saveToLocal());
+                const storageMode = useAppSettingsStore.getState().storageMode;
+                let billId = state.currentBillId;
+                if (!billId) {
+                    if (storageMode !== 'cloud') {
+                        billId = await get().saveToLocal();
+                    } else {
+                        billId = crypto.randomUUID();
+                        set({ currentBillId: billId });
+                    }
+                }
                 if (!billId) return false;
 
-                const shareToken = crypto.randomUUID().replace(/-/g, '');
+                let shareToken = state.shareToken || crypto.randomUUID().replace(/-/g, '');
                 set({
                     sharingStatus: 'uploading',
                     visibility,
@@ -851,19 +981,35 @@ export const useBillStore = create<BillState>()(
                     syncError: null,
                 });
 
+                const currentPayloadData = {
+                    name: state.billName,
+                    location: state.location,
+                    people: state.people,
+                    items: state.items,
+                    globalCharges: state.globalCharges,
+                    hostId: state.hostId,
+                    qrCode: state.qrCode,
+                    currency: state.currency,
+                    groupId: state.groupId,
+                    visibility,
+                    shareToken,
+                };
+
                 try {
                     const response = await fetch(`/api/bills/${billId}/share`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             visibility,
-                            regenerateToken: true,
+                            regenerateToken: !state.shareToken,
+                            shareToken,
+                            data: currentPayloadData,
                         }),
                     });
 
                     // If share endpoint returned 404, upload via POST /api/bills
                     if (!response.ok && response.status === 404) {
-                        await fetch('/api/bills', {
+                        const uploadRes = await fetch('/api/bills', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -871,31 +1017,40 @@ export const useBillStore = create<BillState>()(
                                 isShared: true,
                                 visibility,
                                 shareToken,
-                                data: {
-                                    name: state.billName,
-                                    location: state.location,
-                                    people: state.people,
-                                    items: state.items,
-                                    globalCharges: state.globalCharges,
-                                    hostId: state.hostId,
-                                    qrCode: state.qrCode,
-                                    currency: state.currency,
-                                    groupId: state.groupId,
-                                    visibility,
-                                    shareToken,
-                                }
+                                data: currentPayloadData,
                             })
                         });
+                        if (!uploadRes.ok) {
+                            throw new Error('Failed to upload bill for sharing');
+                        }
+                    } else if (response.ok) {
+                        const resJson = await response.json().catch(() => null);
+                        if (resJson && typeof resJson.shareToken === 'string' && resJson.shareToken.length > 0) {
+                            shareToken = resJson.shareToken;
+                        }
+                    } else {
+                        throw new Error('Server rejected sharing request');
                     }
 
-                    set({
+                    const nowIso = new Date().toISOString();
+                    set((s) => ({
                         sharingStatus: 'shared',
                         visibility,
                         shareToken,
-                        lastSaved: new Date().toISOString(),
-                    });
-                    await get().saveToLocal();
+                        lastSaved: nowIso,
+                        billHistory: s.billHistory.map(b =>
+                            b.id === billId
+                                ? { ...b, sharingStatus: 'shared', visibility, shareToken, updated_at: nowIso }
+                                : b
+                        ),
+                    }));
+                    if (useAppSettingsStore.getState().storageMode !== 'cloud') {
+                        await get().saveToLocal();
+                    }
                     await get().fetchHistory();
+                    if (state.groupId) {
+                        await useGroupStore.getState().syncGroupWithBills(state.groupId);
+                    }
                     return true;
                 } catch (err: any) {
                     console.error('Failed to enable cloud sharing:', err);
@@ -913,11 +1068,16 @@ export const useBillStore = create<BillState>()(
                 if (!billId) return false;
 
                 // Check offline status
-                if (typeof navigator !== 'undefined' && !navigator.onLine) {
-                    set({
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                    set((s) => ({
                         sharingStatus: 'revocation_pending',
                         syncError: 'Offline: Revocation will complete once reconnected',
-                    });
+                        billHistory: s.billHistory.map(b =>
+                            b.id === billId
+                                ? { ...b, sharingStatus: 'revocation_pending' }
+                                : b
+                        ),
+                    }));
                     await get().saveToLocal();
                     await syncManager.enqueueOperation({
                         billId,
@@ -933,14 +1093,22 @@ export const useBillStore = create<BillState>()(
                     });
 
                     if (res.ok || res.status === 404) {
-                        set({
+                        set((s) => ({
                             sharingStatus: 'local',
                             visibility: 'local',
                             shareToken: null,
                             syncError: null,
-                        });
+                            billHistory: s.billHistory.map(b =>
+                                b.id === billId
+                                    ? { ...b, sharingStatus: 'local', visibility: 'local', shareToken: null }
+                                    : b
+                            ),
+                        }));
                         await get().saveToLocal();
                         await get().fetchHistory();
+                        if (state.groupId) {
+                            await useGroupStore.getState().syncGroupWithBills(state.groupId);
+                        }
                         return true;
                     } else {
                         throw new Error('Server failed to revoke sharing');
@@ -974,8 +1142,26 @@ export const useBillStore = create<BillState>()(
                     });
 
                     if (res.ok) {
-                        set({ visibility: newVisibility });
-                        await get().saveToLocal();
+                        const resJson = await res.json().catch(() => null);
+                        const updatedToken = (resJson && typeof resJson.shareToken === 'string' && resJson.shareToken.length > 0)
+                            ? resJson.shareToken
+                            : get().shareToken;
+
+                        set((s) => ({
+                            visibility: newVisibility,
+                            shareToken: updatedToken,
+                            billHistory: s.billHistory.map(b =>
+                                b.id === billId
+                                    ? { ...b, visibility: newVisibility, shareToken: updatedToken }
+                                    : b
+                            ),
+                        }));
+                        if (useAppSettingsStore.getState().storageMode !== 'cloud') {
+                            await get().saveToLocal();
+                        }
+                        if (state.groupId) {
+                            await useGroupStore.getState().syncGroupWithBills(state.groupId);
+                        }
                         return true;
                     }
                 } catch (e) {
@@ -986,12 +1172,20 @@ export const useBillStore = create<BillState>()(
 
             fetchBill: async (id: string, isShare: boolean = false, token?: string | null) => {
                 let localBill: LocalBillRecord | null = null;
+                const storageMode = useAppSettingsStore.getState().storageMode;
+                const isAutoSyncMode = storageMode === 'cloud' || storageMode === 'hybrid';
                 // 1. Try local storage first for instant rendering
                 if (!isShare) {
                     try {
                         const localDb = getLocalDb();
                         localBill = await localDb.getBill(id);
                         if (localBill) {
+                            const localSharing = isAutoSyncMode && localBill.sharingStatus !== 'revocation_pending'
+                                ? 'shared'
+                                : (localBill.sharingStatus || 'local');
+                            const localVis = localSharing === 'shared' && (!localBill.visibility || localBill.visibility === 'local')
+                                ? 'restricted'
+                                : (localBill.visibility || 'local');
                             set({
                                 billName: localBill.name || '',
                                 location: localBill.location || '',
@@ -1004,8 +1198,8 @@ export const useBillStore = create<BillState>()(
                                 items: localBill.items || [],
                                 globalCharges: localBill.globalCharges || [],
                                 hostId: localBill.hostId || null,
-                                sharingStatus: localBill.sharingStatus || 'local',
-                                visibility: localBill.visibility || 'local',
+                                sharingStatus: localSharing,
+                                visibility: localVis,
                                 shareToken: localBill.shareToken || null,
                                 lastSaved: localBill.updatedAt,
                                 isReadOnly: false,
@@ -1058,11 +1252,17 @@ export const useBillStore = create<BillState>()(
 
                     const isLocallySyncing = syncCoordinator.isSyncing(id);
 
-                    // Only update in-memory state if:
+                    // Update in-memory state if:
                     // 1) We have no local bill cached, OR
-                    // 2) There are NO local unsynced pending operations AND server is strictly newer
-                    const isStrictlyNewer = serverTime > (localTime + 1000);
-                    if (!localBill || (!hasPendingSync && !isLocallySyncing && isStrictlyNewer)) {
+                    // 2) There are NO local unsynced pending operations AND (storageMode is 'cloud' OR server is newer/equal)
+                    const currentMode = useAppSettingsStore.getState().storageMode;
+                    const isAutoCloud = currentMode === 'cloud' || currentMode === 'hybrid';
+                    const isServerAuthoritative = currentMode === 'cloud' || serverTime >= localTime;
+                    if (!localBill || (!hasPendingSync && !isLocallySyncing && isServerAuthoritative)) {
+                        const resolvedSharing = isAutoCloud || result.isShared !== false ? 'shared' : 'local';
+                        const resolvedVis = resolvedSharing === 'shared' && (!result.visibility || result.visibility === 'local')
+                            ? 'restricted'
+                            : (result.visibility || 'restricted');
                         set({
                             ...result.data,
                             billName: result.data.name || '',
@@ -1074,13 +1274,15 @@ export const useBillStore = create<BillState>()(
                             currentBillId: result.id,
                             lastSaved: result.updated_at,
                             isReadOnly: Boolean(isShare || result.isReadOnly),
-                            sharingStatus: result.isShared !== false ? 'shared' : 'local',
-                            visibility: result.visibility || 'restricted',
+                            sharingStatus: resolvedSharing,
+                            visibility: resolvedVis,
                             shareToken: result.shareToken || null,
                         });
 
-                        // Save downloaded bill to local storage in background
-                        get().saveToLocal().catch(() => {});
+                        // Save downloaded bill to local storage in background (only when not in cloud-only mode)
+                        if (!isShare && currentMode !== 'cloud') {
+                            get().saveToLocal().catch(() => {});
+                        }
                     } else if (hasPendingSync) {
                         // Local has newer unsynced edits: trigger background push to sync up to cloud!
                         syncManager.processPendingOperations().catch(() => {});
@@ -1098,16 +1300,24 @@ export const useBillStore = create<BillState>()(
             fetchHistory: async () => {
                 set({ isHistoryLoading: true });
                 get().fetchDbStatus();
+                const storageMode = useAppSettingsStore.getState().storageMode;
+                const isAutoSyncMode = storageMode === 'cloud' || storageMode === 'hybrid';
                 const historyMap = new Map<string, BillHistoryItem>();
 
                 // 1. Load local bills first
                 const pendingDeleteIds = new Set<string>();
+                const pendingUpdateIds = new Set<string>();
+                const pendingRevokeIds = new Set<string>();
                 try {
                     const localDb = getLocalDb();
                     const pendingOps = await localDb.getPendingOps();
                     for (const op of pendingOps) {
                         if (op.type === 'delete') {
                             pendingDeleteIds.add(op.billId);
+                        } else if (op.type === 'upload' || op.type === 'update') {
+                            pendingUpdateIds.add(op.billId);
+                        } else if (op.type === 'revoke') {
+                            pendingRevokeIds.add(op.billId);
                         }
                     }
 
@@ -1115,11 +1325,19 @@ export const useBillStore = create<BillState>()(
                     for (const b of localBills) {
                         if (pendingDeleteIds.has(b.id)) continue;
                         const total = calculateBillTotals(b).totalAmount;
+                        const isPendingRevoke = pendingRevokeIds.has(b.id) || b.sharingStatus === 'revocation_pending';
+                        const resolvedSharing = isPendingRevoke
+                            ? b.sharingStatus
+                            : (isAutoSyncMode ? 'shared' : b.sharingStatus);
+                        const resolvedVis = isPendingRevoke
+                            ? 'local'
+                            : (resolvedSharing === 'shared' && (!b.visibility || b.visibility === 'local') ? 'restricted' : b.visibility);
 
                         historyMap.set(b.id, {
                             id: b.id,
                             name: b.name,
                             location: b.location || undefined,
+                            currency: b.currency || 'VND',
                             created_at: b.createdAt,
                             updated_at: b.updatedAt,
                             totalAmount: total,
@@ -1127,8 +1345,8 @@ export const useBillStore = create<BillState>()(
                             group_name: b.groupName,
                             role: 'owner',
                             is_owner: true,
-                            sharingStatus: b.sharingStatus,
-                            visibility: b.visibility,
+                            sharingStatus: resolvedSharing,
+                            visibility: resolvedVis,
                             shareToken: b.shareToken,
                         });
                     }
@@ -1146,11 +1364,12 @@ export const useBillStore = create<BillState>()(
                     console.warn('Failed to load local bills for history:', e);
                 }
 
-                // 2. Fetch server bills and merge
+                // 2. Fetch server bills and merge (bypassing stale HTTP cache)
                 try {
-                    const response = await fetch('/api/bills');
+                    const response = await fetch('/api/bills', { cache: 'no-store' });
                     if (response.ok) {
                         const serverData: BillHistoryItem[] = await response.json();
+                        const serverIdSet = new Set(serverData.map(sb => sb.id));
                         for (const sb of serverData) {
                             if (pendingDeleteIds.has(sb.id)) continue;
 
@@ -1158,24 +1377,55 @@ export const useBillStore = create<BillState>()(
                             if (existing) {
                                 const localTime = new Date(existing.updated_at).getTime();
                                 const serverTime = new Date(sb.updated_at).getTime();
-                                const isLocalNewer = localTime >= serverTime;
+                                const hasPendingUpdate = pendingUpdateIds.has(sb.id) || syncCoordinator.isSyncing(sb.id);
+                                const isPendingRevoke = pendingRevokeIds.has(sb.id) || existing.sharingStatus === 'revocation_pending';
+                                const isLocalNewer = storageMode === 'cloud'
+                                    ? hasPendingUpdate
+                                    : (hasPendingUpdate || localTime > serverTime);
+
+                                const mergedVisRaw = isLocalNewer
+                                    ? (existing.visibility && existing.visibility !== 'local' ? existing.visibility : sb.visibility)
+                                    : (sb.visibility && sb.visibility !== 'local' ? sb.visibility : existing.visibility);
 
                                 historyMap.set(sb.id, {
                                     ...sb,
                                     name: isLocalNewer ? (existing.name || sb.name) : (sb.name || existing.name),
                                     location: isLocalNewer ? (existing.location || sb.location) : (sb.location || existing.location),
+                                    currency: isLocalNewer ? (existing.currency || sb.currency || 'VND') : (sb.currency || existing.currency || 'VND'),
                                     totalAmount: isLocalNewer ? existing.totalAmount : (sb.totalAmount ?? existing.totalAmount),
                                     group_id: isLocalNewer ? existing.group_id : (sb.group_id ?? existing.group_id),
                                     group_name: isLocalNewer ? existing.group_name : (sb.group_name ?? existing.group_name),
-                                    sharingStatus: existing.sharingStatus || 'shared',
-                                    visibility: existing.visibility || sb.visibility || 'restricted',
-                                    shareToken: existing.shareToken || sb.shareToken || null,
+                                    sharingStatus: isPendingRevoke ? existing.sharingStatus : 'shared',
+                                    visibility: isPendingRevoke ? 'local' : (mergedVisRaw || 'restricted'),
+                                    shareToken: isPendingRevoke
+                                        ? null
+                                        : (existing.shareToken || sb.shareToken || null),
                                 });
                             } else {
+                                // Deduplicate any local-only bill that matches this server bill's signature
+                                const sbNameNorm = (sb.name || '').trim().toLowerCase();
+                                const sbTime = new Date(sb.created_at || sb.updated_at || 0).getTime();
+                                for (const [candId, cand] of historyMap.entries()) {
+                                    if (!serverIdSet.has(candId)) {
+                                        const candNameNorm = (cand.name || '').trim().toLowerCase();
+                                        const candTime = new Date(cand.created_at || cand.updated_at || 0).getTime();
+                                        if (
+                                            candNameNorm === sbNameNorm &&
+                                            (cand.group_id || null) === (sb.group_id || null) &&
+                                            (cand.currency || 'VND') === (sb.currency || 'VND') &&
+                                            cand.totalAmount === sb.totalAmount &&
+                                            Math.abs(candTime - sbTime) < 60000
+                                        ) {
+                                            historyMap.delete(candId);
+                                        }
+                                    }
+                                }
+
                                 historyMap.set(sb.id, {
                                     ...sb,
+                                    currency: sb.currency || 'VND',
                                     sharingStatus: 'shared',
-                                    visibility: sb.visibility || 'restricted',
+                                    visibility: sb.visibility && sb.visibility !== 'local' ? sb.visibility : 'restricted',
                                     shareToken: sb.shareToken || null,
                                 });
                             }

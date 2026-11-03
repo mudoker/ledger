@@ -33,6 +33,8 @@ import { BottomSearchBar } from "@/components/shared/bottom-search-bar";
 import { FuzzySearchModal } from "@/components/shared/fuzzy-search-modal";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { PullToRefresh } from "@/components/shared/pull-to-refresh";
+import { fetchVndRates } from "@/lib/currency";
 
 function App() {
   const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group' | 'app-settings' | 'not-found' | 'access-denied'>(() => {
@@ -149,6 +151,7 @@ function App() {
 
   useEffect(() => {
     if (!isHydrated || isReadOnly) return;
+    if (view !== 'editor' && view !== 'summary' && view !== 'settings') return;
 
     // Only auto-save if there's actual data
     if (people.length === 0 && items.length === 0) return;
@@ -158,7 +161,7 @@ function App() {
     }, 2000); // 2 second delay for debounced auto-save
 
     return () => clearTimeout(timer);
-  }, [people, items, globalCharges, hostId, billName, location, billCurrency, billGroupId, isHydrated, isReadOnly, saveToDb, view]);
+  }, [people, items, globalCharges, hostId, billName, location, billCurrency, billGroupId, isHydrated, isReadOnly, saveToDb]);
 
   // Lock body/window scrolling when viewing/editing a bill (bill details page)
   // Ensures the outer page is 100% static, and only the active tab subpage scrolls
@@ -253,6 +256,15 @@ function App() {
     }
     fetchHistory().catch(() => {});
     useGroupStore.getState().fetchGroups().catch(() => {});
+  };
+
+  const handleRefreshActiveBill = async () => {
+    if (currentBillId) {
+      await Promise.allSettled([
+        fetchBill(currentBillId),
+        fetchVndRates(true),
+      ]);
+    }
   };
 
   // Support native browser and mobile back/forward gestures
@@ -791,7 +803,7 @@ function App() {
 
                 {/* Mobile Tab Layout */}
                 <div className="md:hidden flex-1 relative overflow-hidden flex flex-col pb-0 min-h-0">
-                  <div className="flex-1 overflow-hidden h-full flex flex-col min-h-0">
+                  <PullToRefresh onRefresh={handleRefreshActiveBill} className="flex-1 overflow-hidden h-full flex flex-col min-h-0">
                     {mobileTab === 'people' && (
                       <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
                         <PeopleSection />
@@ -812,7 +824,7 @@ function App() {
                         <BillConfiguration />
                       </div>
                     )}
-                  </div>
+                  </PullToRefresh>
                 </div>
               </main>
 

@@ -79,14 +79,86 @@ interface BillSummaryRow {
   updated_at: string;
   custom_name: string | null;
   location: string | null;
+  currency?: string | null;
   owner_id: string | null;
   group_id: string | null;
   group_name: string | null;
+  group_visibility?: string | null;
+  visibility?: string | null;
+  share_token?: string | null;
+  is_shared?: number | null;
   first_item_name: string | null;
   item_count: number;
   subtotal: number | null;
   fixed_extras: number | null;
   percent_extras: number | null;
+}
+
+function normalizeSqliteTimestamp(ts: unknown): string {
+  if (typeof ts === 'string') {
+    const trimmed = ts.trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)) {
+      return trimmed.replace(' ', 'T') + 'Z';
+    }
+    return trimmed;
+  }
+  if (ts instanceof Date) {
+    return ts.toISOString();
+  }
+  return new Date(ts as any).toISOString();
+}
+
+function isPersonMatchingUser(
+  personName: string,
+  user?: { name?: string | null; email?: string | null } | null
+): boolean {
+  const normP = (personName || '').trim().toLowerCase();
+  if (!normP) return false;
+  if (normP === 'me' || normP === 'you') return true;
+  if (!user) return false;
+  if (user.name) {
+    const normU = user.name.trim().toLowerCase();
+    if (normU && (normP === normU || normU.includes(normP) || normP.includes(normU))) {
+      return true;
+    }
+  }
+  if (user.email) {
+    const emailPrefix = user.email.split('@')[0].trim().toLowerCase();
+    if (emailPrefix && (normP === emailPrefix || emailPrefix.includes(normP) || normP.includes(emailPrefix))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveDbEffectivePayerName(
+  people: PersonData[],
+  hostId: string | null | undefined,
+  billTotal: number
+): string | null {
+  if (!people || people.length === 0) return null;
+  const nominalHost = hostId
+    ? (people.find(p => p.id === hostId) || people.find(p => p.userId === hostId))
+    : undefined;
+  const topUpfrontPayer = [...people].sort((a, b) => (b.paidAmount || 0) - (a.paidAmount || 0))[0];
+
+  if (nominalHost) {
+    const othersPaid = people.reduce(
+      (sum, p) => (p.id !== nominalHost.id ? sum + (p.paidAmount || 0) : sum),
+      0
+    );
+    const nominalPaid = Math.max(0, billTotal - othersPaid);
+    if (nominalPaid <= 0.01 && topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0.01) {
+      return topUpfrontPayer.name;
+    }
+    return nominalHost.name;
+  }
+
+  if (topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0.01) {
+    return topUpfrontPayer.name;
+  }
+
+  return people[0]?.name || null;
 }
 
 interface UserRow {
@@ -463,7 +535,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       return null;
     }
 
-    const people = (
+    const rawPeople = (
       this.db.prepare(
         'SELECT id, name, sponsor_amount as sponsorAmount, paid_amount as paidAmount, user_id as userId, email FROM people WHERE bill_id = ?'
       ).all(id) as unknown as PersonRow[]
@@ -475,6 +547,22 @@ export class SqliteAdapter implements DatabaseAdapter {
       userId: p.userId ? String(p.userId) : null,
       email: p.email ? String(p.email) : null,
     }));
+
+    const ownerUser = bill.owner_id ? await this.getUserById(String(bill.owner_id)) : null;
+    const hasMatchingOwnerPerson = ownerUser
+      ? rawPeople.some(rp => isPersonMatchingUser(rp.name, ownerUser))
+      : false;
+    const people = rawPeople.map(p => {
+      if (
+        ownerUser &&
+        !isPersonMatchingUser(p.name, ownerUser) &&
+        (p.userId === ownerUser.id || (p.email && ownerUser.email && p.email.trim().toLowerCase() === ownerUser.email.trim().toLowerCase())) &&
+        (p.id === bill.host_id || hasMatchingOwnerPerson)
+      ) {
+        return { ...p, userId: null, email: null };
+      }
+      return p;
+    });
 
     const globalCharges = (
       this.db.prepare(
@@ -510,10 +598,12 @@ export class SqliteAdapter implements DatabaseAdapter {
       owner_id: bill.owner_id ? String(bill.owner_id) : null,
       role,
       isReadOnly,
-      visibility: (isGroupAccessible && (groupVisibility === 'public' || !groupVisibility)) ? 'public' : (bill.visibility || 'restricted'),
+      visibility: bill.is_shared === 0
+        ? 'local'
+        : ((isGroupAccessible && (groupVisibility === 'public' || !groupVisibility)) ? 'public' : (bill.visibility || 'restricted')),
       shareToken: bill.share_token || null,
       isShared: bill.is_shared !== 0,
-      shareRevokedAt: bill.revoked_at ? String(bill.revoked_at) : null,
+      shareRevokedAt: bill.revoked_at ? normalizeSqliteTimestamp(bill.revoked_at) : null,
       group_id: bill.group_id ? String(bill.group_id) : null,
       group_name: bill.group_name ? String(bill.group_name) : null,
       data: {
@@ -529,8 +619,8 @@ export class SqliteAdapter implements DatabaseAdapter {
         hostId: bill.host_id ?? null,
         qrCode: bill.qr_code ?? null,
       },
-      created_at: typeof bill.created_at === 'string' ? bill.created_at : new Date(bill.created_at).toISOString(),
-      updated_at: typeof bill.updated_at === 'string' ? bill.updated_at : new Date(bill.updated_at).toISOString(),
+      created_at: normalizeSqliteTimestamp(bill.created_at),
+      updated_at: normalizeSqliteTimestamp(bill.updated_at),
     };
   }
 
@@ -568,8 +658,8 @@ export class SqliteAdapter implements DatabaseAdapter {
 
       if (existing) {
         this.db.prepare(
-          'UPDATE bills SET name = ?, location = ?, host_id = ?, qr_code = ?, currency = ?, owner_id = COALESCE(owner_id, ?), group_id = ?, visibility = ?, share_token = ?, is_shared = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).run(name, location, hostId, qrCode, currency, ownerId, targetGroupId, visibility, shareToken, isShared, billId);
+          'UPDATE bills SET name = ?, location = ?, host_id = ?, qr_code = ?, currency = ?, owner_id = COALESCE(owner_id, ?), group_id = ?, visibility = ?, share_token = ?, is_shared = ?, revoked_at = CASE WHEN ? = 1 THEN NULL ELSE revoked_at END, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run(name, location, hostId, qrCode, currency, ownerId, targetGroupId, visibility, shareToken, isShared, isShared, billId);
       } else {
         this.db.prepare(
           'INSERT INTO bills (id, name, location, host_id, qr_code, currency, owner_id, group_id, visibility, share_token, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -584,9 +674,26 @@ export class SqliteAdapter implements DatabaseAdapter {
       const insertPerson = this.db.prepare(
         'INSERT INTO people (id, bill_id, name, sponsor_amount, paid_amount, user_id, email) VALUES (?, ?, ?, ?, ?, ?, ?)'
       );
+      const currentUser = userId ? await this.getUserById(userId) : null;
+      const hasMatchingCurrentUserPerson = currentUser
+        ? people.some(rp => isPersonMatchingUser(rp.name, currentUser))
+        : false;
+
       for (const p of people) {
         let pUserId = p.userId || null;
-        const pEmail = p.email ? p.email.trim().toLowerCase() : null;
+        let pEmail = p.email ? p.email.trim().toLowerCase() : null;
+
+        // Self-heal if a non-owner participant (e.g. a different person selected as host) had their userId/email
+        // polluted with the bill owner's identity
+        if (
+          currentUser &&
+          !isPersonMatchingUser(p.name, currentUser) &&
+          (pUserId === currentUser.id || (pEmail && currentUser.email && pEmail === currentUser.email.trim().toLowerCase())) &&
+          (p.id === hostId || hasMatchingCurrentUserPerson)
+        ) {
+          pUserId = null;
+          pEmail = null;
+        }
 
         if (pEmail && !pUserId) {
           const registered = await this.getUserByEmail(pEmail);
@@ -595,15 +702,19 @@ export class SqliteAdapter implements DatabaseAdapter {
           }
         }
 
-        if (userId && (p.id === hostId || (!hostId && people.length === 1 && !pUserId && !pEmail))) {
+        if (
+          userId &&
+          !pUserId &&
+          !pEmail &&
+          ((people.length === 1 && !hostId) || (currentUser && isPersonMatchingUser(p.name, currentUser)))
+        ) {
           pUserId = userId;
-          if (!pEmail) {
-            const u = await this.getUserById(userId);
-            if (u) p.email = u.email;
+          if (currentUser?.email) {
+            pEmail = currentUser.email.trim().toLowerCase();
           }
         }
 
-        insertPerson.run(p.id, billId, p.name, Number(p.sponsorAmount || 0), Number(p.paidAmount || 0), pUserId, p.email || null);
+        insertPerson.run(p.id, billId, p.name, Number(p.sponsorAmount || 0), Number(p.paidAmount || 0), pUserId, pEmail || null);
       }
 
       const insertItem = this.db.prepare(
@@ -689,9 +800,14 @@ export class SqliteAdapter implements DatabaseAdapter {
         b.updated_at,
         b.name as custom_name,
         b.location,
+        b.currency,
         b.owner_id,
         b.group_id,
         bg.name as group_name,
+        bg.visibility as group_visibility,
+        b.visibility,
+        b.share_token,
+        b.is_shared,
         (SELECT name FROM items WHERE bill_id = b.id LIMIT 1) as first_item_name,
         (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count,
         (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
@@ -699,13 +815,16 @@ export class SqliteAdapter implements DatabaseAdapter {
         (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras
       FROM bills b
       LEFT JOIN bill_groups bg ON bg.id = b.group_id
-      WHERE (b.is_shared IS NULL OR b.is_shared = 1)
+      WHERE b.revoked_at IS NULL
         AND (
           b.owner_id = ?
-          OR EXISTS (
-            SELECT 1 FROM people p
-            WHERE p.bill_id = b.id
-            AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+          OR (
+            (b.is_shared IS NULL OR b.is_shared = 1)
+            AND EXISTS (
+              SELECT 1 FROM people p
+              WHERE p.bill_id = b.id
+              AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+            )
           )
         )
       ORDER BY b.updated_at DESC
@@ -714,34 +833,59 @@ export class SqliteAdapter implements DatabaseAdapter {
     const bills = query.all(userId, userId, userEmail) as unknown as BillSummaryRow[];
 
     return bills.map(b => {
-      let total = Number(b.subtotal || 0);
+      const subtotal = Number(b.subtotal || 0);
       const percentSum = Number(b.percent_extras || 0);
-      total += (percentSum / 100) * total;
-      total += Number(b.fixed_extras || 0);
+      const fixedExtras = Number(b.fixed_extras || 0);
+      const total = Math.round(subtotal * (1 + percentSum / 100) + fixedExtras);
       const itemCount = Number(b.item_count || 0);
       const isOwner = b.owner_id === userId;
+      const effectiveVisibility = (b.group_id && (b.group_visibility === 'public' || !b.group_visibility))
+        ? 'public'
+        : (b.visibility === 'local' ? 'restricted' : ((b.visibility as 'local' | 'restricted' | 'public') || 'restricted'));
 
       return {
         id: String(b.id),
-        created_at: typeof b.created_at === 'string' ? b.created_at : new Date(b.created_at).toISOString(),
-        updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
+        created_at: normalizeSqliteTimestamp(b.created_at),
+        updated_at: normalizeSqliteTimestamp(b.updated_at),
         name: b.custom_name || (b.first_item_name ? b.first_item_name + (itemCount > 1 ? ` & ${itemCount - 1} more` : '') : 'Empty Bill'),
         location: b.location ?? null,
+        currency: b.currency || 'VND',
         totalAmount: total,
         owner_id: b.owner_id ? String(b.owner_id) : null,
         group_id: b.group_id ? String(b.group_id) : null,
         group_name: b.group_name ? String(b.group_name) : null,
         role: isOwner ? 'owner' : 'participant',
         is_owner: isOwner,
+        visibility: effectiveVisibility,
+        shareToken: isOwner ? (b.share_token || null) : null,
+        sharingStatus: 'shared',
       };
     });
   }
 
-  async createGroup(name: string, ownerId: string, description: string | null = null, currency: string = 'VND', visibility: 'public' | 'restricted' = 'public'): Promise<BillGroupDetail> {
-    const id = crypto.randomUUID();
-    this.db.prepare(
-      'INSERT INTO bill_groups (id, name, description, owner_id, currency, visibility) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, name.trim(), description ? description.trim() : null, ownerId, currency, visibility);
+  async createGroup(
+    name: string,
+    ownerId: string,
+    description: string | null = null,
+    currency: string = 'VND',
+    visibility: 'public' | 'restricted' = 'public',
+    customId?: string | null,
+    participants?: PersonData[]
+  ): Promise<BillGroupDetail> {
+    const id = (customId && customId.trim().length > 0) ? customId.trim() : crypto.randomUUID();
+    const participantsJson = JSON.stringify(Array.isArray(participants) ? participants : []);
+    const existing = this.db.prepare('SELECT id, owner_id FROM bill_groups WHERE id = ?').get(id) as { id: string; owner_id: string } | undefined;
+    if (existing) {
+      if (existing.owner_id === ownerId) {
+        this.db.prepare(
+          'UPDATE bill_groups SET name = ?, description = ?, currency = ?, visibility = ?, participants = COALESCE(?, participants), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run(name.trim(), description ? description.trim() : null, currency, visibility, Array.isArray(participants) ? participantsJson : null, id);
+      }
+    } else {
+      this.db.prepare(
+        'INSERT INTO bill_groups (id, name, description, owner_id, currency, visibility, participants) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(id, name.trim(), description ? description.trim() : null, ownerId, currency, visibility, participantsJson);
+    }
 
     const group = await this.getGroup(id, ownerId);
     if (!group) throw new Error('Failed to create group');
@@ -759,9 +903,38 @@ export class SqliteAdapter implements DatabaseAdapter {
     if (!group) return null;
 
     const isOwner = Boolean(userId && group.owner_id === userId);
+    const groupVisibility = ((group as any).visibility || 'public') as 'public' | 'restricted';
+    const parsedParticipants: PersonData[] = (group as any).participants
+      ? (typeof (group as any).participants === 'string' ? JSON.parse((group as any).participants) : (group as any).participants)
+      : [];
+
+    if (groupVisibility === 'restricted' && !isOwner) {
+      if (!userId) return null;
+      const u = await this.getUserById(userId);
+      const userEmail = u?.email ? u.email.toLowerCase() : '';
+      const inGroupParticipants = parsedParticipants.some(p =>
+        (p.userId && p.userId === userId) ||
+        (userEmail && p.email && p.email.toLowerCase() === userEmail)
+      );
+      if (!inGroupParticipants) {
+        const billAccessCheck = this.db.prepare(`
+          SELECT 1 FROM bills b
+          LEFT JOIN people p ON p.bill_id = b.id
+          WHERE b.group_id = ?
+            AND (
+              b.owner_id = ?
+              OR (b.is_shared = 1 AND b.revoked_at IS NULL AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?)))
+            )
+          LIMIT 1
+        `).get(id, userId, userId, userEmail);
+        if (!billAccessCheck) {
+          return null;
+        }
+      }
+    }
 
     const billsRaw = this.db.prepare(`
-      SELECT id, name, location, currency, host_id, created_at, updated_at
+      SELECT id, name, location, currency, host_id, is_shared, created_at, updated_at
       FROM bills
       WHERE group_id = ?
         ${isOwner ? '' : 'AND is_shared = 1 AND revoked_at IS NULL'}
@@ -772,6 +945,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       location: string | null;
       currency: string | null;
       host_id: string | null;
+      is_shared?: number | null;
       created_at: string;
       updated_at: string;
     }>;
@@ -865,10 +1039,30 @@ export class SqliteAdapter implements DatabaseAdapter {
         });
       }
 
+      const groupOwnerUser = group.owner_id
+        ? {
+            id: String(group.owner_id),
+            name: group.owner_name ? String(group.owner_name) : null,
+            email: group.owner_email ? String(group.owner_email) : null,
+          }
+        : null;
+
       for (const b of billsRaw) {
-        const people = peopleByBill.get(b.id) || [];
-        const hostPerson = people.find(p => p.id === b.host_id);
-        const hostName = hostPerson?.name || null;
+        const rawBillPeople = peopleByBill.get(b.id) || [];
+        const hasOwnerMatchInBill = groupOwnerUser
+          ? rawBillPeople.some(rp => isPersonMatchingUser(rp.name, groupOwnerUser))
+          : false;
+        const people = rawBillPeople.map(p => {
+          if (
+            groupOwnerUser &&
+            !isPersonMatchingUser(p.name, groupOwnerUser) &&
+            (p.userId === groupOwnerUser.id || (p.email && groupOwnerUser.email && p.email.trim().toLowerCase() === groupOwnerUser.email.trim().toLowerCase())) &&
+            (p.id === b.host_id || hasOwnerMatchInBill)
+          ) {
+            return { ...p, userId: null, email: null };
+          }
+          return p;
+        });
         const globalCharges = chargesByBill.get(b.id) || [];
         const items = itemsByBill.get(b.id) || [];
 
@@ -880,6 +1074,7 @@ export class SqliteAdapter implements DatabaseAdapter {
           if (c.type === 'percent') percentCharges += Number(c.amount || 0);
         });
         const billTotal = Math.round(subtotal * (1 + percentCharges / 100) + fixedCharges);
+        const hostName = resolveDbEffectivePayerName(people, b.host_id, billTotal);
 
         totalGroupAmount += billTotal;
         totalItemsCount += items.length;
@@ -892,11 +1087,12 @@ export class SqliteAdapter implements DatabaseAdapter {
           totalAmount: billTotal,
           host_id: b.host_id ? String(b.host_id) : null,
           host_name: hostName,
-          created_at: typeof b.created_at === 'string' ? b.created_at : new Date(b.created_at).toISOString(),
-          updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
+          created_at: normalizeSqliteTimestamp(b.created_at),
+          updated_at: normalizeSqliteTimestamp(b.updated_at),
           items,
           people,
           globalCharges,
+          ...(b.is_shared === 0 ? { isLocal: true } : {}),
         });
       }
     }
@@ -910,14 +1106,14 @@ export class SqliteAdapter implements DatabaseAdapter {
       owner_email: group.owner_email ? String(group.owner_email) : null,
       is_owner: isOwner,
       currency: group.currency ? String(group.currency) : 'VND',
-      visibility: ((group as any).visibility || 'public') as 'public' | 'restricted',
+      visibility: groupVisibility,
       total_amount: totalGroupAmount,
       total_bills: bills.length,
       total_items: totalItemsCount,
-      created_at: typeof group.created_at === 'string' ? group.created_at : new Date(group.created_at).toISOString(),
-      updated_at: typeof group.updated_at === 'string' ? group.updated_at : new Date(group.updated_at).toISOString(),
+      created_at: normalizeSqliteTimestamp(group.created_at),
+      updated_at: normalizeSqliteTimestamp(group.updated_at),
       bills,
-      participants: (group as any).participants ? (typeof (group as any).participants === 'string' ? JSON.parse((group as any).participants) : (group as any).participants) : [],
+      participants: parsedParticipants,
     };
   }
 
@@ -926,6 +1122,8 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     const u = await this.getUserById(userId);
     const userEmail = u?.email ? u.email.toLowerCase() : '';
+    const userIdLike = `%"userId":"${userId}"%`;
+    const userEmailLike = userEmail ? `%"email":"${userEmail}"%` : '__no_email_match__';
 
     const groupsRaw = this.db.prepare(`
       SELECT DISTINCT
@@ -935,6 +1133,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         g.owner_id,
         g.currency,
         g.visibility,
+        g.participants,
         g.created_at,
         g.updated_at,
         u.name as owner_name,
@@ -942,14 +1141,18 @@ export class SqliteAdapter implements DatabaseAdapter {
       FROM bill_groups g
       LEFT JOIN users u ON u.id = g.owner_id
       WHERE g.owner_id = ?
+         OR (g.participants IS NOT NULL AND (g.participants LIKE ? OR LOWER(g.participants) LIKE ?))
          OR EXISTS (
            SELECT 1 FROM bills b
            LEFT JOIN people p ON p.bill_id = b.id
            WHERE b.group_id = g.id
-             AND (b.owner_id = ? OR p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+             AND (
+               b.owner_id = ?
+               OR ((b.is_shared IS NULL OR b.is_shared = 1) AND b.revoked_at IS NULL AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?)))
+             )
          )
       ORDER BY g.updated_at DESC
-    `).all(userId, userId, userId, userEmail) as unknown as Array<BillGroupRow & { owner_name?: string | null; owner_email?: string | null }>;
+    `).all(userId, userIdLike, userEmailLike, userId, userId, userEmail) as unknown as Array<BillGroupRow & { owner_name?: string | null; owner_email?: string | null; participants?: string | null }>;
 
     if (groupsRaw.length === 0) return [];
 
@@ -1015,8 +1218,8 @@ export class SqliteAdapter implements DatabaseAdapter {
         bill_ids: stats.billIds,
         bill_amounts: stats.billAmounts,
         bill_item_counts: stats.billItemCounts,
-        created_at: typeof g.created_at === 'string' ? g.created_at : new Date(g.created_at).toISOString(),
-        updated_at: typeof g.updated_at === 'string' ? g.updated_at : new Date(g.updated_at).toISOString(),
+        created_at: normalizeSqliteTimestamp(g.created_at),
+        updated_at: normalizeSqliteTimestamp(g.updated_at),
         participants: Array.isArray((g as any).participants)
           ? (g as any).participants
           : (typeof (g as any).participants === 'string' ? JSON.parse((g as any).participants) : []),
@@ -1063,6 +1266,12 @@ export class SqliteAdapter implements DatabaseAdapter {
         UPDATE bills
         SET visibility = 'public', updated_at = CURRENT_TIMESTAMP
         WHERE group_id = ? AND is_shared = 1 AND revoked_at IS NULL
+      `).run(id);
+    } else if (visibility === 'restricted') {
+      this.db.prepare(`
+        UPDATE bills
+        SET visibility = 'restricted', updated_at = CURRENT_TIMESTAMP
+        WHERE group_id = ? AND is_shared = 1 AND revoked_at IS NULL AND share_token IS NULL
       `).run(id);
     }
   }
@@ -1182,11 +1391,13 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     const term = `%${query.trim().toLowerCase()}%`;
     const emailParam = userEmail || 'none';
+    const userIdLike = `%"userId":"${userId}"%`;
+    const userEmailLike = userEmail ? `%"email":"${userEmail}"%` : '__no_email_match__';
 
     // Search groups
     const groupsRaw = this.db.prepare(`
-      SELECT g.id, g.name, g.description,
-        (SELECT COUNT(*) FROM bills WHERE group_id = g.id) as total_bills,
+      SELECT g.id, g.name, g.description, g.currency,
+        (SELECT COUNT(*) FROM bills b WHERE b.group_id = g.id AND (b.owner_id = ? OR (b.is_shared = 1 AND b.revoked_at IS NULL))) as total_bills,
         (
           SELECT COALESCE(SUM(
             ROUND(
@@ -1194,25 +1405,29 @@ export class SqliteAdapter implements DatabaseAdapter {
               (1 + (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') / 100.0) +
               (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed')
             )
-          ), 0) FROM bills b WHERE b.group_id = g.id
+          ), 0) FROM bills b WHERE b.group_id = g.id AND (b.owner_id = ? OR (b.is_shared = 1 AND b.revoked_at IS NULL))
         ) as total_amount
       FROM bill_groups g
       WHERE (LOWER(g.name) LIKE ? OR LOWER(COALESCE(g.description, '')) LIKE ?)
         AND (
           g.owner_id = ?
+          OR (g.participants IS NOT NULL AND (g.participants LIKE ? OR LOWER(g.participants) LIKE ?))
           OR EXISTS (
             SELECT 1 FROM bills b
             JOIN people p ON p.bill_id = b.id
             WHERE b.group_id = g.id
-              AND (b.owner_id = ? OR p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+              AND (
+                b.owner_id = ?
+                OR ((b.is_shared IS NULL OR b.is_shared = 1) AND b.revoked_at IS NULL AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?)))
+              )
           )
         )
       LIMIT 10
-    `).all(term, term, userId, userId, userId, emailParam) as unknown as Array<{ id: string; name: string; description: string | null; total_bills: number; total_amount: number }>;
+    `).all(userId, userId, term, term, userId, userIdLike, userEmailLike, userId, userId, emailParam) as unknown as Array<{ id: string; name: string; description: string | null; currency?: string | null; total_bills: number; total_amount: number }>;
 
     // Search bills
     const billsRaw = this.db.prepare(`
-      SELECT b.id, b.name, b.location, b.group_id, bg.name as group_name,
+      SELECT b.id, b.name, b.location, b.currency, b.group_id, bg.name as group_name,
         ROUND(
           (SELECT COALESCE(SUM(i.price * i.quantity), 0) FROM items i WHERE i.bill_id = b.id) *
           (1 + (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') / 100.0) +
@@ -1223,37 +1438,46 @@ export class SqliteAdapter implements DatabaseAdapter {
       WHERE (LOWER(COALESCE(b.name, '')) LIKE ? OR LOWER(COALESCE(b.location, '')) LIKE ?)
         AND (
           b.owner_id = ?
-          OR EXISTS (
-            SELECT 1 FROM people p
-            WHERE p.bill_id = b.id
-              AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+          OR (
+            (b.is_shared IS NULL OR b.is_shared = 1)
+            AND b.revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM people p
+              WHERE p.bill_id = b.id
+                AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+            )
           )
         )
       LIMIT 15
-    `).all(term, term, userId, userId, emailParam) as unknown as Array<{ id: string; name: string | null; location: string | null; group_id: string | null; group_name: string | null; total_amount: number }>;
+    `).all(term, term, userId, userId, emailParam) as unknown as Array<{ id: string; name: string | null; location: string | null; currency?: string | null; group_id: string | null; group_name: string | null; total_amount: number }>;
 
     // Search items
     const itemsRaw = this.db.prepare(`
-      SELECT i.id, i.name, i.price, i.quantity, i.bill_id, b.name as bill_name
+      SELECT i.id, i.name, i.price, i.quantity, i.bill_id, b.name as bill_name, b.currency
       FROM items i
       JOIN bills b ON b.id = i.bill_id
       WHERE LOWER(i.name) LIKE ?
         AND (
           b.owner_id = ?
-          OR EXISTS (
-            SELECT 1 FROM people p
-            WHERE p.bill_id = b.id
-              AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+          OR (
+            (b.is_shared IS NULL OR b.is_shared = 1)
+            AND b.revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM people p
+              WHERE p.bill_id = b.id
+                AND (p.user_id = ? OR (p.email IS NOT NULL AND LOWER(p.email) = ?))
+            )
           )
         )
       LIMIT 20
-    `).all(term, userId, userId, emailParam) as unknown as Array<{ id: string; name: string; price: number; quantity: number; bill_id: string; bill_name: string | null }>;
+    `).all(term, userId, userId, emailParam) as unknown as Array<{ id: string; name: string; price: number; quantity: number; bill_id: string; bill_name: string | null; currency?: string | null }>;
 
     return {
       groups: groupsRaw.map(g => ({
         id: String(g.id),
         name: String(g.name),
         description: g.description ? String(g.description) : null,
+        currency: g.currency || 'VND',
         total_amount: Number(g.total_amount || 0),
         total_bills: Number(g.total_bills || 0),
       })),
@@ -1261,6 +1485,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         id: String(b.id),
         name: b.name || `Bill ${b.id.slice(0, 8)}`,
         location: b.location ?? null,
+        currency: b.currency || 'VND',
         totalAmount: Number(b.total_amount || 0),
         group_id: b.group_id ? String(b.group_id) : null,
         group_name: b.group_name ? String(b.group_name) : null,
@@ -1270,6 +1495,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         name: String(i.name),
         price: Number(i.price || 0),
         quantity: Number(i.quantity || 1),
+        currency: i.currency || 'VND',
         bill_id: String(i.bill_id),
         bill_name: i.bill_name || `Bill ${i.bill_id.slice(0, 8)}`,
       })),

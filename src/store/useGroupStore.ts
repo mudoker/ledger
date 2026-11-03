@@ -7,6 +7,7 @@ import {
   aggregateGroupSummaries,
   ensureGroupParticipantsSuperset,
 } from '@/lib/common-data-model';
+import { useAppSettingsStore } from '@/store/useAppSettingsStore';
 
 interface GroupState {
   groups: BillGroupSummary[];
@@ -58,7 +59,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     let serverGroups: BillGroupSummary[] = [];
     let fetchError: string | null = null;
     try {
-      const res = await fetch('/api/groups');
+      const res = await fetch('/api/groups', { cache: 'no-store' });
       if (res.ok) {
         serverGroups = await res.json();
       } else {
@@ -105,11 +106,27 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
 
     // 2. Load local group and local bills
+    const storageMode = useAppSettingsStore.getState().storageMode;
+    const isAutoSyncMode = storageMode === 'cloud' || storageMode === 'hybrid';
     const localDb = getLocalDb();
     const lg = await localDb.getGroup(id).catch(() => null);
     const localBills = await localDb.listBills().catch(() => []);
     const pendingOps = await localDb.getPendingOps().catch(() => []);
     const pendingDeleteIds = new Set(pendingOps.filter(op => op.type === 'delete').map(op => op.billId));
+
+    // In cloud/hybrid mode, if any server bill owned by the user was previously saved with is_shared = 0 (isLocal: true),
+    // automatically promote it on the server in the background so it is synced across all devices.
+    if (isAutoSyncMode && serverGroup?.is_owner && Array.isArray(serverGroup.bills)) {
+      for (const sb of serverGroup.bills) {
+        if (sb.isLocal) {
+          fetch(`/api/bills/${sb.id}/share`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visibility: serverGroup.visibility || 'public' }),
+          }).catch(() => {});
+        }
+      }
+    }
 
     // 3. Resolve group metadata & participants by aggregating local and server
     const serverParticipants: PersonData[] = (serverGroup as any)?.participants || [];
@@ -120,7 +137,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       [{ people: localParticipants }]
     );
 
-    const isLocalNewer = lg && serverGroup
+    const isLocalNewer = storageMode !== 'cloud' && lg && serverGroup
       ? new Date(lg.updatedAt).getTime() > new Date(serverGroup.updated_at).getTime()
       : Boolean(lg && !serverGroup);
 
@@ -135,6 +152,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
           owner_email: serverGroup?.owner_email || null,
           is_owner: serverGroup ? serverGroup.is_owner : true,
           currency: lg.currency || serverGroup?.currency || 'VND',
+          visibility: lg.visibility || serverGroup?.visibility || 'public',
           created_at: serverGroup?.created_at || lg.createdAt,
           updated_at: lg.updatedAt,
           bills: (serverGroup?.bills || []).filter(b => !pendingDeleteIds.has(b.id)),
@@ -156,7 +174,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     // If new participants were identified from bills, persist them to local and cloud
     if (unifiedParticipants.length > participants.length) {
-      if (lg) {
+      if (lg && storageMode !== 'cloud') {
         lg.participants = unifiedParticipants as any;
         await localDb.saveGroup(lg).catch(() => {});
       }
@@ -181,34 +199,41 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       participants: unifiedParticipants,
     };
 
-    // Persist aggregated group snapshot locally for offline resilience
-    const localParticipantsSnapshot: LocalPerson[] = (unifiedParticipants || []).map(p => ({
-      id: p.id,
-      name: p.name,
-      sponsorAmount: p.sponsorAmount ?? 0,
-      paidAmount: p.paidAmount ?? 0,
-      userId: p.userId || null,
-      email: p.email || null,
-    }));
+    // Persist aggregated group snapshot locally for offline resilience (except in cloud-only mode)
+    if (storageMode !== 'cloud') {
+      const localParticipantsSnapshot: LocalPerson[] = (unifiedParticipants || []).map(p => ({
+        id: p.id,
+        name: p.name,
+        sponsorAmount: p.sponsorAmount ?? 0,
+        paidAmount: p.paidAmount ?? 0,
+        userId: p.userId || null,
+        email: p.email || null,
+      }));
 
-    await localDb.saveGroup({
-      id: finalDetail.id,
-      name: finalDetail.name,
-      description: finalDetail.description,
-      currency: finalDetail.currency || 'VND',
-      ownerId: finalDetail.owner_id || null,
-      participants: localParticipantsSnapshot,
-      totalAmount: finalDetail.total_amount,
-      totalBills: finalDetail.total_bills,
-      totalItems: finalDetail.total_items,
-      createdAt: finalDetail.created_at,
-      updatedAt: finalDetail.updated_at,
-    }).catch(() => {});
+      await localDb.saveGroup({
+        id: finalDetail.id,
+        name: finalDetail.name,
+        description: finalDetail.description,
+        currency: finalDetail.currency || 'VND',
+        visibility: finalDetail.visibility || 'public',
+        ownerId: finalDetail.owner_id || null,
+        participants: localParticipantsSnapshot,
+        totalAmount: finalDetail.total_amount,
+        totalBills: finalDetail.total_bills,
+        totalItems: finalDetail.total_items,
+        createdAt: finalDetail.created_at,
+        updatedAt: finalDetail.updated_at,
+      }).catch(() => {});
+    }
 
     // Update currentGroup and keep groups list in sync
     set((state) => {
       const nextGroups = state.groups.map(g => g.id === id ? {
         ...g,
+        name: finalDetail.name,
+        description: finalDetail.description,
+        currency: finalDetail.currency || g.currency,
+        visibility: finalDetail.visibility || g.visibility,
         total_amount: totalAmount,
         total_bills: mergedBills.length,
         total_items: totalItems,
@@ -240,6 +265,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   createGroup: async (name: string, description: string | null = null, currency: string = 'VND', visibility: 'public' | 'restricted' = 'public') => {
     set({ isLoading: true, error: null });
+    const storageMode = useAppSettingsStore.getState().storageMode;
     const localDb = getLocalDb();
     const newId = crypto.randomUUID();
 
@@ -248,36 +274,53 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       name,
       description,
       currency,
+      visibility,
       ownerId: null,
       participants: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    // Save to local storage
-    await localDb.saveGroup(localGroup);
+    // Save to local storage in 'local' and 'hybrid' modes (not in 'cloud' mode)
+    if (storageMode !== 'cloud') {
+      await localDb.saveGroup(localGroup);
+    }
 
     // Try cloud sync if online
     try {
       const res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description, currency, visibility }),
+        body: JSON.stringify({ id: newId, name, description, currency, visibility }),
       });
       if (!res.ok) {
+        if (storageMode !== 'cloud') {
+          await localDb.deleteGroup(newId).catch(() => {});
+        }
         const err = await res.json().catch(() => ({}));
         const msg = err.error || 'Failed to create group';
         set({ error: msg, isLoading: false });
         throw new Error(msg);
       }
       const serverGroup = await res.json();
-      // Update local group with server ID if different
-      await localDb.deleteGroup(newId);
-      await localDb.saveGroup({
-        ...localGroup,
-        id: serverGroup.id,
-        ownerId: serverGroup.owner_id,
-      });
+      if (storageMode !== 'cloud') {
+        if (serverGroup.id !== newId) {
+          await localDb.deleteGroup(newId);
+          // Remap any local bills that linked to newId
+          const bills = await localDb.listBills().catch(() => []);
+          for (const b of bills) {
+            if (b.groupId === newId) {
+              b.groupId = serverGroup.id;
+              await localDb.saveBill(b).catch(() => {});
+            }
+          }
+        }
+        await localDb.saveGroup({
+          ...localGroup,
+          id: serverGroup.id,
+          ownerId: serverGroup.owner_id,
+        });
+      }
       await get().fetchGroups();
       set({ currentGroup: serverGroup, isLoading: false });
       return serverGroup;
@@ -296,6 +339,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       owner_id: 'local',
       is_owner: true,
       currency: localGroup.currency,
+      visibility: localGroup.visibility || 'public',
       total_amount: 0,
       total_bills: 0,
       total_items: 0,
@@ -312,18 +356,26 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   updateGroup: async (id: string, data) => {
     set({ isLoading: true, error: null });
+    const storageMode = useAppSettingsStore.getState().storageMode;
 
-    // Update local copy
+    // Update local copy (only when not in cloud-only mode)
+    let allLocalBills: LocalBillRecord[] = [];
     try {
       const localDb = getLocalDb();
-      const lg = await localDb.getGroup(id);
-      if (lg) {
-        await localDb.saveGroup({
-          ...lg,
-          ...data,
-          updatedAt: new Date().toISOString(),
-        });
+      if (storageMode !== 'cloud') {
+        const lg = await localDb.getGroup(id);
+        if (lg) {
+          await localDb.saveGroup({
+            ...lg,
+            ...data,
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
+      const pendingOps = await localDb.getPendingOps().catch(() => []);
+      const pendingDeleteIds = new Set(pendingOps.filter(op => op.type === 'delete').map(op => op.billId));
+      const rawLocalBills = await localDb.listBills().catch(() => []);
+      allLocalBills = rawLocalBills.filter(b => !pendingDeleteIds.has(b.id));
     } catch (e) {
       console.warn('Failed to update local group:', e);
     }
@@ -337,6 +389,13 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       });
       if (res.ok) {
         const updated = await res.json();
+        if (allLocalBills.length > 0 && Array.isArray(updated.bills)) {
+          const mergedBills = mergeBillsForGroup(updated.bills, allLocalBills, id, updated.participants);
+          updated.bills = mergedBills;
+          updated.total_bills = mergedBills.length;
+          updated.total_amount = mergedBills.reduce((s, b) => s + b.totalAmount, 0);
+          updated.total_items = mergedBills.reduce((s, b) => s + (b.items?.length || 0), 0);
+        }
         set((state) => ({
           currentGroup: state.currentGroup?.id === id ? { ...state.currentGroup, ...updated } : state.currentGroup,
           groups: state.groups.map((g) => (g.id === id ? { ...g, ...updated } : g)),
@@ -422,35 +481,38 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       } : g),
     }));
 
-    // 2. Asynchronously persist to local storage and remote backend
+    // 2. Asynchronously persist to local storage (when not cloud-only) and remote backend
     try {
-      const localDb = getLocalDb();
-      const lg = await localDb.getGroup(groupId).catch(() => null);
-      const localNextParticipants: LocalPerson[] = nextParticipants.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        sponsorAmount: p.sponsorAmount ?? 0,
-        paidAmount: p.paidAmount ?? 0,
-        userId: p.userId || null,
-        email: p.email || null,
-      }));
+      const storageMode = useAppSettingsStore.getState().storageMode;
+      if (storageMode !== 'cloud') {
+        const localDb = getLocalDb();
+        const lg = await localDb.getGroup(groupId).catch(() => null);
+        const localNextParticipants: LocalPerson[] = nextParticipants.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          sponsorAmount: p.sponsorAmount ?? 0,
+          paidAmount: p.paidAmount ?? 0,
+          userId: p.userId || null,
+          email: p.email || null,
+        }));
 
-      if (lg) {
-        (lg as any).participants = localNextParticipants;
-        await localDb.saveGroup(lg);
-      } else {
-        const cur = get().currentGroup || get().groups.find(g => g.id === groupId);
-        if (cur) {
-          await localDb.saveGroup({
-            id: cur.id,
-            name: cur.name,
-            description: cur.description,
-            currency: cur.currency || 'VND',
-            ownerId: cur.owner_id || null,
-            participants: localNextParticipants,
-            createdAt: cur.created_at || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
+        if (lg) {
+          (lg as any).participants = localNextParticipants;
+          await localDb.saveGroup(lg);
+        } else {
+          const cur = get().currentGroup || get().groups.find(g => g.id === groupId);
+          if (cur) {
+            await localDb.saveGroup({
+              id: cur.id,
+              name: cur.name,
+              description: cur.description,
+              currency: cur.currency || 'VND',
+              ownerId: cur.owner_id || null,
+              participants: localNextParticipants,
+              createdAt: cur.created_at || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
         }
       }
 
@@ -465,6 +527,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   },
 
   removeGroupParticipant: async (groupId: string, participantId: string) => {
+    const storageMode = useAppSettingsStore.getState().storageMode;
     const localDb = getLocalDb();
     const lg = await localDb.getGroup(groupId).catch(() => null);
     const current = get().currentGroup;
@@ -484,20 +547,22 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       nextParticipants = existing.filter((p: any) => p.id !== participantId);
     }
 
-    if (lg) {
-      (lg as any).participants = nextParticipants;
-      await localDb.saveGroup(lg);
-    } else if (current && current.id === groupId) {
-      await localDb.saveGroup({
-        id: current.id,
-        name: current.name,
-        description: current.description,
-        currency: current.currency || 'VND',
-        ownerId: current.owner_id || null,
-        participants: nextParticipants,
-        createdAt: current.created_at || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }).catch(() => {});
+    if (storageMode !== 'cloud') {
+      if (lg) {
+        (lg as any).participants = nextParticipants;
+        await localDb.saveGroup(lg);
+      } else if (current && current.id === groupId) {
+        await localDb.saveGroup({
+          id: current.id,
+          name: current.name,
+          description: current.description,
+          currency: current.currency || 'VND',
+          ownerId: current.owner_id || null,
+          participants: nextParticipants,
+          createdAt: current.created_at || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
     }
 
     try {

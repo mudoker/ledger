@@ -7,6 +7,7 @@ import type {
   GlobalChargeData,
 } from '@/../db/types';
 import type { LocalBillRecord, LocalGroupRecord } from '@/lib/local-db/types';
+import { useAppSettingsStore } from '@/store/useAppSettingsStore';
 
 export interface BillCalculationInput {
   items?: Array<{
@@ -76,6 +77,45 @@ export function calculateBillTotals(bill: BillCalculationInput): BillTotals {
 }
 
 /**
+ * Robustly resolves the effective payer/host name for a bill, checking:
+ * 1. Explicit hostId matching a person
+ * 2. If hostId paid 0 but another participant paid upfront via paidAmount, resolves to the actual payer
+ * 3. Highest upfront payer (paidAmount > 0)
+ * 4. Fallback to first participant
+ */
+export function resolveEffectivePayerName(
+  people: Array<{ id: string; name: string; paidAmount?: number | null; userId?: string | null }> | undefined | null,
+  hostId: string | null | undefined,
+  billTotal?: number
+): string | null {
+  if (!people || people.length === 0) return null;
+  const nominalHost = hostId
+    ? (people.find(p => p.id === hostId) || people.find(p => p.userId === hostId))
+    : undefined;
+  const topUpfrontPayer = [...people].sort((a, b) => (b.paidAmount || 0) - (a.paidAmount || 0))[0];
+
+  if (nominalHost) {
+    if (billTotal !== undefined && billTotal > 0) {
+      const othersPaid = people.reduce(
+        (sum, p) => (p.id !== nominalHost.id ? sum + (p.paidAmount || 0) : sum),
+        0
+      );
+      const nominalPaid = Math.max(0, billTotal - othersPaid);
+      if (nominalPaid <= 0.01 && topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0.01) {
+        return topUpfrontPayer.name;
+      }
+    }
+    return nominalHost.name;
+  }
+
+  if (topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0.01) {
+    return topUpfrontPayer.name;
+  }
+
+  return people[0]?.name || null;
+}
+
+/**
  * Normalizes a local bill record into a complete GroupBillOverview, preserving all
  * people, item assignments, and global charge structures needed for group settlement.
  */
@@ -84,7 +124,6 @@ export function normalizeLocalBillToOverview(
   groupParticipants?: PersonData[]
 ): GroupBillOverview {
   const totals = calculateBillTotals(lb);
-  const hostPerson = lb.people?.find(p => p.id === lb.hostId);
 
   // If local bill has no people but group has participants, inherit them
   let people = lb.people && lb.people.length > 0 ? lb.people : [];
@@ -99,9 +138,13 @@ export function normalizeLocalBillToOverview(
     }));
   }
 
-  const isLocalOnly = lb.sharingStatus === 'local' ||
+  const isLocalOnly =
+    lb.sharingStatus === 'local' ||
+    lb.sharingStatus === 'revocation_pending' ||
     lb.sharingStatus === 'uploading' ||
     lb.sharingStatus === 'sync_error';
+
+  const hostName = resolveEffectivePayerName(people, lb.hostId, totals.totalAmount);
 
   return {
     id: lb.id,
@@ -110,7 +153,7 @@ export function normalizeLocalBillToOverview(
     currency: lb.currency || 'VND',
     totalAmount: totals.totalAmount,
     host_id: lb.hostId ?? null,
-    host_name: hostPerson?.name ?? (people.length > 0 ? people[0].name : null),
+    host_name: hostName ?? (people.length > 0 ? people[0].name : null),
     created_at: lb.createdAt,
     updated_at: lb.updatedAt,
     isLocal: isLocalOnly,
@@ -145,6 +188,17 @@ export function normalizeLocalBillToOverview(
   };
 }
 
+export function parseTimestampMs(ts: string | number | Date | null | undefined): number {
+  if (!ts) return 0;
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === 'number') return ts;
+  const trimmed = ts.trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)) {
+    return new Date(trimmed.replace(' ', 'T') + 'Z').getTime();
+  }
+  return new Date(trimmed).getTime();
+}
+
 /**
  * Robustly merges server bills and local bills for a specific group, ensuring
  * that local-only bills and local updates to server bills are never dropped or stripped.
@@ -157,13 +211,30 @@ export function mergeBillsForGroup(
 ): GroupBillOverview[] {
   const safeServerBills = Array.isArray(serverBills) ? serverBills : [];
   const safeLocalBills = Array.isArray(localBills) ? localBills : [];
+  const storageMode = useAppSettingsStore.getState().storageMode;
+  const isAutoSyncMode = storageMode === 'cloud' || storageMode === 'hybrid';
   const billMap = new Map<string, GroupBillOverview>();
+  const localBillById = new Map<string, LocalBillRecord>();
+  for (const lb of safeLocalBills) {
+    localBillById.set(lb.id, lb);
+  }
 
-  // 1. Index server bills
+  // 1. Index server bills (excluding any bill that was locally unlinked or moved to another group)
   for (const sb of safeServerBills) {
+    const localRecord = localBillById.get(sb.id);
+    if (localRecord && storageMode !== 'cloud') {
+      const localGroupId = localRecord.groupId !== undefined ? localRecord.groupId : (localRecord as any).group_id;
+      const localTime = parseTimestampMs(localRecord.updatedAt);
+      const serverTime = parseTimestampMs(sb.updated_at);
+      if (localGroupId !== groupId && localTime > serverTime) {
+        continue;
+      }
+    }
+
     const totals = calculateBillTotals(sb);
     billMap.set(sb.id, {
       ...sb,
+      isLocal: isAutoSyncMode ? false : Boolean(sb.isLocal),
       totalAmount: totals.totalAmount,
       items: (sb.items || []).map(it => {
         const qty = Math.max(1, it.quantity || 1);
@@ -178,7 +249,10 @@ export function mergeBillsForGroup(
       }),
       people: sb.people || [],
       globalCharges: sb.globalCharges || [],
-      host_name: sb.host_name || (sb.people && sb.people.length > 0 ? sb.people[0].name : null),
+      host_name:
+        resolveEffectivePayerName(sb.people, sb.host_id, totals.totalAmount) ||
+        sb.host_name ||
+        (sb.people && sb.people.length > 0 ? sb.people[0].name : null),
     });
   }
 
@@ -192,22 +266,76 @@ export function mergeBillsForGroup(
     const normalized = normalizeLocalBillToOverview(lb, groupParticipants);
 
     if (!existing) {
-      billMap.set(lb.id, normalized);
+      // Check if this local bill is a duplicate of an already-present server bill with a different ID
+      const normName = (normalized.name || '').trim().toLowerCase();
+      const normTime = parseTimestampMs(normalized.created_at || normalized.updated_at);
+      let duplicateServerBill: GroupBillOverview | undefined;
+      for (const candidate of billMap.values()) {
+        const candName = (candidate.name || '').trim().toLowerCase();
+        const candTime = parseTimestampMs(candidate.created_at || candidate.updated_at);
+
+        if (candName === normName && (candidate.currency || 'VND') === (normalized.currency || 'VND')) {
+          const isSameAmount = candidate.totalAmount === normalized.totalAmount;
+          const isSameItemCount = (candidate.items?.length || 0) === (normalized.items?.length || 0);
+          const timeDiff = Math.abs(candTime - normTime);
+
+          const candidateItems = (candidate.items || []).map(i => i.name.trim().toLowerCase());
+          const normalizedItems = (normalized.items || []).map(i => i.name.trim().toLowerCase());
+          const itemsOverlap = candidateItems.length > 0 && normalizedItems.length > 0 &&
+            candidateItems.some(name => normalizedItems.includes(name));
+
+          const isDuplicate = isSameAmount && (
+            (itemsOverlap && isSameItemCount) ||
+            timeDiff < 86400000 || // within 24h
+            isAutoSyncMode ||
+            (candidate.totalAmount > 0 && isSameItemCount)
+          );
+
+          if (isDuplicate) {
+            duplicateServerBill = candidate;
+            break;
+          }
+        }
+      }
+      if (!duplicateServerBill) {
+        billMap.set(lb.id, {
+          ...normalized,
+          isLocal: isAutoSyncMode && lb.sharingStatus !== 'revocation_pending' ? false : normalized.isLocal,
+        });
+      } else {
+        if ((!duplicateServerBill.people || duplicateServerBill.people.length === 0) && normalized.people && normalized.people.length > 0) {
+          duplicateServerBill.people = normalized.people;
+        }
+        if ((!duplicateServerBill.items || duplicateServerBill.items.length === 0) && normalized.items && normalized.items.length > 0) {
+          duplicateServerBill.items = normalized.items;
+        }
+      }
     } else {
-      // If local version has newer or equal updatedAt or has local changes, prioritize local
-      const localTime = new Date(lb.updatedAt).getTime();
-      const serverTime = new Date(existing.updated_at).getTime();
-      const isLocalPreferred = localTime >= serverTime ||
-        lb.sharingStatus === 'local' ||
-        (lb.items && lb.items.length > (existing.items?.length || 0)) ||
-        (lb.people && lb.people.length > (existing.people?.length || 0));
+      const localTime = parseTimestampMs(lb.updatedAt);
+      const serverTime = parseTimestampMs(existing.updated_at);
+      const isLocalPreferred = storageMode === 'cloud'
+        ? (existing.totalAmount === 0 && (existing.items?.length || 0) === 0 && normalized.totalAmount > 0 && localTime >= serverTime)
+        : (
+          localTime > serverTime ||
+          lb.sharingStatus === 'uploading' ||
+          lb.sharingStatus === 'sync_error' ||
+          (storageMode === 'local' && lb.sharingStatus === 'local' && localTime >= serverTime) ||
+          (localTime >= serverTime && existing.totalAmount === 0 && normalized.totalAmount > 0) ||
+          (localTime >= serverTime && (lb.items?.length || 0) > (existing.items?.length || 0)) ||
+          (localTime >= serverTime && (lb.people?.length || 0) > (existing.people?.length || 0))
+        );
+
+      const resolvedIsLocal = isAutoSyncMode
+        ? false
+        : (lb.sharingStatus === 'revocation_pending' ? true : Boolean(existing.isLocal));
 
       if (isLocalPreferred) {
         billMap.set(lb.id, {
           ...normalized,
-          isLocal: existing.isLocal || normalized.isLocal,
+          isLocal: resolvedIsLocal,
         });
       } else {
+        existing.isLocal = resolvedIsLocal;
         // Server copy is retained, but fill in missing people or charges if server omitted them
         if ((!existing.people || existing.people.length === 0) && normalized.people && normalized.people.length > 0) {
           existing.people = normalized.people;
@@ -236,8 +364,8 @@ export function mergeBillsForGroup(
   }
 
   return Array.from(billMap.values()).sort((a, b) => {
-    const timeA = new Date(a.created_at || a.updated_at || 0).getTime();
-    const timeB = new Date(b.created_at || b.updated_at || 0).getTime();
+    const timeA = parseTimestampMs(a.created_at || a.updated_at || 0);
+    const timeB = parseTimestampMs(b.created_at || b.updated_at || 0);
     if (timeB !== timeA) {
       return timeB - timeA;
     }
@@ -257,6 +385,7 @@ export function aggregateGroupSummaries(
   const safeServerGroups = Array.isArray(serverGroups) ? serverGroups : [];
   const safeLocalGroups = Array.isArray(localGroups) ? localGroups : [];
   const safeLocalBills = Array.isArray(localBills) ? localBills : [];
+  const storageMode = useAppSettingsStore.getState().storageMode;
   const groupMap = new Map<string, BillGroupSummary>();
 
   const localGroupMap = new Map<string, LocalGroupRecord>();
@@ -264,25 +393,65 @@ export function aggregateGroupSummaries(
     localGroupMap.set(lg.id, lg);
   }
 
+  const serverGroupIds = new Set(safeServerGroups.map(sg => sg.id));
+  const mergedLocalGroupIds = new Set<string>();
+  const localGroupRemap = new Map<string, string>();
+
+  const localBillById = new Map<string, LocalBillRecord>();
+  for (const lb of safeLocalBills) {
+    localBillById.set(lb.id, lb);
+  }
+
   // 1. Process server groups and fold in local bills
   for (const sg of safeServerGroups) {
-    const matchingLocalGroup = localGroupMap.get(sg.id);
-    const linkedLocalBills = safeLocalBills.filter(
-      b => b.groupId === sg.id || (b as any).group_id === sg.id
-    );
+    let matchingLocalGroup = localGroupMap.get(sg.id);
+    if (matchingLocalGroup) {
+      mergedLocalGroupIds.add(matchingLocalGroup.id);
+    } else {
+      // Deduplicate against local groups created with a different ID but identical name and currency
+      const sgNameNorm = (sg.name || '').trim().toLowerCase();
+      const sgCurrNorm = (sg.currency || 'VND').trim().toUpperCase();
+      const duplicateLocal = safeLocalGroups.find(lg =>
+        !serverGroupIds.has(lg.id) &&
+        !mergedLocalGroupIds.has(lg.id) &&
+        (lg.name || '').trim().toLowerCase() === sgNameNorm &&
+        (lg.currency || 'VND').trim().toUpperCase() === sgCurrNorm &&
+        (!lg.ownerId || lg.ownerId === 'local' || lg.ownerId === sg.owner_id)
+      );
+      if (duplicateLocal) {
+        matchingLocalGroup = duplicateLocal;
+        mergedLocalGroupIds.add(duplicateLocal.id);
+        localGroupRemap.set(duplicateLocal.id, sg.id);
+      }
+    }
+
+    const linkedLocalBills = safeLocalBills.filter(b => {
+      const gid = b.groupId !== undefined ? b.groupId : (b as any).group_id;
+      return gid === sg.id || (gid && localGroupRemap.get(gid) === sg.id);
+    });
 
     // Track per-bill accounting
     const billMap = new Map<string, { totalAmount: number; itemCount: number }>();
 
-    // 1a. Seed with server bill stats
+    // 1a. Seed with server bill stats (excluding bills unlinked or moved locally)
     if (sg.bill_amounts && sg.bill_ids && sg.bill_ids.length > 0) {
       for (const bid of sg.bill_ids) {
+        const localRecord = localBillById.get(bid);
+        if (localRecord && storageMode !== 'cloud') {
+          const rawLocalGroupId = localRecord.groupId !== undefined ? localRecord.groupId : (localRecord as any).group_id;
+          const localGroupId = (rawLocalGroupId && localGroupRemap.get(rawLocalGroupId)) || rawLocalGroupId;
+          const localTime = parseTimestampMs(localRecord.updatedAt);
+          const serverGroupTime = parseTimestampMs(sg.updated_at);
+          if (localGroupId !== sg.id && localTime > serverGroupTime) {
+            continue;
+          }
+        }
         billMap.set(bid, {
           totalAmount: sg.bill_amounts[bid] ?? 0,
           itemCount: sg.bill_item_counts?.[bid] ?? 0,
         });
       }
-    } else {
+    } else if (!sg.bill_amounts) {
       billMap.set('__server_aggregate__', {
         totalAmount: sg.total_amount || 0,
         itemCount: sg.total_items || 0,
@@ -318,13 +487,17 @@ export function aggregateGroupSummaries(
           });
         } else {
           // Bill exists on both server and local.
-          // Prefer local calculation if local has items or non-zero total, or is pending sync
-          const isLocalPreferred =
-            totals.totalAmount > 0 ||
-            totals.itemCount > 0 ||
-            lb.sharingStatus === 'local' ||
-            lb.sharingStatus === 'uploading' ||
-            lb.sharingStatus === 'sync_error';
+          const localTime = parseTimestampMs(lb.updatedAt);
+          const serverGroupTime = parseTimestampMs(sg.updated_at);
+          const isLocalPreferred = storageMode === 'cloud'
+            ? (existing.totalAmount === 0 && totals.totalAmount > 0 && localTime >= serverGroupTime)
+            : (
+              localTime > serverGroupTime ||
+              lb.sharingStatus === 'uploading' ||
+              lb.sharingStatus === 'sync_error' ||
+              (storageMode === 'local' && lb.sharingStatus === 'local' && localTime >= serverGroupTime) ||
+              (existing.totalAmount === 0 && totals.totalAmount > 0 && localTime >= serverGroupTime)
+            );
 
           if (isLocalPreferred) {
             billMap.set(lb.id, {
@@ -346,18 +519,9 @@ export function aggregateGroupSummaries(
       ? sg.total_bills + localOnlyBillsCount
       : billMap.size;
 
-    // If local group snapshot was cached from a full fetchGroup and is equal or larger, prefer the cached detail
-    let finalTotalAmount = calculatedTotalAmount;
-    let finalTotalBills = calculatedTotalBills;
-    let finalTotalItems = calculatedTotalItems;
-
-    if (matchingLocalGroup?.totalAmount !== undefined && matchingLocalGroup.totalBills !== undefined) {
-      if (matchingLocalGroup.totalBills >= calculatedTotalBills && matchingLocalGroup.totalAmount >= calculatedTotalAmount) {
-        finalTotalAmount = matchingLocalGroup.totalAmount;
-        finalTotalBills = matchingLocalGroup.totalBills;
-        finalTotalItems = matchingLocalGroup.totalItems ?? calculatedTotalItems;
-      }
-    }
+    const finalTotalAmount = calculatedTotalAmount;
+    const finalTotalBills = calculatedTotalBills;
+    const finalTotalItems = calculatedTotalItems;
 
     const participants = ensureGroupParticipantsSuperset(
       (sg as any).participants || [],
@@ -367,14 +531,16 @@ export function aggregateGroupSummaries(
       ]
     );
 
-    const isLocalNewer = matchingLocalGroup && matchingLocalGroup.updatedAt
-      ? new Date(matchingLocalGroup.updatedAt).getTime() > new Date(sg.updated_at).getTime()
+    const isLocalNewer = storageMode !== 'cloud' && matchingLocalGroup && matchingLocalGroup.updatedAt
+      ? parseTimestampMs(matchingLocalGroup.updatedAt) > parseTimestampMs(sg.updated_at)
       : false;
 
     groupMap.set(sg.id, {
       ...sg,
       name: isLocalNewer ? (matchingLocalGroup?.name || sg.name) : sg.name,
       description: isLocalNewer ? (matchingLocalGroup?.description ?? sg.description) : sg.description,
+      currency: isLocalNewer ? (matchingLocalGroup?.currency || sg.currency) : sg.currency,
+      visibility: isLocalNewer ? (matchingLocalGroup?.visibility || sg.visibility || 'public') : (sg.visibility || matchingLocalGroup?.visibility || 'public'),
       total_amount: finalTotalAmount,
       total_bills: finalTotalBills,
       total_items: finalTotalItems,
@@ -383,8 +549,15 @@ export function aggregateGroupSummaries(
   }
 
   // 2. Add local-only groups that do not exist on server
+  const seenLocalSignatures = new Set<string>();
   for (const lg of safeLocalGroups) {
-    if (!groupMap.has(lg.id)) {
+    if (!groupMap.has(lg.id) && !mergedLocalGroupIds.has(lg.id)) {
+      const sig = `${(lg.name || '').trim().toLowerCase()}::${(lg.currency || 'VND').trim().toUpperCase()}`;
+      if (seenLocalSignatures.has(sig)) {
+        continue;
+      }
+      seenLocalSignatures.add(sig);
+
       const linkedBills = safeLocalBills.filter(
         b => b.groupId === lg.id || (b as any).group_id === lg.id
       );
@@ -402,9 +575,9 @@ export function aggregateGroupSummaries(
         linkedBills.map(b => ({ people: b.people }))
       );
 
-      const finalAmount = (lg.totalAmount !== undefined && (lg.totalBills || 0) === linkedBills.length && lg.totalAmount >= totalAmount)
-        ? lg.totalAmount
-        : totalAmount;
+      const finalAmount = linkedBills.length > 0 ? totalAmount : (lg.totalAmount ?? 0);
+      const finalBillsCount = linkedBills.length > 0 ? linkedBills.length : (lg.totalBills ?? 0);
+      const finalItemsCount = linkedBills.length > 0 ? totalItems : (lg.totalItems ?? 0);
 
       groupMap.set(lg.id, {
         id: lg.id,
@@ -413,9 +586,10 @@ export function aggregateGroupSummaries(
         owner_id: lg.ownerId || 'local',
         is_owner: true,
         currency: lg.currency,
+        visibility: lg.visibility || 'public',
         total_amount: finalAmount,
-        total_bills: linkedBills.length,
-        total_items: totalItems,
+        total_bills: finalBillsCount,
+        total_items: finalItemsCount,
         created_at: lg.createdAt,
         updated_at: lg.updatedAt,
         participants,

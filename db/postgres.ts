@@ -16,6 +16,59 @@ import type {
   SaveSubscriptionInput,
 } from './types';
 
+function isPersonMatchingUser(
+  personName: string,
+  user?: { name?: string | null; email?: string | null } | null
+): boolean {
+  const normP = (personName || '').trim().toLowerCase();
+  if (!normP) return false;
+  if (normP === 'me' || normP === 'you') return true;
+  if (!user) return false;
+  if (user.name) {
+    const normU = user.name.trim().toLowerCase();
+    if (normU && (normP === normU || normU.includes(normP) || normP.includes(normU))) {
+      return true;
+    }
+  }
+  if (user.email) {
+    const emailPrefix = user.email.split('@')[0].trim().toLowerCase();
+    if (emailPrefix && (normP === emailPrefix || emailPrefix.includes(normP) || normP.includes(emailPrefix))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveDbEffectivePayerName(
+  people: PersonData[],
+  hostId: string | null | undefined,
+  billTotal: number
+): string | null {
+  if (!people || people.length === 0) return null;
+  const nominalHost = hostId
+    ? (people.find(p => p.id === hostId) || people.find(p => p.userId === hostId))
+    : undefined;
+  const topUpfrontPayer = [...people].sort((a, b) => (b.paidAmount || 0) - (a.paidAmount || 0))[0];
+
+  if (nominalHost) {
+    const othersPaid = people.reduce(
+      (sum, p) => (p.id !== nominalHost.id ? sum + (p.paidAmount || 0) : sum),
+      0
+    );
+    const nominalPaid = Math.max(0, billTotal - othersPaid);
+    if (nominalPaid <= 0.01 && topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0.01) {
+      return topUpfrontPayer.name;
+    }
+    return nominalHost.name;
+  }
+
+  if (topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0.01) {
+    return topUpfrontPayer.name;
+  }
+
+  return people[0]?.name || null;
+}
+
 export class PostgresAdapter implements DatabaseAdapter {
   readonly type: 'neon' | 'postgres';
   private connectionString: string;
@@ -426,7 +479,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         'SELECT id, name, sponsor_amount as "sponsorAmount", paid_amount as "paidAmount", user_id as "userId", email FROM people WHERE bill_id = $1',
         [id]
       );
-      const people = peopleRes.rows.map(p => ({
+      const rawPeople = peopleRes.rows.map(p => ({
         id: String(p.id),
         name: String(p.name),
         sponsorAmount: Number(p.sponsorAmount || 0),
@@ -434,6 +487,32 @@ export class PostgresAdapter implements DatabaseAdapter {
         userId: p.userId ? String(p.userId) : null,
         email: p.email ? String(p.email) : null,
       }));
+
+      let ownerUser: { id: string; name: string | null; email: string | null } | null = null;
+      if (bill.owner_id) {
+        const ownerRes = await client.query('SELECT id, name, email FROM users WHERE id = $1', [bill.owner_id]);
+        if (ownerRes.rows.length > 0) {
+          ownerUser = {
+            id: String(ownerRes.rows[0].id),
+            name: ownerRes.rows[0].name ? String(ownerRes.rows[0].name) : null,
+            email: ownerRes.rows[0].email ? String(ownerRes.rows[0].email) : null,
+          };
+        }
+      }
+      const hasMatchingOwnerPerson = ownerUser
+        ? rawPeople.some(rp => isPersonMatchingUser(rp.name, ownerUser))
+        : false;
+      const people = rawPeople.map(p => {
+        if (
+          ownerUser &&
+          !isPersonMatchingUser(p.name, ownerUser) &&
+          (p.userId === ownerUser.id || (p.email && ownerUser.email && p.email.trim().toLowerCase() === ownerUser.email.trim().toLowerCase())) &&
+          (p.id === bill.host_id || hasMatchingOwnerPerson)
+        ) {
+          return { ...p, userId: null, email: null };
+        }
+        return p;
+      });
 
       const globalChargesRes = await client.query(
         'SELECT id, name, type, amount FROM global_charges WHERE bill_id = $1',
@@ -477,7 +556,9 @@ export class PostgresAdapter implements DatabaseAdapter {
         owner_id: bill.owner_id ? String(bill.owner_id) : null,
         role,
         isReadOnly,
-        visibility: (isGroupAccessible && (groupVisibility === 'public' || !groupVisibility)) ? 'public' : (bill.visibility || 'restricted'),
+        visibility: bill.is_shared === 0
+          ? 'local'
+          : ((isGroupAccessible && (groupVisibility === 'public' || !groupVisibility)) ? 'public' : (bill.visibility || 'restricted')),
         shareToken: bill.share_token || null,
         isShared: bill.is_shared !== 0,
         shareRevokedAt: bill.revoked_at ? String(bill.revoked_at) : null,
@@ -523,7 +604,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       await client.query('BEGIN');
 
       // Check ownership if bill already exists
-      const existingRes = await client.query('SELECT owner_id, group_id FROM bills WHERE id = $1', [billId]);
+      const existingRes = await client.query('SELECT owner_id, group_id, visibility, share_token, is_shared FROM bills WHERE id = $1', [billId]);
       if (existingRes.rows.length > 0) {
         const existingOwnerId = existingRes.rows[0].owner_id;
         // If the bill has an owner and the current user is not that owner, forbid modification
@@ -557,6 +638,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           visibility = EXCLUDED.visibility,
           share_token = EXCLUDED.share_token,
           is_shared = EXCLUDED.is_shared,
+          revoked_at = CASE WHEN EXCLUDED.is_shared = 1 THEN NULL ELSE bills.revoked_at END,
           updated_at = CURRENT_TIMESTAMP
       `, [billId, name, location, hostId, qrCode, currency, ownerId, targetGroupId, visibility, shareToken, isShared]);
 
@@ -567,9 +649,36 @@ export class PostgresAdapter implements DatabaseAdapter {
       await client.query('DELETE FROM global_charges WHERE bill_id = $1', [billId]);
 
       // Insert people with user_id and email resolution
+      let currentUser: { id: string; name: string | null; email: string | null } | null = null;
+      if (userId) {
+        const cuRes = await client.query('SELECT id, name, email FROM users WHERE id = $1', [userId]);
+        if (cuRes.rows.length > 0) {
+          currentUser = {
+            id: String(cuRes.rows[0].id),
+            name: cuRes.rows[0].name ? String(cuRes.rows[0].name) : null,
+            email: cuRes.rows[0].email ? String(cuRes.rows[0].email) : null,
+          };
+        }
+      }
+      const hasMatchingCurrentUserPerson = currentUser
+        ? people.some(rp => isPersonMatchingUser(rp.name, currentUser))
+        : false;
+
       for (const p of people) {
         let pUserId = p.userId || null;
-        const pEmail = p.email ? p.email.trim().toLowerCase() : null;
+        let pEmail = p.email ? p.email.trim().toLowerCase() : null;
+
+        // Self-heal if a non-owner participant (e.g. another person selected as host) had their userId/email
+        // polluted with the bill owner's identity
+        if (
+          currentUser &&
+          !isPersonMatchingUser(p.name, currentUser) &&
+          (pUserId === currentUser.id || (pEmail && currentUser.email && pEmail === currentUser.email.trim().toLowerCase())) &&
+          (p.id === hostId || hasMatchingCurrentUserPerson)
+        ) {
+          pUserId = null;
+          pEmail = null;
+        }
 
         // If email provided but no userId, try to resolve to registered user
         if (pEmail && !pUserId) {
@@ -579,20 +688,21 @@ export class PostgresAdapter implements DatabaseAdapter {
           }
         }
 
-        // If this person is the host or current logged-in user, auto-link to current user
-        if (userId && (p.id === hostId || (!hostId && people.length === 1 && !pUserId && !pEmail))) {
+        if (
+          userId &&
+          !pUserId &&
+          !pEmail &&
+          ((people.length === 1 && !hostId) || (currentUser && isPersonMatchingUser(p.name, currentUser)))
+        ) {
           pUserId = userId;
-          if (!pEmail) {
-            const uRes = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
-            if (uRes.rows.length > 0) {
-              p.email = uRes.rows[0].email;
-            }
+          if (currentUser?.email) {
+            pEmail = currentUser.email.trim().toLowerCase();
           }
         }
 
         await client.query(
           'INSERT INTO people (id, bill_id, name, sponsor_amount, paid_amount, user_id, email) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [p.id, billId, p.name, Number(p.sponsorAmount || 0), Number(p.paidAmount || 0), pUserId, p.email || null]
+          [p.id, billId, p.name, Number(p.sponsorAmount || 0), Number(p.paidAmount || 0), pUserId, pEmail || null]
         );
       }
 
@@ -705,9 +815,14 @@ export class PostgresAdapter implements DatabaseAdapter {
           b.updated_at,
           b.name as custom_name,
           b.location,
+          b.currency,
           b.owner_id,
           b.group_id,
           bg.name as group_name,
+          bg.visibility as group_visibility,
+          b.visibility,
+          b.share_token,
+          b.is_shared,
           (SELECT name FROM items WHERE bill_id = b.id LIMIT 1) as first_item_name,
           (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count,
           (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
@@ -715,25 +830,31 @@ export class PostgresAdapter implements DatabaseAdapter {
           (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras
         FROM bills b
         LEFT JOIN bill_groups bg ON bg.id = b.group_id
-        WHERE (b.is_shared IS NULL OR b.is_shared = 1)
+        WHERE b.revoked_at IS NULL
           AND (
             b.owner_id = $1
-            OR EXISTS (
-              SELECT 1 FROM people p
-              WHERE p.bill_id = b.id
-              AND (p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2)))
+            OR (
+              (b.is_shared IS NULL OR b.is_shared = 1)
+              AND EXISTS (
+                SELECT 1 FROM people p
+                WHERE p.bill_id = b.id
+                AND (p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2)))
+              )
             )
           )
         ORDER BY b.updated_at DESC
       `, [userId, userEmail || '']);
 
       return res.rows.map(b => {
-        let total = Number(b.subtotal || 0);
+        const subtotal = Number(b.subtotal || 0);
         const percentSum = Number(b.percent_extras || 0);
-        total += (percentSum / 100) * total;
-        total += Number(b.fixed_extras || 0);
+        const fixedExtras = Number(b.fixed_extras || 0);
+        const total = Math.round(subtotal * (1 + percentSum / 100) + fixedExtras);
         const itemCount = Number(b.item_count || 0);
         const isOwner = b.owner_id === userId;
+        const effectiveVisibility = (b.group_id && (b.group_visibility === 'public' || !b.group_visibility))
+          ? 'public'
+          : (b.visibility === 'local' ? 'restricted' : ((b.visibility as 'local' | 'restricted' | 'public') || 'restricted'));
 
         return {
           id: String(b.id),
@@ -741,12 +862,16 @@ export class PostgresAdapter implements DatabaseAdapter {
           updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date(b.updated_at).toISOString(),
           name: b.custom_name || (b.first_item_name ? b.first_item_name + (itemCount > 1 ? ` & ${itemCount - 1} more` : '') : 'Empty Bill'),
           location: b.location ?? null,
+          currency: b.currency || 'VND',
           totalAmount: total,
           owner_id: b.owner_id ? String(b.owner_id) : null,
           group_id: b.group_id ? String(b.group_id) : null,
           group_name: b.group_name ? String(b.group_name) : null,
           role: isOwner ? 'owner' : 'participant',
           is_owner: isOwner,
+          visibility: effectiveVisibility,
+          shareToken: isOwner ? (b.share_token || null) : null,
+          sharingStatus: 'shared',
         };
       });
     } finally {
@@ -754,14 +879,32 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async createGroup(name: string, ownerId: string, description: string | null = null, currency: string = 'VND', visibility: 'public' | 'restricted' = 'public'): Promise<BillGroupDetail> {
+  async createGroup(
+    name: string,
+    ownerId: string,
+    description: string | null = null,
+    currency: string = 'VND',
+    visibility: 'public' | 'restricted' = 'public',
+    customId?: string | null,
+    participants?: PersonData[]
+  ): Promise<BillGroupDetail> {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
-      const id = crypto.randomUUID();
+      const id = (customId && customId.trim().length > 0) ? customId.trim() : crypto.randomUUID();
+      const participantsJson = JSON.stringify(Array.isArray(participants) ? participants : []);
       await client.query(
-        'INSERT INTO bill_groups (id, name, description, owner_id, currency, visibility) VALUES ($1, $2, $3, $4, $5, $6)',
-        [id, name.trim(), description ? description.trim() : null, ownerId, currency, visibility]
+        `INSERT INTO bill_groups (id, name, description, owner_id, currency, visibility, participants)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           description = EXCLUDED.description,
+           currency = EXCLUDED.currency,
+           visibility = EXCLUDED.visibility,
+           participants = CASE WHEN $8::boolean THEN EXCLUDED.participants ELSE bill_groups.participants END,
+           updated_at = CURRENT_TIMESTAMP
+         WHERE bill_groups.owner_id = EXCLUDED.owner_id`,
+        [id, name.trim(), description ? description.trim() : null, ownerId, currency, visibility, participantsJson, Array.isArray(participants)]
       );
       const group = await this.getGroup(id, ownerId);
       if (!group) throw new Error('Failed to create group');
@@ -786,9 +929,38 @@ export class PostgresAdapter implements DatabaseAdapter {
       const group = groupRes.rows[0];
 
       const isOwner = Boolean(userId && group.owner_id === userId);
+      const groupVisibility = (group.visibility || 'public') as 'public' | 'restricted';
+      const parsedParticipants: PersonData[] = Array.isArray(group.participants)
+        ? group.participants
+        : (typeof group.participants === 'string' ? JSON.parse(group.participants) : []);
+
+      if (groupVisibility === 'restricted' && !isOwner) {
+        if (!userId) return null;
+        const uRes = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
+        const userEmail = uRes.rows.length > 0 && uRes.rows[0].email ? String(uRes.rows[0].email).toLowerCase() : '';
+        const inGroupParticipants = parsedParticipants.some(p =>
+          (p.userId && p.userId === userId) ||
+          (userEmail && p.email && p.email.toLowerCase() === userEmail)
+        );
+        if (!inGroupParticipants) {
+          const billAccessRes = await client.query(`
+            SELECT 1 FROM bills b
+            LEFT JOIN people p ON p.bill_id = b.id
+            WHERE b.group_id = $1
+              AND (
+                b.owner_id = $2
+                OR (b.is_shared = 1 AND b.revoked_at IS NULL AND (p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3)))
+              )
+            LIMIT 1
+          `, [id, userId, userEmail]);
+          if (billAccessRes.rows.length === 0) {
+            return null;
+          }
+        }
+      }
 
       const billsRes = await client.query(`
-        SELECT id, name, location, currency, host_id, created_at, updated_at
+        SELECT id, name, location, currency, host_id, is_shared, created_at, updated_at
         FROM bills
         WHERE group_id = $1
           ${isOwner ? '' : 'AND is_shared = 1 AND revoked_at IS NULL'}
@@ -881,10 +1053,30 @@ export class PostgresAdapter implements DatabaseAdapter {
           });
         }
 
+        const groupOwnerUser = group.owner_id
+          ? {
+              id: String(group.owner_id),
+              name: group.owner_name ? String(group.owner_name) : null,
+              email: group.owner_email ? String(group.owner_email) : null,
+            }
+          : null;
+
         for (const b of billsRes.rows) {
-          const people = peopleByBill.get(b.id) || [];
-          const hostPerson = people.find(p => p.id === b.host_id);
-          const hostName = hostPerson?.name || null;
+          const rawBillPeople = peopleByBill.get(b.id) || [];
+          const hasOwnerMatchInBill = groupOwnerUser
+            ? rawBillPeople.some(rp => isPersonMatchingUser(rp.name, groupOwnerUser))
+            : false;
+          const people = rawBillPeople.map(p => {
+            if (
+              groupOwnerUser &&
+              !isPersonMatchingUser(p.name, groupOwnerUser) &&
+              (p.userId === groupOwnerUser.id || (p.email && groupOwnerUser.email && p.email.trim().toLowerCase() === groupOwnerUser.email.trim().toLowerCase())) &&
+              (p.id === b.host_id || hasOwnerMatchInBill)
+            ) {
+              return { ...p, userId: null, email: null };
+            }
+            return p;
+          });
           const globalCharges = chargesByBill.get(b.id) || [];
           const items = itemsByBill.get(b.id) || [];
 
@@ -896,6 +1088,7 @@ export class PostgresAdapter implements DatabaseAdapter {
             if (c.type === 'percent') percentCharges += Number(c.amount || 0);
           });
           const billTotal = Math.round(subtotal * (1 + percentCharges / 100) + fixedCharges);
+          const hostName = resolveDbEffectivePayerName(people, b.host_id, billTotal);
 
           totalGroupAmount += billTotal;
           totalItemsCount += items.length;
@@ -913,6 +1106,7 @@ export class PostgresAdapter implements DatabaseAdapter {
             items,
             people,
             globalCharges,
+            ...(b.is_shared === 0 ? { isLocal: true } : {}),
           });
         }
       }
@@ -926,14 +1120,14 @@ export class PostgresAdapter implements DatabaseAdapter {
         owner_email: group.owner_email ? String(group.owner_email) : null,
         is_owner: isOwner,
         currency: group.currency ? String(group.currency) : 'VND',
-        visibility: (group.visibility || 'public') as 'public' | 'restricted',
+        visibility: groupVisibility,
         total_amount: totalGroupAmount,
         total_bills: bills.length,
         total_items: totalItemsCount,
         created_at: typeof group.created_at === 'string' ? group.created_at : new Date(group.created_at).toISOString(),
         updated_at: typeof group.updated_at === 'string' ? group.updated_at : new Date(group.updated_at).toISOString(),
         bills,
-        participants: Array.isArray(group.participants) ? group.participants : (typeof group.participants === 'string' ? JSON.parse(group.participants) : []),
+        participants: parsedParticipants,
       };
     } finally {
       client.release();
@@ -947,16 +1141,19 @@ export class PostgresAdapter implements DatabaseAdapter {
     const client = await this.pool.connect();
     try {
       const uRes = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
-      const userEmail = uRes.rows.length > 0 ? uRes.rows[0].email : '';
+      const userEmail = uRes.rows.length > 0 && uRes.rows[0].email ? String(uRes.rows[0].email).toLowerCase() : '';
+      const userIdLike = `%"userId":"${userId}"%`;
+      const userEmailLike = userEmail ? `%"email":"${userEmail}"%` : '__no_email_match__';
 
       const groupsRes = await client.query(`
-        SELECT DISTINCT
+        SELECT
           g.id,
           g.name,
           g.description,
           g.owner_id,
           g.currency,
           g.visibility,
+          g.participants,
           g.created_at,
           g.updated_at,
           u.name as owner_name,
@@ -964,14 +1161,18 @@ export class PostgresAdapter implements DatabaseAdapter {
         FROM bill_groups g
         LEFT JOIN users u ON u.id = g.owner_id
         WHERE g.owner_id = $1
+           OR (g.participants IS NOT NULL AND (g.participants::text LIKE $3 OR LOWER(g.participants::text) LIKE $4))
            OR EXISTS (
              SELECT 1 FROM bills b
              LEFT JOIN people p ON p.bill_id = b.id
              WHERE b.group_id = g.id
-               AND (b.owner_id = $1 OR p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2)))
+               AND (
+                 b.owner_id = $1
+                 OR ((b.is_shared IS NULL OR b.is_shared = 1) AND b.revoked_at IS NULL AND (p.user_id = $1 OR (p.email IS NOT NULL AND LOWER(p.email) = LOWER($2))))
+               )
            )
         ORDER BY g.updated_at DESC
-      `, [userId, userEmail]);
+      `, [userId, userEmail, userIdLike, userEmailLike]);
 
       if (groupsRes.rows.length === 0) {
         return [];
@@ -1088,6 +1289,12 @@ export class PostgresAdapter implements DatabaseAdapter {
           UPDATE bills
           SET visibility = 'public', updated_at = CURRENT_TIMESTAMP
           WHERE group_id = $1 AND is_shared = 1 AND revoked_at IS NULL
+        `, [id]);
+      } else if (visibility === 'restricted') {
+        await client.query(`
+          UPDATE bills
+          SET visibility = 'restricted', updated_at = CURRENT_TIMESTAMP
+          WHERE group_id = $1 AND is_shared = 1 AND revoked_at IS NULL AND share_token IS NULL
         `, [id]);
       }
     } finally {
@@ -1233,10 +1440,12 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       const term = `%${query.trim().toLowerCase()}%`;
       const emailParam = userEmail || 'none';
+      const userIdLike = `%"userId":"${userId}"%`;
+      const userEmailLike = userEmail ? `%"email":"${userEmail}"%` : '__no_email_match__';
 
       const groupsRes = await client.query(`
-        SELECT g.id, g.name, g.description,
-          (SELECT COUNT(*) FROM bills WHERE group_id = g.id) as total_bills,
+        SELECT g.id, g.name, g.description, g.currency,
+          (SELECT COUNT(*) FROM bills b WHERE b.group_id = g.id AND (b.owner_id = $2 OR (b.is_shared = 1 AND b.revoked_at IS NULL))) as total_bills,
           (
             SELECT COALESCE(SUM(
               ROUND(
@@ -1244,24 +1453,28 @@ export class PostgresAdapter implements DatabaseAdapter {
                 (1 + (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') / 100.0) +
                 (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed')
               )
-            ), 0) FROM bills b WHERE b.group_id = g.id
+            ), 0) FROM bills b WHERE b.group_id = g.id AND (b.owner_id = $2 OR (b.is_shared = 1 AND b.revoked_at IS NULL))
           ) as total_amount
         FROM bill_groups g
         WHERE (LOWER(g.name) LIKE $1 OR LOWER(COALESCE(g.description, '')) LIKE $1)
           AND (
             g.owner_id = $2
+            OR (g.participants IS NOT NULL AND (g.participants::text LIKE $4 OR LOWER(g.participants::text) LIKE $5))
             OR EXISTS (
               SELECT 1 FROM bills b
               JOIN people p ON p.bill_id = b.id
               WHERE b.group_id = g.id
-                AND (b.owner_id = $2 OR p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3))
+                AND (
+                  b.owner_id = $2
+                  OR ((b.is_shared IS NULL OR b.is_shared = 1) AND b.revoked_at IS NULL AND (p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3)))
+                )
             )
           )
         LIMIT 10
-      `, [term, userId, emailParam]);
+      `, [term, userId, emailParam, userIdLike, userEmailLike]);
 
       const billsRes = await client.query(`
-        SELECT b.id, b.name, b.location, b.group_id, bg.name as group_name,
+        SELECT b.id, b.name, b.location, b.currency, b.group_id, bg.name as group_name,
           ROUND(
             (SELECT COALESCE(SUM(i.price * i.quantity), 0) FROM items i WHERE i.bill_id = b.id) *
             (1 + (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') / 100.0) +
@@ -1272,26 +1485,34 @@ export class PostgresAdapter implements DatabaseAdapter {
         WHERE (LOWER(COALESCE(b.name, '')) LIKE $1 OR LOWER(COALESCE(b.location, '')) LIKE $1)
           AND (
             b.owner_id = $2
-            OR EXISTS (
-              SELECT 1 FROM people p
-              WHERE p.bill_id = b.id
-                AND (p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3))
+            OR (
+              (b.is_shared IS NULL OR b.is_shared = 1)
+              AND b.revoked_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM people p
+                WHERE p.bill_id = b.id
+                  AND (p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3))
+              )
             )
           )
         LIMIT 15
       `, [term, userId, emailParam]);
 
       const itemsRes = await client.query(`
-        SELECT i.id, i.name, i.price, i.quantity, i.bill_id, b.name as bill_name
+        SELECT i.id, i.name, i.price, i.quantity, i.bill_id, b.name as bill_name, b.currency
         FROM items i
         JOIN bills b ON b.id = i.bill_id
         WHERE LOWER(i.name) LIKE $1
           AND (
             b.owner_id = $2
-            OR EXISTS (
-              SELECT 1 FROM people p
-              WHERE p.bill_id = b.id
-                AND (p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3))
+            OR (
+              (b.is_shared IS NULL OR b.is_shared = 1)
+              AND b.revoked_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM people p
+                WHERE p.bill_id = b.id
+                  AND (p.user_id = $2 OR (p.email IS NOT NULL AND LOWER(p.email) = $3))
+              )
             )
           )
         LIMIT 20
@@ -1302,6 +1523,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           id: String(g.id),
           name: String(g.name),
           description: g.description ? String(g.description) : null,
+          currency: g.currency || 'VND',
           total_amount: Number(g.total_amount || 0),
           total_bills: Number(g.total_bills || 0),
         })),
@@ -1309,6 +1531,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           id: String(b.id),
           name: b.name || `Bill ${b.id.slice(0, 8)}`,
           location: b.location ?? null,
+          currency: b.currency || 'VND',
           totalAmount: Number(b.total_amount || 0),
           group_id: b.group_id ? String(b.group_id) : null,
           group_name: b.group_name ? String(b.group_name) : null,
@@ -1318,6 +1541,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           name: String(i.name),
           price: Number(i.price || 0),
           quantity: Number(i.quantity || 1),
+          currency: i.currency || 'VND',
           bill_id: String(i.bill_id),
           bill_name: i.bill_name || `Bill ${i.bill_id.slice(0, 8)}`,
         })),

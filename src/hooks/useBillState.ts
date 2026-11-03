@@ -13,10 +13,13 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
     let totalItemCost = 0;
     let totalUnassignedPrice = 0;
     const activePersonIds = new Set<string>();
+    const validPersonIdSet = new Set(people.map(p => p.id));
 
     items.forEach((item) => {
         const assignments = item.assignments || {};
-        const assignmentEntries = Object.entries(assignments).filter(([_, pQty]) => pQty > 0);
+        const assignmentEntries = Object.entries(assignments).filter(
+            ([pId, pQty]) => pQty > 0 && validPersonIdSet.has(pId)
+        );
         const itemQty = Math.max(1, item.quantity || 1);
         const lineTotal = (item as any).totalPrice !== undefined && (item as any).totalPrice !== null
             ? Number((item as any).totalPrice)
@@ -175,23 +178,32 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
     const totalBill = totalItemCost + totalExtras;
     let discrepancy = 0;
 
+    // Resolve nominal host: explicit hostId -> highest upfront payer -> first person
+    const nominalHost = (hostId ? people.find(p => p.id === hostId) : undefined)
+        || (hostId ? people.find(p => p.userId === hostId) : undefined)
+        || [...people].sort((a, b) => (b.paidAmount || 0) - (a.paidAmount || 0)).find(p => (p.paidAmount || 0) > 0)
+        || (people.length > 0 ? people[0] : null);
+    const primaryHostId = nominalHost ? nominalHost.id : null;
+
     // Determine effective paid amounts
     const effectivePaidAmounts: Record<string, number> = {};
     let totalPaidInBill = 0;
 
-    // Calculate total paid by everyone EXCEPT host
+    // Calculate total paid by everyone EXCEPT primaryHostId
     let othersPaid = 0;
     people.forEach(p => {
-        if (p.id !== hostId) {
+        if (p.id !== primaryHostId) {
             othersPaid += (p.paidAmount || 0);
         }
     });
 
-    // Determine Host's effective paid amount
+    // Determine Primary Host's effective paid amount
     people.forEach(p => {
-        if (p.id === hostId) {
+        if (p.id === primaryHostId) {
             // Host Payment = Total Bill - (Sum of what everyone else paid)
-            effectivePaidAmounts[p.id] = Math.max(0, totalBill - othersPaid);
+            effectivePaidAmounts[p.id] = totalBill > 0
+                ? Math.max(0, totalBill - othersPaid)
+                : (p.paidAmount || 0);
         } else {
             effectivePaidAmounts[p.id] = p.paidAmount || 0;
         }
@@ -201,9 +213,9 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
     const totalNetPayable = Object.values(finalPayables).reduce((acc, val) => acc + val, 0);
     discrepancy = totalPaidInBill - totalNetPayable;
 
-    // Auto-correct any slight floating-point discrepancy on Host
-    if (Math.abs(discrepancy) > 0.001 && hostId) {
-        effectivePaidAmounts[hostId] -= discrepancy;
+    // Auto-correct any slight floating-point discrepancy (<= 1 unit) on Host
+    if (Math.abs(discrepancy) > 0.0001 && Math.abs(discrepancy) <= 1 && primaryHostId && effectivePaidAmounts[primaryHostId] !== undefined) {
+        effectivePaidAmounts[primaryHostId] = Math.max(0, effectivePaidAmounts[primaryHostId] - discrepancy);
         discrepancy = 0;
     }
 
@@ -215,29 +227,46 @@ export function calculateBill({ people, items, globalCharges, hostId }: BillCalc
         settlementBalances[p.id] = whatTheyPaid - whatTheyOwe;
     });
 
+    // Determine the effective settlement hub:
+    // If the nominal host actually paid 0 (or less than their share) and is a net debtor while another
+    // participant paid the bill via paidAmount (is a net creditor), use the primary creditor as the hub.
+    let hubId = primaryHostId;
+    if (!hubId || (settlementBalances[hubId] < -0.01 && (effectivePaidAmounts[hubId] || 0) <= 0.01)) {
+        const topCreditor = [...people]
+            .sort((a, b) => (settlementBalances[b.id] || 0) - (settlementBalances[a.id] || 0))
+            .find(p => (settlementBalances[p.id] || 0) > 0.01);
+        if (topCreditor) {
+            hubId = topCreditor.id;
+        }
+    }
+
     const flows: Array<{ from: string, to: string, amount: number }> = [];
     // HUB AND SPOKE MODEL:
-    // Everyone settles with the Host directly.
-    // - If you owe money (Balance < 0), you pay the Host.
-    // - If you are owed money (Balance > 0), the Host pays you.
-    people.forEach(p => {
-        if (p.id === hostId) return; // Skip Host (they are the hub)
+    // Everyone settles with the Effective Host / Hub directly.
+    // - If you owe money (Balance < 0), you pay the Hub.
+    // - If you are owed money (Balance > 0), the Hub pays you.
+    if (hubId) {
+        people.forEach(p => {
+            if (p.id === hubId) return; // Skip Hub
 
-        const balance = settlementBalances[p.id] || 0;
+            const balance = settlementBalances[p.id] || 0;
 
-        if (balance < -0.01) {
-            // Debtor: Pays Host
-            flows.push({ from: p.id, to: hostId!, amount: Math.abs(balance) });
-        } else if (balance > 0.01) {
-            // Creditor: Receives from Host
-            flows.push({ from: hostId!, to: p.id, amount: balance });
-        }
-    });
+            if (balance < -0.01) {
+                // Debtor: Pays Hub
+                flows.push({ from: p.id, to: hubId!, amount: Math.abs(balance) });
+            } else if (balance > 0.01) {
+                // Creditor: Receives from Hub
+                flows.push({ from: hubId!, to: p.id, amount: balance });
+            }
+        });
+    }
 
     return {
         rawCosts,
         totalCosts,
         finalPayables,
+        effectivePaidAmounts,
+        effectiveHostId: hubId,
         sponsorSurpluses,
         sponsorReliefs,
         invalidSponsors,

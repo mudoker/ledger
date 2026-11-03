@@ -130,6 +130,28 @@ export function buildCanonicalPersonRegistry(
   const uf = new UnionFind();
   const allOccurrences: Array<{ billId: string; p: PersonData; occId: string }> = [];
 
+  // Track unique participant names associated with each userId and email across all bills
+  // to prevent corrupted or shared userIds from merging distinct people together
+  const uidNames = new Map<string, Set<string>>();
+  const emailNames = new Map<string, Set<string>>();
+
+  for (const b of bills) {
+    for (const p of b.people || []) {
+      const normName = p.name ? p.name.trim().toLowerCase() : '';
+      if (!normName) continue;
+      if (p.userId && p.userId.trim()) {
+        const u = p.userId.trim();
+        if (!uidNames.has(u)) uidNames.set(u, new Set());
+        uidNames.get(u)!.add(normName);
+      }
+      if (p.email && p.email.trim()) {
+        const em = p.email.trim().toLowerCase();
+        if (!emailNames.has(em)) emailNames.set(em, new Set());
+        emailNames.get(em)!.add(normName);
+      }
+    }
+  }
+
   for (const b of bills) {
     for (const p of b.people || []) {
       const occId = `${b.id}:::${p.id}`;
@@ -140,14 +162,22 @@ export function buildCanonicalPersonRegistry(
         uf.union(occId, nameKey);
       }
 
+      // Only union by userId if it is unique to this participant's name across all bills
       if (p.userId && p.userId.trim()) {
-        const uidKey = `uid:${p.userId.trim()}`;
-        uf.union(occId, uidKey);
+        const u = p.userId.trim();
+        if ((uidNames.get(u)?.size || 0) <= 1) {
+          const uidKey = `uid:${u}`;
+          uf.union(occId, uidKey);
+        }
       }
 
+      // Only union by email if it is unique to this participant's name across all bills
       if (p.email && p.email.trim()) {
-        const emailKey = `email:${p.email.trim().toLowerCase()}`;
-        uf.union(occId, emailKey);
+        const em = p.email.trim().toLowerCase();
+        if ((emailNames.get(em)?.size || 0) <= 1) {
+          const emailKey = `email:${em}`;
+          uf.union(occId, emailKey);
+        }
       }
     }
   }
@@ -162,6 +192,7 @@ export function buildCanonicalPersonRegistry(
 
   const personToCanonicalKey = new Map<string, string>();
   const canonicalPersons = new Map<string, CanonicalPersonInfo>();
+  const usedKeys = new Set<string>();
 
   for (const [, items] of clusters.entries()) {
     let bestUserId: string | null = null;
@@ -169,21 +200,30 @@ export function buildCanonicalPersonRegistry(
     let bestName: string = items[0].p.name || 'Unknown';
 
     for (const { p } of items) {
-      if (!bestUserId && p.userId?.trim()) bestUserId = p.userId.trim();
-      if (!bestEmail && p.email?.trim()) bestEmail = p.email.trim().toLowerCase();
+      const u = p.userId?.trim();
+      if (!bestUserId && u && (uidNames.get(u)?.size || 0) <= 1) {
+        bestUserId = u;
+      }
+      const em = p.email?.trim().toLowerCase();
+      if (!bestEmail && em && (emailNames.get(em)?.size || 0) <= 1) {
+        bestEmail = em;
+      }
       if (p.name && p.name.trim().length > bestName.trim().length) {
         bestName = p.name.trim();
       }
     }
 
     let canonicalKey: string;
-    if (bestUserId) {
+    if (bestUserId && !usedKeys.has(`uid:${bestUserId}`)) {
       canonicalKey = `uid:${bestUserId}`;
-    } else if (bestEmail) {
+    } else if (bestEmail && !usedKeys.has(`email:${bestEmail}`)) {
       canonicalKey = `email:${bestEmail}`;
     } else {
-      canonicalKey = `name:${bestName.trim().toLowerCase()}`;
+      const baseKey = `name:${bestName.trim().toLowerCase()}`;
+      canonicalKey = usedKeys.has(baseKey) ? `${baseKey}:::${items[0].occId}` : baseKey;
     }
+
+    usedKeys.add(canonicalKey);
 
     const info: CanonicalPersonInfo = {
       key: canonicalKey,
@@ -461,9 +501,11 @@ export function calculateGroupSettlement(
 
     // Robustly resolve Host person ID
     const hostNameTarget = b.host_name?.trim().toLowerCase();
+    const topUpfrontPayer = [...people].sort((a, b) => (b.paidAmount || 0) - (a.paidAmount || 0))[0];
     const hostPerson = people.find((p: PersonData) => p.id === b.host_id)
       || (b.host_id ? people.find((p: PersonData) => p.userId === b.host_id) : undefined)
       || (hostNameTarget ? people.find((p: PersonData) => p.name.trim().toLowerCase() === hostNameTarget) : undefined)
+      || (topUpfrontPayer && (topUpfrontPayer.paidAmount || 0) > 0 ? topUpfrontPayer : null)
       || (people.length > 0 ? people[0] : null);
 
     const effectiveHostId = hostPerson ? hostPerson.id : null;
@@ -498,22 +540,25 @@ export function calculateGroupSettlement(
     const billTotal = billCalc.totalBill > 0 ? billCalc.totalBill : b.totalAmount;
     totalExpenses += billTotal;
 
-    // Calculate effective paid amounts matching calculateBill's logic
-    let othersPaid = 0;
-    people.forEach((p: PersonData) => {
-      if (p.id !== effectiveHostId) {
-        othersPaid += (p.paidAmount || 0);
-      }
-    });
-
+    // Use effectivePaidAmounts directly from the core calculation engine (matches calculateBill's exact hub and upfront logic)
     const effectivePaidAmounts: Record<string, number> = {};
-    people.forEach((p: PersonData) => {
-      if (p.id === effectiveHostId) {
-        effectivePaidAmounts[p.id] = Math.max(0, billTotal - othersPaid);
-      } else {
-        effectivePaidAmounts[p.id] = p.paidAmount || 0;
-      }
-    });
+    if (billCalc.effectivePaidAmounts) {
+      Object.assign(effectivePaidAmounts, billCalc.effectivePaidAmounts);
+    } else {
+      let othersPaid = 0;
+      people.forEach((p: PersonData) => {
+        if (p.id !== effectiveHostId) {
+          othersPaid += (p.paidAmount || 0);
+        }
+      });
+      people.forEach((p: PersonData) => {
+        if (p.id === effectiveHostId) {
+          effectivePaidAmounts[p.id] = Math.max(0, billTotal - othersPaid);
+        } else {
+          effectivePaidAmounts[p.id] = p.paidAmount || 0;
+        }
+      });
+    }
 
     // Auto-correct slight floating-point gap on Host
     const totalPaidInBill = Object.values(effectivePaidAmounts).reduce((a, b) => a + b, 0);
@@ -581,13 +626,17 @@ export function calculateGroupSettlement(
       };
     });
 
+    const effectiveHostPerson = (billCalc.effectiveHostId && people.find(p => p.id === billCalc.effectiveHostId))
+      || hostPerson;
+    const resolvedHostName = effectiveHostPerson?.name || b.host_name || null;
+
     billSummaries.push({
       billId: b.id,
       billName: b.name,
       location: b.location,
       currency: b.currency,
       totalAmount: billTotal,
-      hostName: b.host_name || hostPerson?.name || null,
+      hostName: resolvedHostName,
       createdAt: b.created_at,
       participants: billParticipants,
       flows: resolvedFlows,

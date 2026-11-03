@@ -47,6 +47,12 @@ import type { BillGroupDetail } from '@/../db/types';
 import { ParticipantCard } from '@/components/shared/participant-card';
 import { BottomNav } from '@/components/layout/bottom-nav';
 import { SwipeableCard } from '@/components/shared/swipeable-card';
+import { MoneyDisplay } from '@/components/shared/money-display';
+import { CountDisplay } from '@/components/shared/count-display';
+import { PullToRefresh } from '@/components/shared/pull-to-refresh';
+import { fetchVndRates } from '@/lib/currency';
+import { resolveEffectivePayerName } from '@/lib/common-data-model';
+import { useAppSettingsStore } from '@/store/useAppSettingsStore';
 
 interface SwipeableBillCardProps {
   bill: BillGroupDetail['bills'][number];
@@ -57,8 +63,9 @@ interface SwipeableBillCardProps {
 }
 
 function SwipeableBillCard({ bill, groupCurrency, isOwner, onSelect, onDelete }: SwipeableBillCardProps) {
+  const storageMode = useAppSettingsStore((s) => s.storageMode);
   const hostName =
-    (bill.host_id && bill.people?.find((p) => p.id === bill.host_id)?.name) ||
+    resolveEffectivePayerName(bill.people, bill.host_id, bill.totalAmount) ||
     bill.host_name ||
     bill.people?.[0]?.name ||
     null;
@@ -92,7 +99,7 @@ function SwipeableBillCard({ bill, groupCurrency, isOwner, onSelect, onDelete }:
                 {formatConciseRelativeTime(bill.created_at || bill.updated_at)}
               </span>
             </div>
-            {(bill as any).isLocal && (
+            {storageMode !== 'cloud' && (bill as any).isLocal && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0 inline-flex items-center gap-1">
                 <Shield className="w-2.5 h-2.5 text-emerald-500" />
                 <span>Local</span>
@@ -119,9 +126,11 @@ function SwipeableBillCard({ bill, groupCurrency, isOwner, onSelect, onDelete }:
 
       {/* Amount & Chevron */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-3">
-        <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
-          {formatCurrency(bill.totalAmount, bill.currency || groupCurrency)}
-        </span>
+        <MoneyDisplay
+          amount={bill.totalAmount}
+          currency={bill.currency || groupCurrency}
+          className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight"
+        />
         <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
       </div>
     </SwipeableCard>
@@ -153,6 +162,14 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [isAddingMember, setIsAddingMember] = useState(false);
+
+  const handleRefresh = async () => {
+    await Promise.allSettled([
+      fetchGroup(group.id),
+      useGroupStore.getState().fetchGroups(),
+      fetchVndRates(true),
+    ]);
+  };
 
   const handleAddMember = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -249,12 +266,14 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
       .filter((b): b is NonNullable<typeof b> => b !== null);
   }, [group.bills, filterQuery]);
 
+  const storageMode = useAppSettingsStore((s) => s.storageMode);
   const localBillsCount = useMemo(() => {
+    if (storageMode === 'cloud') return 0;
     return (group.bills || []).filter((b: any) => b.isLocal).length;
-  }, [group.bills]);
+  }, [group.bills, storageMode]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden">
+    <PullToRefresh onRefresh={handleRefresh} className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden">
       {/* Top Header / Sticky Nav */}
       <div className="flex-none px-4 sm:px-6 md:px-8 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 pb-3 sm:pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
         <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0">
@@ -373,7 +392,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               <span>Expenses</span>
             </div>
             <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
-              {formatCurrency(group.total_amount, group.currency)}
+              <MoneyDisplay amount={group.total_amount} currency={group.currency} />
             </div>
             <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">across all bills</div>
           </div>
@@ -384,7 +403,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               <span>Bills</span>
             </div>
             <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
-              {group.total_bills}
+              <CountDisplay count={group.total_bills} />
             </div>
             <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">linked invoices</div>
           </div>
@@ -405,7 +424,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             }`}
           >
             <Users className="w-3.5 h-3.5 text-primary" />
-            <span>Members ({group.participants?.length || 0})</span>
+            <span className="inline-flex items-center gap-1">Members (<CountDisplay count={group.participants?.length || 0} />)</span>
           </button>
           <button
             type="button"
@@ -417,7 +436,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             }`}
           >
             <Receipt className="w-3.5 h-3.5 text-primary" />
-            <span>Bills ({group.total_bills})</span>
+            <span className="inline-flex items-center gap-1">Bills (<CountDisplay count={group.total_bills} />)</span>
           </button>
           <button
             type="button"
@@ -705,6 +724,6 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         className="fixed bottom-0 left-0 right-0"
         desktopHidden={true}
       />
-    </div>
+    </PullToRefresh>
   );
 }

@@ -1,7 +1,7 @@
 {
   "name": "ledger",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.5",
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -9,6 +9,7 @@
     "start": "next start",
     "db:migrate": "bun run scripts/migrate-to-neon.ts",
     "bump-sw": "bash scripts/bump-sw-version.sh",
+    "version:bump": "bash scripts/bump-version.sh",
     "lint": "eslint ."
   },
   "dependencies": {

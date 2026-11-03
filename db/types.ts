@@ -119,6 +119,7 @@ export interface SearchResults {
     id: string;
     name: string;
     description?: string | null;
+    currency?: string;
     total_amount: number;
     total_bills: number;
   }>;
@@ -126,6 +127,7 @@ export interface SearchResults {
     id: string;
     name: string;
     location?: string | null;
+    currency?: string;
     totalAmount: number;
     group_id?: string | null;
     group_name?: string | null;
@@ -135,6 +137,7 @@ export interface SearchResults {
     name: string;
     price: number;
     quantity: number;
+    currency?: string;
     bill_id: string;
     bill_name: string;
   }>;
@@ -192,12 +195,16 @@ export interface BillSummary {
   updated_at: string;
   name: string;
   location: string | null;
+  currency?: string;
   totalAmount: number;
   owner_id?: string | null;
   group_id?: string | null;
   group_name?: string | null;
   role?: 'owner' | 'participant' | 'viewer';
   is_owner?: boolean;
+  visibility?: 'local' | 'restricted' | 'public';
+  shareToken?: string | null;
+  sharingStatus?: 'local' | 'shared';
 }
 
 export interface DatabaseAdapter {
@@ -210,7 +217,7 @@ export interface DatabaseAdapter {
   deleteBill?(billId: string, userId?: string | null): Promise<boolean>;
   revokeBillShare?(billId: string, userId?: string | null): Promise<boolean>;
   listBills(userId?: string | null): Promise<BillSummary[]>;
-  createGroup?(name: string, ownerId: string, description?: string | null, currency?: string, visibility?: 'public' | 'restricted'): Promise<BillGroupDetail>;
+  createGroup?(name: string, ownerId: string, description?: string | null, currency?: string, visibility?: 'public' | 'restricted', customId?: string | null, participants?: PersonData[]): Promise<BillGroupDetail>;
   getGroup?(id: string, userId?: string | null): Promise<BillGroupDetail | null>;
   listGroups?(userId?: string | null): Promise<BillGroupSummary[]>;
   updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void>;
