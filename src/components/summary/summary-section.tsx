@@ -12,10 +12,16 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import dynamic from 'next/dynamic';
 import { formatCurrency } from "@/lib/format";
 import { MoneyDisplay } from "@/components/shared/money-display";
-import { CostPieChart, buildChartData } from "./summary-charts";
+import { buildChartData } from "./summary-charts";
 import { PersonalReceipt } from "./personal-receipt";
+
+const CostPieChart = dynamic(
+    () => import("./summary-charts").then((m) => m.CostPieChart),
+    { ssr: false }
+);
 
 export function SummarySection() {
     const {

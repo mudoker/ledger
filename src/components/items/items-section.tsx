@@ -1,18 +1,31 @@
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Receipt, ScanLine } from "lucide-react";
+import { Plus, Receipt, ScanLine, Loader2 } from "lucide-react";
 import { useBillStore } from "@/store/useBillStore";
 import { cn } from "@/lib/utils";
-import { BillUploader } from "./bill-uploader";
 import { ItemRow } from "./item-row";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { formatCurrency } from "@/lib/format";
 import { calculateBillTotals } from "@/lib/common-data-model";
 import { CountDisplay } from "@/components/shared/count-display";
 import { MoneyDisplay } from "@/components/shared/money-display";
+
+const BillUploader = dynamic(
+    () => import("./bill-uploader").then((mod) => mod.BillUploader),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="p-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span>Loading receipt scanner...</span>
+            </div>
+        ),
+    }
+);
 
 export function ItemsSection() {
     const { items, addItem, isReadOnly } = useBillStore();

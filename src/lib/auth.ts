@@ -96,14 +96,7 @@ export async function getSessionUser(): Promise<User | null> {
     const payload = await verifySessionToken(token);
     if (!payload?.sub) return null;
 
-    const db = await getDb();
-    if (db.getUserById) {
-      const user = await db.getUserById(payload.sub);
-      if (user) return user;
-    }
-
-    // Fallback using token payload if user lookup is partial
-    return {
+    const fallbackUser: User = {
       id: payload.sub,
       email: payload.email,
       name: payload.name || null,
@@ -111,6 +104,23 @@ export async function getSessionUser(): Promise<User | null> {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    // Fast-path: race database lookup with a 2500ms timeout on cold starts to prevent hanging the client
+    try {
+      const dbPromise = getDb().then(async (db) => {
+        if (db.getUserById) {
+          return await db.getUserById(payload.sub);
+        }
+        return null;
+      });
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+      const user = await Promise.race([dbPromise, timeoutPromise]);
+      if (user) return user;
+    } catch {
+      // Fallback to validated JWT payload
+    }
+
+    return fallbackUser;
   } catch (err: any) {
     if (!err?.message?.includes('outside a request scope')) {
       console.error('getSessionUser error:', err);

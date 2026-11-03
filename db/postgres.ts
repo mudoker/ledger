@@ -110,10 +110,20 @@ export class PostgresAdapter implements DatabaseAdapter {
       throw new Error(`Connection failed: ${msg}`);
     }
 
-    // Initialize Schema and Migrations
-    const client = await this.pool.connect();
+    // Fast path: check if schema and latest migrations already exist to avoid 25+ heavy DDL statements on cold start
+    let schemaReady = false;
     try {
-      await client.query(`
+      await this.pool.query('SELECT 1 FROM device_subscriptions LIMIT 0');
+      schemaReady = true;
+    } catch {
+      schemaReady = false;
+    }
+
+    if (!schemaReady) {
+      // Initialize Schema and Migrations for fresh or unmigrated databases
+      const client = await this.pool.connect();
+      try {
+        await client.query(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
           email TEXT UNIQUE NOT NULL,
@@ -224,8 +234,9 @@ export class PostgresAdapter implements DatabaseAdapter {
         CREATE INDEX IF NOT EXISTS idx_device_subscriptions_user ON device_subscriptions(user_id);
         CREATE INDEX IF NOT EXISTS idx_device_subscriptions_device ON device_subscriptions(device_id);
       `);
-    } finally {
-      client.release();
+      } finally {
+        client.release();
+      }
     }
   }
 

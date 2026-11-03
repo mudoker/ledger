@@ -128,10 +128,8 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user }),
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.isInitialized = true;
-        }
+      onRehydrateStorage: () => () => {
+        useAuthStore.setState({ isInitialized: true });
       },
     }
   )

@@ -17,24 +17,38 @@ import { BillConfiguration } from "@/components/summary/bill-configuration";
 import { DiscrepancyBanner } from "@/components/shared/discrepancy-banner";
 import { AppLogo } from "@/components/shared/app-logo";
 import { LoadingScreen } from "@/components/shared/loading-screen";
+import dynamic from 'next/dynamic';
 import { CreateBillModal, type CreateBillFormData } from "@/components/shared/create-bill-modal";
 import { ResizableSplit } from "@/components/layout/resizable-split";
 import { AuthButton } from "@/components/layout/auth-button";
 import { ShareButton } from "@/components/layout/share-button";
-import { AppSettingsPage } from "@/components/settings/app-settings-page";
 import { LoginGateScreen } from "@/components/layout/login-gate-screen";
-import { UnavailableBillPage } from "@/components/shared/unavailable-bill-page";
-import { AccessDeniedPage } from "@/components/shared/access-denied-page";
 import { syncManager } from "@/lib/local-db/sync-manager";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useGroupStore } from "@/store/useGroupStore";
-import { GroupOverview } from "@/components/groups/group-overview";
 import { BottomSearchBar } from "@/components/shared/bottom-search-bar";
 import { FuzzySearchModal } from "@/components/shared/fuzzy-search-modal";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { PullToRefresh } from "@/components/shared/pull-to-refresh";
 import { fetchVndRates } from "@/lib/currency";
+
+const GroupOverview = dynamic(
+  () => import("@/components/groups/group-overview").then((m) => m.GroupOverview),
+  { ssr: false, loading: () => <LoadingScreen message="Loading group..." /> }
+);
+const AppSettingsPage = dynamic(
+  () => import("@/components/settings/app-settings-page").then((m) => m.AppSettingsPage),
+  { ssr: false, loading: () => <LoadingScreen message="Loading settings..." /> }
+);
+const UnavailableBillPage = dynamic(
+  () => import("@/components/shared/unavailable-bill-page").then((m) => m.UnavailableBillPage),
+  { ssr: false }
+);
+const AccessDeniedPage = dynamic(
+  () => import("@/components/shared/access-denied-page").then((m) => m.AccessDeniedPage),
+  { ssr: false }
+);
 
 function App() {
   const [view, setView] = useState<'landing' | 'editor' | 'summary' | 'settings' | 'group' | 'app-settings' | 'not-found' | 'access-denied'>(() => {
