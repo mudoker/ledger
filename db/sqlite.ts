@@ -1158,15 +1158,19 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     const placeholders = groupsRaw.map(() => '?').join(',');
     const billStats = this.db.prepare(`
-      SELECT b.id, b.group_id,
+      SELECT b.id, b.group_id, b.name,
         (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
         (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed') as fixed_extras,
         (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras,
         (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
       FROM bills b
       WHERE b.group_id IN (${placeholders})
-        AND (b.owner_id = ? OR (b.is_shared = 1 AND b.revoked_at IS NULL))
-    `).all(...groupsRaw.map(g => g.id), userId || 'none') as unknown as Array<{ id: string; group_id: string; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
+        AND (
+          EXISTS (SELECT 1 FROM bill_groups bg WHERE bg.id = b.group_id AND bg.owner_id = ?)
+          OR b.owner_id = ?
+          OR (b.is_shared = 1 AND b.revoked_at IS NULL)
+        )
+    `).all(...groupsRaw.map(g => g.id), userId || 'none', userId || 'none') as unknown as Array<{ id: string; group_id: string; name?: string | null; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
 
     const statsByGroup = new Map<string, {
       totalAmount: number;
@@ -1175,12 +1179,13 @@ export class SqliteAdapter implements DatabaseAdapter {
       billIds: string[];
       billAmounts: Record<string, number>;
       billItemCounts: Record<string, number>;
+      billNames: Record<string, string>;
     }>();
     for (const bs of billStats) {
       const gid = String(bs.group_id);
       let curr = statsByGroup.get(gid);
       if (!curr) {
-        curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {} };
+        curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {}, billNames: {} };
         statsByGroup.set(gid, curr);
       }
       const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
@@ -1191,6 +1196,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       curr.billIds.push(bid);
       curr.billAmounts[bid] = billTotal;
       curr.billItemCounts[bid] = Number(bs.item_count || 0);
+      curr.billNames[bid] = String(bs.name || '');
     }
 
     return groupsRaw.map(g => {
@@ -1201,6 +1207,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         billIds: [],
         billAmounts: {},
         billItemCounts: {},
+        billNames: {},
       };
       return {
         id: String(g.id),
@@ -1218,6 +1225,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         bill_ids: stats.billIds,
         bill_amounts: stats.billAmounts,
         bill_item_counts: stats.billItemCounts,
+        bill_names: stats.billNames,
         created_at: normalizeSqliteTimestamp(g.created_at),
         updated_at: normalizeSqliteTimestamp(g.updated_at),
         participants: Array.isArray((g as any).participants)

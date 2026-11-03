@@ -476,6 +476,13 @@ export function aggregateGroupSummaries(
           if (storageMode === 'cloud' && lb.sharingStatus !== 'uploading') {
             continue;
           }
+          const lbName = ((lb as any).data?.name || lb.name || '').trim().toLowerCase();
+          const isDuplicateByName = sg.bill_names && Object.values(sg.bill_names).some(
+            sn => sn.trim().toLowerCase() === lbName
+          );
+          if (isDuplicateByName) {
+            continue;
+          }
           billMap.set(lb.id, {
             totalAmount: totals.totalAmount,
             itemCount: totals.itemCount,
@@ -488,6 +495,14 @@ export function aggregateGroupSummaries(
 
         if (!existing) {
           if (storageMode === 'cloud' && serverBillIdSet.size > 0 && lb.sharingStatus !== 'uploading') {
+            continue;
+          }
+          // Check if this local bill is a duplicate of an existing server bill by name
+          const lbName = ((lb as any).data?.name || lb.name || '').trim().toLowerCase();
+          const isDuplicateByName = sg.bill_names && Object.values(sg.bill_names).some(
+            sn => sn.trim().toLowerCase() === lbName
+          );
+          if (isDuplicateByName) {
             continue;
           }
           // Local-only bill: add to group

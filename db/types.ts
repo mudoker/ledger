@@ -112,6 +112,7 @@ export interface BillGroupSummary {
   bill_ids?: string[];
   bill_amounts?: Record<string, number>;
   bill_item_counts?: Record<string, number>;
+  bill_names?: Record<string, string>;
 }
 
 export interface SearchResults {

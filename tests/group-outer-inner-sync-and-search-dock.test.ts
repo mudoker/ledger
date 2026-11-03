@@ -399,4 +399,117 @@ describe('Group Outer-Inner Total Parity & Fixed Search Bar Dock', () => {
     useBillStore.setState({ isHistoryLoading: false });
     expect(useBillStore.getState().isHistoryLoading).toBe(false);
   });
+
+  it('guarantees 100% exact parity between outer and inner views across ALL storage modes (cloud, hybrid, local) with duplicate bill names', async () => {
+    const { useAppSettingsStore } = await import('@/store/useAppSettingsStore');
+
+    for (const mode of ['cloud', 'hybrid', 'local'] as const) {
+      useAppSettingsStore.setState({ storageMode: mode });
+
+      const serverGroups: BillGroupSummary[] = [
+        {
+          id: 'grp_mode_test',
+          name: 'Da Lat Trip',
+          description: null,
+          owner_id: 'user_1',
+          is_owner: true,
+          currency: 'VND',
+          total_amount: 1430000,
+          total_bills: 3,
+          total_items: 3,
+          bill_ids: ['b_farm', 'b_banh_mi', 'b_ga_nuong'],
+          bill_names: {
+            b_farm: 'Farm (Thi Tran Iyashi)',
+            b_banh_mi: "Banh mi xiu mai chen'",
+            b_ga_nuong: 'Ga Nuong Com Lam',
+          },
+          bill_amounts: {
+            b_farm: 480000,
+            b_banh_mi: 360000,
+            b_ga_nuong: 590000,
+          },
+          bill_item_counts: {
+            b_farm: 1,
+            b_banh_mi: 1,
+            b_ga_nuong: 1,
+          },
+          created_at: '2026-11-01T00:00:00Z',
+          updated_at: '2026-11-01T12:00:00Z',
+          participants: [],
+        },
+      ];
+
+      const serverBills = [
+        {
+          id: 'b_farm',
+          name: 'Farm (Thi Tran Iyashi)',
+          location: null,
+          currency: 'VND',
+          totalAmount: 480000,
+          host_id: null,
+          created_at: '2026-11-01T00:00:00Z',
+          updated_at: '2026-11-01T12:00:00Z',
+          items: [{ id: 'i1', name: 'Farm', price: 480000, quantity: 1, assignments: {} }],
+        },
+        {
+          id: 'b_banh_mi',
+          name: "Banh mi xiu mai chen'",
+          location: null,
+          currency: 'VND',
+          totalAmount: 360000,
+          host_id: null,
+          created_at: '2026-11-01T00:00:00Z',
+          updated_at: '2026-11-01T12:00:00Z',
+          items: [{ id: 'i2', name: 'Banh mi', price: 360000, quantity: 1, assignments: {} }],
+        },
+        {
+          id: 'b_ga_nuong',
+          name: 'Ga Nuong Com Lam',
+          location: null,
+          currency: 'VND',
+          totalAmount: 590000,
+          host_id: null,
+          created_at: '2026-11-01T00:00:00Z',
+          updated_at: '2026-11-01T12:00:00Z',
+          items: [{ id: 'i3', name: 'Ga Nuong', price: 590000, quantity: 1, assignments: {} }],
+        },
+      ];
+
+      // Local bills include a duplicate by name ("Banh mi xiu mai chen'") with different ID
+      const localBills: LocalBillRecord[] = [
+        {
+          id: 'local_duplicate_bm',
+          name: "Banh mi xiu mai chen'",
+          location: null,
+          currency: 'VND',
+          hostId: 'p1',
+          qrCode: null,
+          groupId: 'grp_mode_test',
+          groupName: 'Da Lat Trip',
+          ownerId: 'user_1',
+          people: [],
+          items: [{ id: 'i_local_bm', name: 'Banh mi', price: 360000, quantity: 1, assignments: {} }],
+          globalCharges: [],
+          sharingStatus: 'local',
+          visibility: 'local',
+          shareToken: null,
+          lastSyncedAt: null,
+          syncError: null,
+          createdAt: '2026-11-01T00:00:00Z',
+          updatedAt: '2026-11-01T10:00:00Z',
+        },
+      ];
+
+      const innerBills = mergeBillsForGroup(serverBills as any, localBills, 'grp_mode_test');
+      const innerAmount = innerBills.reduce((s, b) => s + b.totalAmount, 0);
+      const innerCount = innerBills.length;
+
+      const outerSummaries = aggregateGroupSummaries(serverGroups, [], localBills);
+      const outerGroup = outerSummaries.find(g => g.id === 'grp_mode_test')!;
+
+      // In all modes, outer and inner MUST match 100%
+      expect(outerGroup.total_bills).toBe(innerCount);
+      expect(outerGroup.total_amount).toBe(innerAmount);
+    }
+  });
 });
