@@ -73,10 +73,20 @@ describe("Custom Shadcn Delete Modal System", () => {
 
     const landingCardSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/layout/landing-card.tsx"), "utf8");
     const groupOverviewSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/groups/group-overview.tsx"), "utf8");
+    const participantCardSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/shared/participant-card.tsx"), "utf8");
+    const personRowSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/people/person-row.tsx"), "utf8");
 
-    // Both root LandingCard and group SwipeableBillCard use SwipeableCard
+    // Root LandingCard, group SwipeableBillCard, and ParticipantCard all use SwipeableCard
     expect(landingCardSrc.includes("SwipeableCard")).toBe(true);
     expect(groupOverviewSrc.includes("SwipeableCard")).toBe(true);
+    expect(participantCardSrc.includes("SwipeableCard")).toBe(true);
+    expect(participantCardSrc.includes("Trash2")).toBe(false);
+    expect(participantCardSrc.includes("onSetHost")).toBe(true);
+
+    // PersonRow removes 'Pays remaining' & 'Set Host' text pills and allows host to add sponsor without upfront paid input
+    expect(personRowSrc.includes("Pays remaining")).toBe(false);
+    expect(personRowSrc.includes("<span>Set Host</span>")).toBe(false);
+    expect(personRowSrc.includes('isHost ? "Add sponsor" : "Add sponsor / paid"')).toBe(true);
 
     // Visible trash button on the surface of LandingCard is eliminated in favor of swipe-to-delete
     expect(landingCardSrc.includes("<button\n                                type=\"button\"\n                                onClick={(e) => {\n                                    e.stopPropagation();\n                                    onDelete();")).toBe(false);

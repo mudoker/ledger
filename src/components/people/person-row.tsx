@@ -4,12 +4,11 @@ import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Check, X, Heart, Pencil, Banknote, User, Crown, Plus } from "lucide-react";
+import { Trash2, Check, X, Heart, Pencil, Banknote, Plus } from "lucide-react";
 import { useBillStore, type Person } from "@/store/useBillStore";
 import { formatCurrency } from "@/lib/format";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { cn } from "@/lib/utils";
-import { getAvatarColor, getInitials } from "@/constants/colors";
 import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 import { ParticipantCard } from "@/components/shared/participant-card";
 
@@ -30,8 +29,6 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
     const [editPaid, setEditPaid] = useState(person.paidAmount || 0);
     const [showRemoveModal, setShowRemoveModal] = useState(false);
 
-    const avatarGradient = getAvatarColor(person.name);
-    const initials = getInitials(person.name);
     const isAppMember = Boolean(person.userId || person.email);
     const isHost = person.id === hostId;
 
@@ -51,7 +48,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
             name: editName.trim() || person.name,
             email: editEmail.trim() || null,
             sponsorAmount: editSponsor,
-            paidAmount: editPaid
+            paidAmount: isHost ? 0 : editPaid
         });
         setIsEditing(false);
     };
@@ -116,18 +113,20 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                     />
                 </div>
 
-                <div className="person-edit-grid">
-                    <div className="space-y-1 min-w-0">
-                        <Label className="text-[11px] font-semibold text-primary pl-1 flex items-center gap-1.5">
-                            <Banknote className="w-3.5 h-3.5" /> Amount Paid
-                        </Label>
-                        <CurrencyInput
-                            value={editPaid}
-                            onChange={(val) => setEditPaid(val)}
-                            className="h-9 bg-background/80 border-border/80 rounded-xl text-xs font-mono font-bold"
-                            showCurrencySymbol={true}
-                        />
-                    </div>
+                <div className={cn(!isHost && "person-edit-grid")}>
+                    {!isHost && (
+                        <div className="space-y-1 min-w-0">
+                            <Label className="text-[11px] font-semibold text-primary pl-1 flex items-center gap-1.5">
+                                <Banknote className="w-3.5 h-3.5" /> Amount Paid
+                            </Label>
+                            <CurrencyInput
+                                value={editPaid}
+                                onChange={(val) => setEditPaid(val)}
+                                className="h-9 bg-background/80 border-border/80 rounded-xl text-xs font-mono font-bold"
+                                showCurrencySymbol={true}
+                            />
+                        </div>
+                    )}
                     <div className="space-y-1 min-w-0">
                         <Label className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 pl-1 flex items-center gap-1.5">
                             <Heart className="w-3.5 h-3.5" /> Sponsor Amount
@@ -167,16 +166,11 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                 index={index}
                 isReadOnly={isReadOnly}
                 onClick={!isReadOnly ? handleStartEdit : undefined}
+                onSetHost={!isReadOnly ? () => setHostId(person.id) : undefined}
                 onEdit={!isReadOnly ? handleStartEdit : undefined}
                 onRemove={!isReadOnly ? () => setShowRemoveModal(true) : undefined}
                 financialInfo={
                     <>
-                        {isHost && (
-                            <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-foreground/[0.04] rounded-full border border-foreground/[0.08] text-[10px] font-medium text-muted-foreground">
-                                <span>Pays remaining</span>
-                            </div>
-                        )}
-
                         {!isHost && person.paidAmount > 0 && (
                             <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 rounded-full border border-primary/20 text-[10px] font-semibold text-primary tabular-nums">
                                 <Banknote className="w-3 h-3 shrink-0" />
@@ -199,7 +193,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                             </div>
                         )}
 
-                        {!(person.paidAmount > 0) && !(person.sponsorAmount > 0) && !isReadOnly && !isHost && (
+                        {(!isHost ? !(person.paidAmount > 0) && !(person.sponsorAmount > 0) : !(person.sponsorAmount > 0)) && !isReadOnly && (
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/40 hover:bg-muted text-[10px] font-medium text-muted-foreground hover:text-foreground border border-border/40 transition-colors touch-manipulation active:scale-95 cursor-pointer"
@@ -208,22 +202,7 @@ export function PersonRow({ person, index, baselineCost = 0, onUpdate, onRemove 
                                     handleStartEdit();
                                 }}
                             >
-                                <Plus className="w-2.5 h-2.5" /> Add sponsor / paid
-                            </button>
-                        )}
-
-                        {!isHost && !isReadOnly && (
-                            <button
-                                type="button"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-[10px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/25 transition-colors touch-manipulation active:scale-95 cursor-pointer"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setHostId(person.id);
-                                }}
-                                title={`Set ${person.name} as Primary Payer (Host)`}
-                            >
-                                <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
-                                <span>Set Host</span>
+                                <Plus className="w-2.5 h-2.5" /> {isHost ? "Add sponsor" : "Add sponsor / paid"}
                             </button>
                         )}
                     </>

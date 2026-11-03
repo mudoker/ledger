@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
-import { Crown, Pencil, Trash2, User } from 'lucide-react';
+import { Crown, Pencil, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/constants/colors';
+import { SwipeableCard } from '@/components/shared/swipeable-card';
 
 export interface ParticipantCardProps {
   id?: string;
@@ -16,6 +17,7 @@ export interface ParticipantCardProps {
   badges?: React.ReactNode;
   financialInfo?: React.ReactNode;
   actions?: React.ReactNode;
+  onSetHost?: () => void;
   onEdit?: () => void;
   onRemove?: () => void;
   onClick?: () => void;
@@ -33,24 +35,29 @@ export function ParticipantCard({
   badges,
   financialInfo,
   actions,
+  onSetHost,
   onEdit,
   onRemove,
   onClick,
   isReadOnly = false,
   className,
-  index,
 }: ParticipantCardProps) {
   const initials = avatarInitials || getInitials(name);
 
   return (
-    <div
+    <SwipeableCard
+      canDelete={!isReadOnly && Boolean(onRemove)}
+      onDelete={onRemove}
       onClick={!isReadOnly && onClick ? onClick : undefined}
       className={cn(
-        "flex items-center justify-between p-3 rounded-2xl bg-card border border-border/70 hover:border-border transition-all",
-        !isReadOnly && onClick && "cursor-pointer hover:bg-card/90 hover:border-foreground/20 hover:shadow-sm",
+        "border-border/70 hover:border-border transition-all",
+        !isReadOnly && onClick && "hover:border-foreground/20 hover:shadow-sm",
         className
       )}
-      style={index !== undefined ? { animationDelay: `${index * 40}ms` } : undefined}
+      contentClassName={cn(
+        "flex items-center justify-between p-3 bg-card",
+        !isReadOnly && onClick && "cursor-pointer hover:bg-card/90"
+      )}
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
         {/* Circular Avatar */}
@@ -99,12 +106,28 @@ export function ParticipantCard({
         </div>
       </div>
 
-      {/* Right Column: Actions */}
+      {/* Right Column: Actions (Crown / Set Host & Edit; Delete is revealed via swipe-left) */}
       <div
         className="flex items-center gap-1 shrink-0 ml-2"
         onClick={(e) => e.stopPropagation()}
       >
         {actions}
+        {!isReadOnly && onSetHost && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onSetHost}
+            className={cn(
+              "h-7 w-7 rounded-lg shrink-0 touch-manipulation active:scale-95 transition-colors",
+              isHost
+                ? "text-amber-500 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 hover:text-amber-500"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+            )}
+            title={isHost ? `${name} is Primary Payer (Host)` : `Set ${name} as Primary Payer (Host)`}
+          >
+            <Crown className="w-3.5 h-3.5" />
+          </Button>
+        )}
         {!isReadOnly && onEdit && (
           <Button
             variant="ghost"
@@ -116,18 +139,7 @@ export function ParticipantCard({
             <Pencil className="w-3.5 h-3.5" />
           </Button>
         )}
-        {!isReadOnly && onRemove && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onRemove}
-            className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 touch-manipulation active:scale-95 transition-colors"
-            title="Remove participant"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-        )}
       </div>
-    </div>
+    </SwipeableCard>
   );
 }
