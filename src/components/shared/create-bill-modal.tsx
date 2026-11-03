@@ -11,7 +11,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tag, MapPin, User, ArrowRight, ReceiptText, Coins, Folder, Users, Check, Crown, Plus, ChevronsUpDown } from "lucide-react";
+import {
+  Tag,
+  MapPin,
+  ArrowRight,
+  ReceiptText,
+  Coins,
+  Folder,
+  Users,
+  Check,
+  Crown,
+  Plus,
+  ChevronsUpDown,
+  UtensilsCrossed,
+  Coffee,
+  ShoppingBag,
+  Car,
+  Sparkles,
+} from "lucide-react";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useAppSettingsStore } from "@/store/useAppSettingsStore";
@@ -35,6 +52,13 @@ interface CreateBillModalProps {
   defaultGroupId?: string | null;
   initialGroupId?: string | null;
 }
+
+const QUICK_BILL_TEMPLATES = [
+  { label: 'Dinner', icon: UtensilsCrossed },
+  { label: 'Coffee & Drinks', icon: Coffee },
+  { label: 'Groceries', icon: ShoppingBag },
+  { label: 'Transport', icon: Car },
+];
 
 export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, initialGroupId }: CreateBillModalProps) {
   const defaultCurrency = useAppSettingsStore((state) => state.defaultCurrency) || 'VND';
@@ -151,167 +175,140 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showClose={false} className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border bg-card">
-        <DialogHeader className="space-y-1 text-left pb-3 border-b border-border/60 shrink-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-border flex items-center justify-center text-foreground mb-0.5">
-            <ReceiptText className="w-4 h-4 sm:w-5 sm:h-5" />
+      <DialogContent showClose={false} className="w-[min(calc(100vw-20px),460px)] max-h-[90vh] max-h-[90dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-3xl border border-border/80 bg-card">
+        {/* Mobile Header with Touch-Friendly Dismiss */}
+        <DialogHeader className="pb-3 border-b border-border/60 shrink-0 text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 shadow-xs">
+              <ReceiptText className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-base sm:text-lg font-bold tracking-tight">
+                Create New Bill
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground truncate">
+                Set up details, currency &amp; participants
+              </DialogDescription>
+            </div>
           </div>
-          <DialogTitle className="text-base sm:text-lg font-bold tracking-tight">
-            Create New Bill
-          </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Set up bill details and currency to get started.
-          </DialogDescription>
         </DialogHeader>
 
+        {/* Mobile-First Form Flow (Single-column layout with comfortable touch targets) */}
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto overscroll-contain space-y-3.5 py-3 pr-0.5">
-            <div className="space-y-1 sm:space-y-1.5">
-              <Label htmlFor="bill-name" className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-muted-foreground" /> Bill Name <span className="text-destructive">*</span>
-              </Label>
+          <div className="flex-1 overflow-y-auto overscroll-contain space-y-4 py-4 pr-1">
+            {/* Bill Name + Quick Presets */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="bill-name" className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-primary" /> Bill Name <span className="text-destructive">*</span>
+                </Label>
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                  <Sparkles className="w-3 h-3 text-primary" /> Quick pick
+                </span>
+              </div>
               <Input
                 id="bill-name"
-                placeholder="e.g. Friday BBQ, Team Lunch"
+                placeholder="e.g. Friday BBQ, Team Lunch..."
                 value={name}
+                autoFocus
                 onChange={(e) => {
                   setName(e.target.value);
                   if (error) setError('');
                 }}
-                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-xs"
+                className="h-11 px-3.5 bg-foreground/[0.03] border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-semibold text-sm"
               />
               {error && (
-                <p className="text-[11px] font-bold text-destructive pl-1">{error}</p>
+                <p className="text-xs font-bold text-destructive pl-1">{error}</p>
               )}
+              {/* Tap-Friendly Suggestions */}
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {QUICK_BILL_TEMPLATES.map((tpl) => {
+                  const Icon = tpl.icon;
+                  const isActive = name === tpl.label;
+                  return (
+                    <button
+                      key={tpl.label}
+                      type="button"
+                      onClick={() => {
+                        setName(tpl.label);
+                        setError('');
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all cursor-pointer touch-manipulation active:scale-95",
+                        isActive
+                          ? "bg-primary/15 border-primary/40 text-primary shadow-xs"
+                          : "bg-muted/40 hover:bg-muted border-border/60 text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span>{tpl.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="space-y-1 sm:space-y-1.5">
+            {/* Currency Selector (Full-Width for comfortable flag & symbol display) */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Coins className="w-3.5 h-3.5 text-primary" /> Currency
+              </Label>
+              <CurrencyDropdown
+                value={currency}
+                onChange={(c) => setCurrency(c)}
+                variant="default"
+                className="h-11"
+              />
+            </div>
+
+            {/* Location (Full Width) */}
+            <div className="space-y-1.5">
               <Label htmlFor="bill-location" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5" /> Venue / Location (Optional)
+                <MapPin className="w-3.5 h-3.5" /> Venue / Location <span className="font-normal text-[11px] opacity-70">(Optional)</span>
               </Label>
               <Input
                 id="bill-location"
                 placeholder="e.g. Gyu-Kaku, District 1"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-xs"
+                className="h-11 px-3.5 bg-foreground/[0.03] border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs sm:text-sm"
               />
             </div>
 
-            <div className="space-y-1 sm:space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Coins className="w-3.5 h-3.5" /> Currency
-              </Label>
-              <CurrencyDropdown
-                value={currency}
-                onChange={(c) => setCurrency(c)}
-                variant="default"
-              />
-            </div>
-
-            <div className="space-y-1 sm:space-y-1.5">
+            {/* Group Assignment (Full Width) */}
+            <div className="space-y-1.5">
               <Label htmlFor="bill-group" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Folder className="w-3.5 h-3.5 text-primary" /> Link to Group (Optional)
+                <Folder className="w-3.5 h-3.5 text-primary" /> Link to Group <span className="font-normal text-[11px] opacity-70">(Optional)</span>
               </Label>
               <Select value={groupId} onValueChange={setGroupId}>
-                <SelectTrigger id="bill-group" className="h-9 bg-foreground/[0.03] border-border rounded-xl font-medium text-xs">
-                  <SelectValue placeholder="No Group (Standalone Bill)" />
+                <SelectTrigger id="bill-group" className="h-11 px-3.5 bg-foreground/[0.03] border-border/80 rounded-xl font-medium text-xs sm:text-sm">
+                  <SelectValue placeholder="Standalone Bill (No Group)" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Group (Standalone Bill)</SelectItem>
+                <SelectContent className="rounded-2xl max-h-56">
+                  <SelectItem value="none" className="text-xs font-medium py-2">
+                    Standalone Bill (No Group)
+                  </SelectItem>
                   {groups.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
+                    <SelectItem key={g.id} value={g.id} className="text-xs font-medium py-2">
                       <div className="flex items-center gap-2">
                         <Folder className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <span>{g.name}</span>
+                        <span className="truncate">{g.name}</span>
                       </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground/70 pl-1">
-                Adds this bill into a group overview. Can also be updated later in Settings.
-              </p>
             </div>
 
-            {groupMembers.length > 0 && (
-              <div className="space-y-2 p-3 rounded-2xl bg-muted/20 border border-border/60">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-foreground">
-                    <Users className="w-3.5 h-3.5 text-primary" />
-                    <span>Include Group Members ({selectedMemberIds.size}/{groupMembers.length})</span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (selectedMemberIds.size === groupMembers.length) {
-                        setSelectedMemberIds(new Set());
-                      } else {
-                        setSelectedMemberIds(new Set(groupMembers.map((m) => m.id)));
-                      }
-                    }}
-                    className="h-6 text-[11px] font-semibold text-primary hover:bg-primary/10 px-2 rounded-lg"
-                  >
-                    {selectedMemberIds.size === groupMembers.length ? "Deselect All" : "Select All"}
-                  </Button>
-                </div>
-                <div className="max-h-36 overflow-y-auto overscroll-contain space-y-1 pr-1 pt-1">
-                  {groupMembers.map((m) => {
-                    const isSelected = selectedMemberIds.has(m.id);
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedMemberIds((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(m.id)) next.delete(m.id);
-                            else next.add(m.id);
-                            return next;
-                          });
-                        }}
-                        className={cn(
-                          "w-full flex items-center gap-2.5 p-2 rounded-xl border transition-colors cursor-pointer select-none text-xs text-left",
-                          isSelected
-                            ? "bg-primary/5 border-primary/30 text-foreground"
-                            : "bg-muted/10 border-border/50 text-muted-foreground hover:bg-muted/20"
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            "w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors",
-                            isSelected
-                              ? "bg-primary border-primary text-primary-foreground"
-                              : "border-primary/50 bg-background"
-                          )}
-                        >
-                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                        </div>
-                        <span className="font-semibold text-foreground truncate">{m.name}</span>
-                        {m.email && (
-                          <span className="text-[10px] text-muted-foreground truncate">({m.email})</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1 sm:space-y-1.5" ref={hostCmdRef}>
+            {/* Host / Primary Payer (Full Width) */}
+            <div className="space-y-1.5" ref={hostCmdRef}>
               <Label htmlFor="bill-host" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5 text-amber-500" /> Host / Payer (Optional)
+                <Crown className="w-3.5 h-3.5 text-amber-500" /> Host / Primary Payer <span className="font-normal text-[11px] opacity-70">(Optional)</span>
               </Label>
               <div className="relative">
                 <Input
                   id="bill-host"
-                  placeholder={
-                    isGroupLinked
-                      ? "Search group members or type new host..."
-                      : "e.g. Alex"
-                  }
+                  placeholder={isGroupLinked ? "Pick member or type custom..." : "Default: You (Me)"}
                   value={hostName}
                   autoComplete="off"
                   onFocus={() => {
@@ -335,7 +332,7 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                     }
                   }}
                   className={cn(
-                    "h-9 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-foreground/20 rounded-xl font-medium text-xs",
+                    "h-11 px-3.5 bg-foreground/[0.03] border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs sm:text-sm",
                     isGroupLinked && "pr-8"
                   )}
                 />
@@ -344,16 +341,16 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                     type="button"
                     tabIndex={-1}
                     onClick={() => setIsHostCmdOpen((prev) => !prev)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <ChevronsUpDown className="w-3.5 h-3.5" />
+                    <ChevronsUpDown className="w-4 h-4" />
                   </button>
                 )}
 
                 {isGroupLinked && isHostCmdOpen && (
-                  <div className="absolute bottom-full left-0 right-0 mb-1.5 z-30 bg-popover border border-border rounded-2xl shadow-2xl p-1.5 max-h-48 overflow-y-auto overscroll-contain space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                      <span>Select Payer from Group</span>
+                  <div className="absolute bottom-full left-0 right-0 mb-2 z-30 bg-popover border border-border rounded-2xl shadow-2xl p-1.5 max-h-48 overflow-y-auto overscroll-contain space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>Group Members</span>
                       <span>{filteredHostCandidates.length}</span>
                     </div>
 
@@ -372,31 +369,19 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                             setIsHostCmdOpen(false);
                           }}
                           className={cn(
-                            "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs text-left transition-colors cursor-pointer",
+                            "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer",
                             isCurrentHost
                               ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold"
                               : "hover:bg-muted/70 text-foreground font-medium"
                           )}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-[9px] font-bold flex items-center justify-center shrink-0">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
                               {getInitials(m.name)}
                             </span>
-                            <div className="min-w-0">
-                              <span className="block truncate">{m.name}</span>
-                              {m.email && (
-                                <span className="block text-[10px] text-muted-foreground truncate">{m.email}</span>
-                              )}
-                            </div>
+                            <span className="truncate">{m.name}</span>
                           </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {!isIncluded && (
-                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                + Include
-                              </span>
-                            )}
-                            {isCurrentHost && <Crown className="w-3.5 h-3.5 text-amber-500" />}
-                          </div>
+                          {isCurrentHost && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                         </button>
                       );
                     })}
@@ -408,48 +393,97 @@ export function CreateBillModal({ open, onOpenChange, onSubmit, defaultGroupId, 
                           setHostName(hostName.trim());
                           setIsHostCmdOpen(false);
                         }}
-                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs text-left font-semibold text-primary hover:bg-primary/10 border-t border-border/50 mt-1 pt-2 transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-left font-semibold text-primary hover:bg-primary/10 border-t border-border/50 mt-1 pt-2 transition-colors cursor-pointer"
                       >
-                        <span className="w-5 h-5 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                          <Plus className="w-3 h-3" />
-                        </span>
-                        <span className="truncate">
-                          Create new host: <strong className="text-foreground">"{hostName.trim()}"</strong>
-                        </span>
+                        <Plus className="w-4 h-4 shrink-0" />
+                        <span className="truncate">Set custom host: &ldquo;{hostName.trim()}&rdquo;</span>
                       </button>
-                    )}
-
-                    {filteredHostCandidates.length === 0 && !hostName.trim() && (
-                      <div className="px-2.5 py-3 text-center text-[11px] text-muted-foreground">
-                        No group members selected above. Type a name to create a new host.
-                      </div>
                     )}
                   </div>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground/70 pl-1">
-                {isGroupLinked
-                  ? "Pick an inherited group member or type a new name to create the primary payer."
-                  : "Creates the first participant and sets them as the primary payer."}
-              </p>
             </div>
+
+            {/* Group Members Tray */}
+            {groupMembers.length > 0 && (
+              <div className="space-y-2.5 p-3 rounded-2xl bg-muted/20 border border-border/60">
+                <div className="flex items-center justify-between text-xs px-0.5">
+                  <div className="flex items-center gap-1.5 font-bold text-foreground text-xs">
+                    <Users className="w-3.5 h-3.5 text-primary" />
+                    <span>Include Members ({selectedMemberIds.size}/{groupMembers.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedMemberIds.size === groupMembers.length) {
+                        setSelectedMemberIds(new Set());
+                      } else {
+                        setSelectedMemberIds(new Set(groupMembers.map((m) => m.id)));
+                      }
+                    }}
+                    className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    {selectedMemberIds.size === groupMembers.length ? "Deselect all" : "Select all"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto overscroll-contain pt-0.5">
+                  {groupMembers.map((m) => {
+                    const isSelected = selectedMemberIds.has(m.id);
+                    const isHostMatch = hostName.trim().toLowerCase() === m.name.trim().toLowerCase() && Boolean(hostName.trim());
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMemberIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(m.id)) next.delete(m.id);
+                            else next.add(m.id);
+                            return next;
+                          });
+                        }}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 touch-manipulation",
+                          isSelected
+                            ? "bg-primary/15 border-primary/40 text-foreground shadow-2xs"
+                            : "bg-background/80 border-border/60 text-muted-foreground opacity-60 hover:opacity-100"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 transition-colors",
+                            isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {isSelected ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : getInitials(m.name)}
+                        </span>
+                        <span className="truncate max-w-[120px]">{m.name}</span>
+                        {isHostMatch && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          <DialogFooter className="pt-3 border-t border-border/60 shrink-0 gap-2 flex-col-reverse sm:flex-row">
+          {/* Sticky Touch-Friendly Footer */}
+          <DialogFooter className="pt-3 border-t border-border/60 shrink-0 gap-2 flex-col sm:flex-row justify-end">
             <Button
               type="button"
               variant="ghost"
               onClick={() => onOpenChange(false)}
-              className="rounded-xl font-semibold w-full sm:w-auto h-9 text-xs touch-manipulation active:scale-95"
+              className="rounded-xl font-semibold h-10 text-xs w-full sm:w-auto touch-manipulation active:scale-95 order-2 sm:order-1"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={!name.trim()}
-              className="rounded-xl font-semibold gap-2 px-5 bg-foreground text-background hover:bg-foreground/90 shadow-md w-full sm:w-auto h-9 text-xs touch-manipulation active:scale-95"
+              className="rounded-xl font-bold gap-2 px-5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md h-11 text-xs sm:text-sm w-full sm:w-auto touch-manipulation active:scale-95 order-1 sm:order-2"
             >
-              Continue to Bill <ArrowRight className="w-4 h-4" />
+              <span>Continue to Bill</span>
+              <ArrowRight className="w-4 h-4" />
             </Button>
           </DialogFooter>
         </form>

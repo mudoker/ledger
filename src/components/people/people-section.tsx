@@ -5,14 +5,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { Users, UserPlus, Sparkles, UserCheck, Plus, Folder, Crown } from "lucide-react";
+import { Users, UserPlus, Sparkles, UserCheck, Plus, Folder } from "lucide-react";
 import { useBillStore } from "@/store/useBillStore";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useBillState } from "@/hooks/useBillState";
 import { getInitials } from "@/constants/colors";
 import { PersonRow } from "./person-row";
-import { QuickInsights } from "../summary/quick-insights";
+import { CountDisplay } from "@/components/shared/count-display";
 
 interface UserSuggestion {
     id: string;
@@ -22,7 +21,7 @@ interface UserSuggestion {
 }
 
 export function PeopleSection() {
-    const { people, addPerson, addPeople, updatePerson, removePerson, isReadOnly, loadSeedData, hostId, setHostId, groupId } = useBillStore();
+    const { people, addPerson, addPeople, updatePerson, removePerson, isReadOnly, loadSeedData, hostId, groupId } = useBillStore();
     const { groups, currentGroup } = useGroupStore();
     const { calculate } = useBillState();
     const { totalCosts } = calculate();
@@ -97,8 +96,8 @@ export function PeopleSection() {
                                     Participants
                                 </h2>
                                 {people.length > 0 && (
-                                    <span className="text-[11px] font-semibold text-muted-foreground bg-foreground/[0.05] border border-foreground/[0.08] px-2 py-0.5 rounded-full">
-                                        {people.length}
+                                    <span className="text-[11px] font-semibold text-muted-foreground bg-foreground/[0.05] border border-foreground/[0.08] px-2 py-0.5 rounded-full inline-flex items-center">
+                                        <CountDisplay count={people.length} />
                                     </span>
                                 )}
                             </div>
@@ -109,35 +108,6 @@ export function PeopleSection() {
                             </p>
                         </div>
                     </div>
-
-                    {people.length > 0 && (
-                        <Select value={hostId || ""} onValueChange={setHostId} disabled={isReadOnly}>
-                            <SelectTrigger
-                                className="h-8 w-auto max-w-[170px] sm:max-w-[220px] gap-1.5 px-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-bold shadow-2xs shrink-0 focus:ring-1 focus:ring-amber-500/40"
-                                title="Primary Payer (Host)"
-                            >
-                                <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                <span className="truncate">
-                                    {hostPerson ? hostPerson.name : "Select Host"}
-                                </span>
-                            </SelectTrigger>
-                            <SelectContent align="end" className="rounded-xl border-border bg-popover">
-                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                    Primary Payer (Host)
-                                </div>
-                                {people.map((p) => (
-                                    <SelectItem key={p.id} value={p.id} className="rounded-lg text-xs font-semibold cursor-pointer">
-                                        <div className="flex items-center gap-2">
-                                            <span className="w-4 h-4 rounded-full bg-primary/15 text-primary text-[9px] font-bold flex items-center justify-center shrink-0">
-                                                {getInitials(p.name)}
-                                            </span>
-                                            <span className="truncate">{p.name}</span>
-                                        </div>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
 
                     {people.length === 0 && !isReadOnly && (
                         <Button
@@ -292,11 +262,6 @@ export function PeopleSection() {
                                 </div>
                             </div>
                         )}
-
-                        {/* Refined Quick Insights */}
-                        <div className="pt-2 mt-2 pb-2 sm:pb-6 border-t border-border/40">
-                            <QuickInsights />
-                        </div>
                     </div>
                 </ScrollArea>
             </CardContent>

@@ -132,8 +132,8 @@ export function AppSettingsPage({ onBack }: AppSettingsPageProps) {
               <p className="text-xs text-muted-foreground hidden sm:block">{t.settingsSubtitle}</p>
             </div>
           </div>
-          <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold">
-            v{APP_METADATA.version}
+          <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold shrink-0">
+            v{APP_METADATA.version} (b{APP_METADATA.build})
           </span>
         </div>
       </div>

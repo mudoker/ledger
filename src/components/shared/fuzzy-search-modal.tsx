@@ -107,16 +107,56 @@ export function FuzzySearchModal({
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Local instant fuzzy matches
+  // Local instant fuzzy matches merged with server search results
   const localMatchedGroups = useMemo(() => {
     if (!query.trim()) return groups.slice(0, 5);
-    return fuseGroups.search(query).map((r) => r.item);
-  }, [query, groups, fuseGroups]);
+    const localHits = fuseGroups.search(query).map((r) => r.item);
+    if (!apiResults?.groups?.length) return localHits;
+    const seen = new Set(localHits.map((g) => g.id));
+    const merged = [...localHits];
+    for (const sg of apiResults.groups) {
+      if (!seen.has(sg.id)) {
+        seen.add(sg.id);
+        merged.push({
+          ...sg,
+          description: sg.description ?? null,
+          currency: sg.currency ?? 'VND',
+          owner_id: '',
+          total_items: 0,
+          created_at: '',
+          updated_at: '',
+          participants: [],
+          is_owner: true,
+        });
+      }
+    }
+    return merged;
+  }, [query, groups, fuseGroups, apiResults?.groups]);
 
   const localMatchedBills = useMemo(() => {
     if (!query.trim()) return billHistory.slice(0, 6);
-    return fuseBills.search(query).map((r) => r.item);
-  }, [query, billHistory, fuseBills]);
+    const localHits = fuseBills.search(query).map((r) => r.item);
+    if (!apiResults?.bills?.length) return localHits;
+    const seen = new Set(localHits.map((b) => b.id));
+    const merged = [...localHits];
+    for (const sb of apiResults.bills) {
+      if (!seen.has(sb.id)) {
+        seen.add(sb.id);
+        merged.push({
+          id: sb.id,
+          name: sb.name,
+          created_at: '',
+          updated_at: '',
+          location: sb.location || undefined,
+          totalAmount: sb.totalAmount,
+          currency: sb.currency as any,
+          group_id: sb.group_id,
+          group_name: sb.group_name,
+        });
+      }
+    }
+    return merged;
+  }, [query, billHistory, fuseBills, apiResults?.bills]);
 
   // Items from API search results
   const matchedItems = apiResults?.items || [];
@@ -336,7 +376,7 @@ export function FuzzySearchModal({
                                 {g.name}
                               </h4>
                               <p className="text-[10px] text-muted-foreground truncate">
-                                {g.total_bills} bill{g.total_bills === 1 ? '' : 's'} • {formatCurrency(g.total_amount)}
+                                {g.total_bills} bill{g.total_bills === 1 ? '' : 's'} • {formatCurrency(g.total_amount, g.currency)}
                               </p>
                             </div>
                           </div>
@@ -401,7 +441,7 @@ export function FuzzySearchModal({
                               </div>
                               <p className="text-[10px] text-muted-foreground truncate">
                                 {b.location ? `${b.location} • ` : ''}
-                                {b.totalAmount !== undefined ? formatCurrency(b.totalAmount) : ''}
+                                {b.totalAmount !== undefined ? formatCurrency(b.totalAmount, b.currency) : ''}
                               </p>
                             </div>
                           </div>
@@ -457,7 +497,7 @@ export function FuzzySearchModal({
                                 {item.name}
                               </h4>
                               <p className="text-[10px] text-muted-foreground truncate">
-                                in &ldquo;{item.bill_name}&rdquo; • {formatCurrency(item.price)}
+                                in &ldquo;{item.bill_name}&rdquo; • {formatCurrency(item.price, item.currency)}
                               </p>
                             </div>
                           </div>

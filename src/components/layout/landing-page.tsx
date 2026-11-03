@@ -17,7 +17,10 @@ import { BottomSearchBar } from '@/components/shared/bottom-search-bar';
 import { FuzzySearchModal } from '@/components/shared/fuzzy-search-modal';
 import { DeleteConfirmationModal } from '@/components/shared/delete-confirmation-modal';
 import { LandingCard, LandingCardSkeleton } from '@/components/layout/landing-card';
+import { PullToRefresh } from '@/components/shared/pull-to-refresh';
+import { CountDisplay } from '@/components/shared/count-display';
 import { calculateBillTotals } from '@/lib/common-data-model';
+import { fetchVndRates } from '@/lib/currency';
 
 interface LandingPageProps {
     onNewBill: (data: CreateBillFormData) => void;
@@ -37,6 +40,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
         items,
         billName,
         location,
+        currency,
         currentBillId,
         lastSaved,
         globalCharges,
@@ -82,6 +86,14 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
             setHasCreatedSample(true);
         }
         onLoadDemo?.();
+    };
+
+    const handleRefresh = async () => {
+        await Promise.allSettled([
+            fetchHistory(),
+            user ? fetchGroups() : Promise.resolve(),
+            fetchVndRates(true),
+        ]);
     };
 
     const handleDeleteConfirm = async () => {
@@ -235,10 +247,13 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         }`}
                                     >
                                         <span>Bills</span>
-                                        <span className="text-[11px] opacity-80">
-                                            ({isHistoryLoading && billHistory.length === 0 && !hasActiveDraft
-                                                ? '…'
-                                                : billHistory.length + (hasActiveDraft ? 1 : 0)})
+                                        <span className="text-[11px] opacity-80 inline-flex items-center">
+                                            (<CountDisplay
+                                                count={billHistory.length + (hasActiveDraft ? 1 : 0)}
+                                                isLoading={isHistoryLoading && billHistory.length === 0 && !hasActiveDraft}
+                                                variant="spinner"
+                                                spinnerClassName="w-2.5 h-2.5"
+                                            />)
                                         </span>
                                     </button>
                                     <button
@@ -251,10 +266,13 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         }`}
                                     >
                                         <span>Groups</span>
-                                        <span className="text-[11px] opacity-80">
-                                            ({isGroupsLoading && groups.length === 0
-                                                ? '…'
-                                                : groups.length})
+                                        <span className="text-[11px] opacity-80 inline-flex items-center">
+                                            (<CountDisplay
+                                                count={groups.length}
+                                                isLoading={isGroupsLoading && groups.length === 0}
+                                                variant="spinner"
+                                                spinnerClassName="w-2.5 h-2.5"
+                                            />)
                                         </span>
                                     </button>
                                 </div>
@@ -323,7 +341,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                     })()}
                 </div>
 
-                <div className="w-full">
+                <PullToRefresh onRefresh={handleRefresh} className="w-full">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -388,10 +406,13 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                             id={group.id}
                                             title={group.name}
                                             amount={group.total_amount}
+                                            currency={group.currency}
                                             description={group.description}
                                             icon={<Folder className="w-5 h-5 sm:w-6 sm:h-6 transition-colors group-hover:text-inherit" />}
                                             iconVariant="primary"
                                             role={group.is_owner ? 'owner' : 'participant'}
+                                            sharingStatus="shared"
+                                            visibility={group.visibility || 'public'}
                                             timestamp={group.updated_at}
                                             onClick={() => onSelectGroup?.(group.id)}
                                             onDelete={group.is_owner ? () => setDeleteTarget({ type: 'group', id: group.id, name: group.name }) : undefined}
@@ -428,6 +449,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         id="current"
                                         title={billName || 'Untitled Draft Bill'}
                                         amount={draftTotal > 0 ? draftTotal : undefined}
+                                        currency={currency}
                                         icon={<Receipt className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />}
                                         iconVariant="amber"
                                         isDraft={true}
@@ -455,6 +477,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                                         id={bill.id}
                                         title={bill.name || `Bill ${bill.id.slice(0, 8)}`}
                                         amount={bill.totalAmount}
+                                        currency={bill.currency}
                                         icon={<Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground transition-colors group-hover:text-inherit" />}
                                         iconVariant="muted"
                                         role={bill.role}
@@ -476,7 +499,7 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                             </>
                         )}
                     </motion.div>
-                </div>
+                </PullToRefresh>
             </div>
 
             {/* Bottom Search Bar Dock with User Status */}

@@ -4,6 +4,7 @@ import { ChevronRight, Clock, MapPin, Folder, Crown, Sparkles, Shield, Globe, Us
 import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
 import type { BillSharingStatus, BillVisibility } from '@/lib/local-db/types';
 import { SwipeableCard } from '@/components/shared/swipeable-card';
+import { MoneyDisplay } from '@/components/shared/money-display';
 
 export interface RoleBadgeProps {
     role?: 'owner' | 'participant' | 'draft' | string | null;
@@ -51,6 +52,7 @@ export interface LandingCardProps {
     id: string;
     title: string;
     amount?: number;
+    currency?: string;
     description?: string | null;
     icon: React.ReactNode;
     iconVariant?: 'primary' | 'muted' | 'amber';
@@ -70,6 +72,7 @@ export interface LandingCardProps {
 export function LandingCard({
     title,
     amount,
+    currency,
     description,
     icon,
     iconVariant = 'muted',
@@ -142,9 +145,11 @@ export function LandingCard({
                         {title}
                     </h3>
                     {amount !== undefined && (
-                        <span className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0 ml-2">
-                            {formatCurrency(amount)}
-                        </span>
+                        <MoneyDisplay
+                            amount={amount}
+                            currency={currency}
+                            className="text-foreground font-black tabular-nums text-sm sm:text-base shrink-0 ml-2"
+                        />
                     )}
                 </div>
 

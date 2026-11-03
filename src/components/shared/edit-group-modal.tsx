@@ -72,89 +72,94 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showClose={false} className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
-        <DialogHeader className="space-y-1.5 text-left pb-3.5 border-b border-border/60 shrink-0">
-          <div className="w-10 h-10 rounded-2xl bg-foreground/5 border border-border flex items-center justify-center text-foreground mb-1">
-            <Settings2 className="w-5 h-5" />
+      <DialogContent showClose={false} className="w-[calc(100vw-24px)] sm:w-full max-w-md max-h-[88vh] max-h-[88dvh] flex flex-col p-4 sm:p-5 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
+        <DialogHeader className="pb-3 border-b border-border/60 shrink-0 text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+              <Settings2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="text-base font-bold tracking-tight">
+                Edit Group Details
+              </DialogTitle>
+              <DialogDescription className="text-[11px] text-muted-foreground truncate">
+                Update title, description, currency and visibility
+              </DialogDescription>
+            </div>
           </div>
-          <DialogTitle className="text-base sm:text-lg font-bold tracking-tight">
-            Edit Group Details
-          </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-            Only the group owner can update this group&apos;s title, description, and currency.
-          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto overscroll-contain space-y-4 py-3.5 pr-0.5">
+          <div className="flex-1 overflow-y-auto overscroll-contain space-y-3.5 py-3.5 pr-0.5">
             {/* Group Name Input */}
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-group-name" className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-primary" /> Group Name <span className="text-destructive">*</span>
+            <div className="space-y-1">
+              <Label htmlFor="edit-group-name" className="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <Tag className="w-3 h-3 text-primary" /> Group Name <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="edit-group-name"
                 value={name}
+                autoFocus
                 onChange={(e) => {
                   setName(e.target.value);
                   if (error) setError('');
                 }}
-                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
-                autoFocus
+                className="h-9 bg-background/60 border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-semibold text-xs"
               />
               {error && (
                 <p className="text-[11px] font-bold text-destructive pl-1">{error}</p>
               )}
             </div>
 
-            {/* Description Input */}
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-group-desc" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <AlignLeft className="w-3.5 h-3.5" /> Description
+            {/* Description */}
+            <div className="space-y-1">
+              <Label htmlFor="edit-group-desc" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <AlignLeft className="w-3 h-3" /> Description <span className="font-normal text-[10px] opacity-70">(Opt)</span>
               </Label>
               <Input
                 id="edit-group-desc"
                 placeholder="Optional description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
+                className="h-10 bg-background/60 border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
               />
             </div>
 
-            {/* Currency Selector Dropdown */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Coins className="w-3.5 h-3.5" /> Group Currency
+            {/* Currency */}
+            <div className="space-y-1">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Coins className="w-3 h-3 text-primary" /> Group Currency
               </Label>
               <CurrencyDropdown
                 value={currency}
                 onChange={(c) => setCurrency(c)}
                 variant="default"
+                className="h-10 w-full"
               />
             </div>
 
             {/* Visibility Selector */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5" /> Group Visibility & Access
+            <div className="space-y-1">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Globe className="w-3 h-3 text-primary" /> Group Visibility &amp; Access
               </Label>
               <div className="grid grid-cols-2 gap-2 pt-0.5">
                 <button
                   type="button"
                   onClick={() => setVisibility('public')}
                   className={cn(
-                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all",
+                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer active:scale-98",
                     visibility === 'public'
-                      ? "border-primary bg-primary/10 text-foreground"
+                      ? "border-primary/50 bg-primary/10 text-foreground shadow-2xs"
                       : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
                   )}
                 >
                   <div className="flex items-center gap-1.5 font-bold text-xs">
                     <Globe className={cn("w-3.5 h-3.5", visibility === 'public' ? "text-primary" : "text-muted-foreground")} />
-                    <span>Public</span>
+                    <span>Public Link</span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground mt-1 leading-snug">
-                    Anyone with link can view group & synced bills
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                    Anyone with link can view group &amp; bills
                   </span>
                 </button>
 
@@ -162,18 +167,18 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
                   type="button"
                   onClick={() => setVisibility('restricted')}
                   className={cn(
-                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all",
+                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer active:scale-98",
                     visibility === 'restricted'
-                      ? "border-primary bg-primary/10 text-foreground"
+                      ? "border-primary/50 bg-primary/10 text-foreground shadow-2xs"
                       : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
                   )}
                 >
                   <div className="flex items-center gap-1.5 font-bold text-xs">
                     <Lock className={cn("w-3.5 h-3.5", visibility === 'restricted' ? "text-primary" : "text-muted-foreground")} />
-                    <span>Restricted</span>
+                    <span>Members Only</span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground mt-1 leading-snug">
-                    Only participants added to this group can view
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                    Only registered participants can access
                   </span>
                 </button>
               </div>
@@ -185,14 +190,14 @@ export function EditGroupModal({ open, onOpenChange, group, onSuccess }: EditGro
               type="button"
               variant="ghost"
               onClick={() => onOpenChange(false)}
-              className="text-xs font-bold rounded-xl h-9"
+              className="rounded-xl font-semibold h-9 text-xs px-3 touch-manipulation active:scale-95"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className="gap-1.5 text-xs font-bold rounded-xl h-9 px-4 bg-foreground text-background hover:bg-foreground/90 shadow-sm"
+              className="rounded-xl font-semibold gap-1.5 px-4 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm h-9 text-xs touch-manipulation active:scale-95"
             >
               <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
               <ArrowRight className="w-3.5 h-3.5" />

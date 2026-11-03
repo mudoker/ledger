@@ -12,7 +12,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FolderPlus, Tag, AlignLeft, ArrowRight, Coins, Sparkles, Palmtree, UtensilsCrossed, Home, Plane, PartyPopper } from "lucide-react";
+import {
+  FolderPlus,
+  Tag,
+  AlignLeft,
+  ArrowRight,
+  Coins,
+  Sparkles,
+  Palmtree,
+  UtensilsCrossed,
+  Home,
+  Plane,
+  PartyPopper,
+  Globe,
+  Lock
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useAppSettingsStore } from "@/store/useAppSettingsStore";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
@@ -25,11 +40,11 @@ interface CreateGroupModalProps {
 }
 
 const TEMPLATE_SUGGESTIONS = [
-  { name: 'Summer Vacation', icon: Palmtree },
+  { name: 'Vacation', icon: Palmtree },
   { name: 'Food & Dinners', icon: UtensilsCrossed },
-  { name: 'Roommates / Rent', icon: Home },
-  { name: 'Roadtrip 2026', icon: Plane },
-  { name: 'Party Expenses', icon: PartyPopper },
+  { name: 'Roommates', icon: Home },
+  { name: 'Roadtrip', icon: Plane },
+  { name: 'Party', icon: PartyPopper },
 ];
 
 export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupModalProps) {
@@ -37,6 +52,7 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [currency, setCurrency] = useState(defaultCurrency);
+  const [visibility, setVisibility] = useState<'public' | 'restricted'>('public');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createGroup } = useGroupStore();
@@ -50,9 +66,10 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
     setError('');
     setIsSubmitting(true);
     try {
-      const group = await createGroup(name.trim(), description.trim() || null, currency);
+      const group = await createGroup(name.trim(), description.trim() || null, currency, visibility);
       setName('');
       setDescription('');
+      setVisibility('public');
       onOpenChange(false);
       onCreated?.(group);
     } catch (err: unknown) {
@@ -65,29 +82,53 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showClose={false} className="w-[calc(100vw-28px)] sm:w-full max-w-md max-h-[86vh] max-h-[86dvh] flex flex-col p-4 sm:p-6 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
-        <DialogHeader className="space-y-1.5 text-left pb-3.5 border-b border-border/60 shrink-0">
-          <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-1">
-            <FolderPlus className="w-5 h-5" />
+      <DialogContent showClose={false} className="w-[calc(100vw-24px)] sm:w-full max-w-md max-h-[88vh] max-h-[88dvh] flex flex-col p-4 sm:p-5 text-foreground shadow-2xl overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 bg-card">
+        <DialogHeader className="pb-3 border-b border-border/60 shrink-0 text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+              <FolderPlus className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="text-base font-bold tracking-tight">
+                Create Bill Group
+              </DialogTitle>
+              <DialogDescription className="text-[11px] text-muted-foreground truncate">
+                Track shared events, trips, or household expenses
+              </DialogDescription>
+            </div>
           </div>
-          <DialogTitle className="text-base sm:text-lg font-bold tracking-tight">
-            Create Bill Group
-          </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-            Aggregate multiple bills into an organized trip, vacation, or household overview.
-          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto overscroll-contain space-y-4 py-3.5 pr-0.5">
+          <div className="flex-1 overflow-y-auto overscroll-contain space-y-3.5 py-3.5 pr-0.5">
             {/* Quick Inspiration Chips */}
             <div className="space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-primary" /> Quick Suggestions
-              </span>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="group-name" className="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <Tag className="w-3 h-3 text-primary" /> Group Name <span className="text-destructive">*</span>
+                </Label>
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-primary" /> Suggestions
+                </span>
+              </div>
+              <Input
+                id="group-name"
+                placeholder="e.g. Da Nang Trip, Roommates Q4..."
+                value={name}
+                autoFocus
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (error) setError('');
+                }}
+                className="h-9 bg-background/60 border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-semibold text-xs"
+              />
+              {error && (
+                <p className="text-[11px] font-bold text-destructive pl-1">{error}</p>
+              )}
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {TEMPLATE_SUGGESTIONS.map((template) => {
                   const Icon = template.icon;
+                  const isActive = name === template.name;
                   return (
                     <button
                       key={template.name}
@@ -96,9 +137,14 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
                         setName(template.name);
                         setError('');
                       }}
-                      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-all border border-border/50 cursor-pointer active:scale-95"
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all cursor-pointer active:scale-95",
+                        isActive
+                          ? "bg-primary/15 border-primary/40 text-primary"
+                          : "bg-muted/40 hover:bg-muted border-border/50 text-muted-foreground hover:text-foreground"
+                      )}
                     >
-                      <Icon className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <Icon className="w-3 h-3 text-primary shrink-0" />
                       <span>{template.name}</span>
                     </button>
                   );
@@ -106,51 +152,77 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
               </div>
             </div>
 
-            {/* Group Name Input */}
-            <div className="space-y-1 sm:space-y-1.5">
-              <Label htmlFor="group-name" className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-primary" /> Group Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="group-name"
-                placeholder="e.g. Da Nang Trip, Roommates Q4"
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (error) setError('');
-                }}
-                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
-                autoFocus
-              />
-              {error && (
-                <p className="text-[11px] font-bold text-destructive pl-1">{error}</p>
-              )}
-            </div>
-
-            {/* Description Input */}
-            <div className="space-y-1 sm:space-y-1.5">
-              <Label htmlFor="group-desc" className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <AlignLeft className="w-3.5 h-3.5" /> Description (Optional)
+            {/* Description */}
+            <div className="space-y-1">
+              <Label htmlFor="group-desc" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <AlignLeft className="w-3 h-3" /> Description <span className="font-normal text-[10px] opacity-70">(Opt)</span>
               </Label>
               <Input
                 id="group-desc"
-                placeholder="e.g. Flight, hotel & shared restaurant expenses"
+                placeholder="e.g. Hotel & restaurants"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="h-10 bg-foreground/[0.03] border-border focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
+                className="h-10 bg-background/60 border-border/80 focus-visible:ring-1 focus-visible:ring-primary/40 rounded-xl font-medium text-xs"
               />
             </div>
 
-            {/* Currency Selector Dropdown */}
-            <div className="space-y-1 sm:space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Coins className="w-3.5 h-3.5" /> Group Currency
+            {/* Currency */}
+            <div className="space-y-1">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Coins className="w-3 h-3 text-primary" /> Group Currency
               </Label>
               <CurrencyDropdown
                 value={currency}
                 onChange={(c) => setCurrency(c)}
                 variant="default"
+                className="h-10 w-full"
               />
+            </div>
+
+            {/* Visibility Selector */}
+            <div className="space-y-1">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Globe className="w-3 h-3 text-primary" /> Group Visibility &amp; Access
+              </Label>
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setVisibility('public')}
+                  className={cn(
+                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer active:scale-98",
+                    visibility === 'public'
+                      ? "border-primary/50 bg-primary/10 text-foreground shadow-2xs"
+                      : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <Globe className={cn("w-3.5 h-3.5", visibility === 'public' ? "text-primary" : "text-muted-foreground")} />
+                    <span>Public Link</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                    Anyone with link can view group &amp; bills
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVisibility('restricted')}
+                  className={cn(
+                    "flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer active:scale-98",
+                    visibility === 'restricted'
+                      ? "border-primary/50 bg-primary/10 text-foreground shadow-2xs"
+                      : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <Lock className={cn("w-3.5 h-3.5", visibility === 'restricted' ? "text-primary" : "text-muted-foreground")} />
+                    <span>Members Only</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                    Only registered participants can access
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -159,14 +231,14 @@ export function CreateGroupModal({ open, onOpenChange, onCreated }: CreateGroupM
               type="button"
               variant="ghost"
               onClick={() => onOpenChange(false)}
-              className="text-xs font-bold rounded-xl h-9"
+              className="rounded-xl font-semibold h-9 text-xs px-3 touch-manipulation active:scale-95"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className="gap-1.5 text-xs font-bold rounded-xl h-9 px-4 bg-foreground text-background hover:bg-foreground/90 shadow-sm"
+              className="rounded-xl font-semibold gap-1.5 px-4 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm h-9 text-xs touch-manipulation active:scale-95"
             >
               <span>{isSubmitting ? 'Creating...' : 'Create Group'}</span>
               <ArrowRight className="w-3.5 h-3.5" />

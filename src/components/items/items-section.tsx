@@ -11,6 +11,8 @@ import { ItemRow } from "./item-row";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { formatCurrency } from "@/lib/format";
 import { calculateBillTotals } from "@/lib/common-data-model";
+import { CountDisplay } from "@/components/shared/count-display";
+import { MoneyDisplay } from "@/components/shared/money-display";
 
 export function ItemsSection() {
     const { items, addItem, isReadOnly } = useBillStore();
@@ -43,9 +45,9 @@ export function ItemsSection() {
                     {items.length > 0 && (
                         <div className="text-xs font-black text-primary bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20 shrink-0 flex items-center gap-1.5">
                             <Receipt className="w-3.5 h-3.5 md:hidden text-primary shrink-0" />
-                            <span className="tabular-nums">{items.length} items</span>
+                            <CountDisplay count={items.length} suffix={items.length === 1 ? ' item' : ' items'} />
                             <span className="text-primary/40">·</span>
-                            <span className="text-foreground font-black tabular-nums">{formatCurrency(totalItemsCost)}</span>
+                            <MoneyDisplay amount={totalItemsCost} className="text-foreground font-black" />
                         </div>
                     )}
                 </div>
