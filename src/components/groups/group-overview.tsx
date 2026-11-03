@@ -32,6 +32,7 @@ import {
   Shield,
   Globe,
   Lock,
+  Crown,
 } from 'lucide-react';
 import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -49,12 +50,19 @@ import { SwipeableCard } from '@/components/shared/swipeable-card';
 
 interface SwipeableBillCardProps {
   bill: BillGroupDetail['bills'][number];
+  groupCurrency?: string;
   isOwner: boolean;
   onSelect: () => void;
   onDelete: () => void;
 }
 
-function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillCardProps) {
+function SwipeableBillCard({ bill, groupCurrency, isOwner, onSelect, onDelete }: SwipeableBillCardProps) {
+  const hostName =
+    (bill.host_id && bill.people?.find((p) => p.id === bill.host_id)?.name) ||
+    bill.host_name ||
+    bill.people?.[0]?.name ||
+    null;
+
   return (
     <SwipeableCard
       canDelete={isOwner}
@@ -76,8 +84,8 @@ function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillC
             <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
           </div>
 
-          {/* Subtitle Line (Timestamp, Local badge moved here, Location, Items) */}
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
+          {/* Subtitle Line (Timestamp, Local badge, Host/Payer badge, Location) */}
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 min-w-0 flex-nowrap">
             <div className="flex items-center gap-1 shrink-0">
               <Clock className="w-2.5 h-2.5 shrink-0" />
               <span className="whitespace-nowrap">
@@ -90,15 +98,21 @@ function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillC
                 <span>Local</span>
               </span>
             )}
+            {hostName && (
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0 inline-flex items-center gap-1 max-w-[120px] sm:max-w-[160px]"
+                title={`Host / Payer: ${hostName}`}
+              >
+                <Crown className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                <span className="truncate">{hostName}</span>
+              </span>
+            )}
             {bill.location && (
-              <div className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-[150px] shrink-0">
+              <div className="flex items-center gap-1 truncate max-w-[90px] sm:max-w-[140px] shrink-0">
                 <MapPin className="w-2.5 h-2.5 shrink-0" />
                 <span className="truncate">{bill.location}</span>
               </div>
             )}
-            <span className="text-primary font-bold shrink-0 whitespace-nowrap">
-              • {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
-            </span>
           </div>
         </div>
       </div>
@@ -106,7 +120,7 @@ function SwipeableBillCard({ bill, isOwner, onSelect, onDelete }: SwipeableBillC
       {/* Amount & Chevron */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-3">
         <span className="font-black text-sm sm:text-base text-foreground tabular-nums tracking-tight">
-          {formatCurrency(bill.totalAmount)}
+          {formatCurrency(bill.totalAmount, bill.currency || groupCurrency)}
         </span>
         <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
       </div>
@@ -359,7 +373,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               <span>Expenses</span>
             </div>
             <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
-              {formatCurrency(group.total_amount)}
+              {formatCurrency(group.total_amount, group.currency)}
             </div>
             <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">across all bills</div>
           </div>
@@ -586,6 +600,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
                   <SwipeableBillCard
                     key={bill.id}
                     bill={bill}
+                    groupCurrency={group.currency}
                     isOwner={group.is_owner}
                     onSelect={() => onSelectBill(bill.id)}
                     onDelete={() => setDeleteTarget({ type: 'bill', id: bill.id, name: bill.name })}
@@ -603,6 +618,10 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         group={group}
         onSuccess={() => {
           fetchGroup(group.id);
+          useGroupStore.getState().fetchGroups().catch(() => {});
+          import('@/store/useBillStore').then(({ useBillStore }) => {
+            useBillStore.getState().fetchHistory().catch(() => {});
+          });
         }}
       />
 
