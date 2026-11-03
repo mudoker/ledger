@@ -1,7 +1,7 @@
 export const APP_METADATA = {
   name: 'Ledger',
-  version: '1.0.13',
-  build: '113',
+  version: '1.0.14',
+  build: '114',
   packageId: 'com.mudoker.ledger',
   releaseDate: '2026-11-04',
   developer: 'Mudoker Studio',
