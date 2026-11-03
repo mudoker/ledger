@@ -34,20 +34,22 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     ): GroupBillOverview => {
       const attendants = participants.filter(p => attendantIds.includes(p.id));
       const isMultiPayer = Array.isArray(payerId);
-      const billPeople = attendants.map(p => {
-        let paid = 0;
-        if (isMultiPayer) {
-          if ((payerId as string[]).includes(p.id)) {
-            paid = amount / (payerId as string[]).length;
-          }
-        } else if (p.id === payerId) {
-          paid = amount;
-        }
-        return {
-          ...p,
-          paidAmount: paid,
-        };
-      });
+      const peopleMap = new Map<string, any>();
+      attendants.forEach(p => peopleMap.set(p.id, { ...p, paidAmount: 0 }));
+      if (isMultiPayer) {
+        payerId.forEach(pid => {
+          const person = participants.find(p => p.id === pid)!;
+          const existing = peopleMap.get(pid) || { ...person, paidAmount: 0 };
+          existing.paidAmount = amount / payerId.length;
+          peopleMap.set(pid, existing);
+        });
+      } else {
+        const person = participants.find(p => p.id === payerId)!;
+        const existing = peopleMap.get(payerId) || { ...person, paidAmount: 0 };
+        existing.paidAmount = amount;
+        peopleMap.set(payerId, existing);
+      }
+      const billPeople = Array.from(peopleMap.values());
 
       const singleHostId = isMultiPayer ? null : (payerId as string);
 
@@ -83,6 +85,7 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     // Bills exact match from user spreadsheet
     const tripBills: GroupBillOverview[] = [
       createTripBill('b1', 'Tiền nhà', 7428189, 'p_dat', all6),
+      createTripBill('b_tien_coc', 'Tiền cọc', 1500000, ['p_qui', 'p_lan', 'p_luong'], ['p_dat']),
       createTripBill('b2', 'Tiền xe đi', 3250000, 'p_qui', fiveNoAlice),
       createTripBill('b3', 'Tiền xe về', 2570000, 'p_qui', fourGrab), // 4 attendants per latest spreadsheet: Dat, Qui, Lan, Luong
       createTripBill('b4', 'Ăn sáng (D1)', 280000, 'p_dat', fiveNoAlice),
@@ -94,7 +97,7 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
       createTripBill('b10', 'Ăn tối', 1524700, 'p_dat', fiveNoAlice),
       createTripBill('b11', 'Đậu nành', 130000, 'p_dat', fiveNoAlice),
       createTripBill('b11_an_sang_d2', 'Ăn sáng (D2)', 360000, 'p_dat', all6),
-      createTripBill('b12', 'Xăng (D2)', 150000, 'p_dat', all6), // 1 payer for gas per instruction
+      createTripBill('b12', 'Xăng (D2)', 150000, ['p_dat', 'p_qui', 'p_quoc'], all6), // 3 co-payers (50k each)
       createTripBill('b13', 'Farm', 480000, 'p_dat', all6),
       createTripBill('b14', 'Langfarm', 1289520, 'p_dat', all6),
       createTripBill('b15', 'Cafe', 316000, 'p_quoc', all6), // Quốc pays cafe
@@ -114,8 +117,8 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     });
 
     expect(settlement.isBalanced).toBe(true);
-    expect(settlement.totalExpenses).toBe(23179409);
-    expect(settlement.totalBills).toBe(23);
+    expect(settlement.totalExpenses).toBe(24679409);
+    expect(settlement.totalBills).toBe(24);
 
     const datSummary = settlement.participants.find(p => p.name === 'Đạt');
     const quiSummary = settlement.participants.find(p => p.name === 'Quí');
@@ -133,27 +136,19 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     expect(luongSummary).toBeDefined();
     expect(aliceSummary).toBeDefined();
 
-    // 1. Đạt paid major bills (~15.9M VND)
-    expect(datSummary!.totalPaid).toBeGreaterThan(15000000);
-    expect(datSummary!.status).toBe('receive');
-    expect(datSummary!.netBalance).toBeGreaterThan(11000000);
-
-    // 2. Quí paid travel and grab bills (~6.82M VND)
-    // 3,250,000 + 2,570,000 + 954,000 + 49,000 = 6,823,000
-    expect(quiSummary!.totalPaid).toBe(6823000);
-    expect(quiSummary!.status).toBe('receive');
-    expect(quiSummary!.netBalance).toBeGreaterThan(2000000);
-
-    // 3. Quốc paid Cafe = 316,000 VND
-    expect(quocSummary!.totalPaid).toBe(316000);
-    expect(quocSummary!.status).toBe('pay');
-    expect(quocSummary!.netBalance).toBeLessThan(-3000000);
-
-    // 4. Lan and Alice paid 0
-    expect(lanSummary!.totalPaid).toBe(0);
-    expect(lanSummary!.status).toBe('pay');
-    expect(aliceSummary!.totalPaid).toBe(0);
-    expect(aliceSummary!.status).toBe('pay');
+    // Exact match with spreadsheet total row:
+    // Đạt: +9,948,601 đ
+    // Qui: +3,021,192 đ
+    // Lan: -3,851,808 đ
+    // Lương: -3,711,808 đ
+    // Quốc: -3,321,058 đ
+    // Alice: -2,085,118 đ
+    expect(Math.round(datSummary!.netBalance)).toBe(9948601);
+    expect(Math.round(quiSummary!.netBalance)).toBe(3021192);
+    expect(Math.round(lanSummary!.netBalance)).toBe(-3851808);
+    expect(Math.round(luongSummary!.netBalance)).toBe(-3711808);
+    expect(Math.round(quocSummary!.netBalance)).toBe(-3321058);
+    expect(Math.round(aliceSummary!.netBalance)).toBe(-2085118);
 
     // 5. Debtors and intermediary creditors settle towards primary creditors (Đạt, Quí)
     expect(settlement.transfers.length).toBeGreaterThan(0);
