@@ -381,8 +381,10 @@ export function GroupSummary({ group, onSelectBill: _onSelectBill }: GroupSummar
                   <img src={qr.qrUrl} alt={qr.payerName} className="w-full h-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1 min-w-0">
-                    <Crown className="w-3 h-3 text-amber-500 shrink-0" />
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-3.5 h-3.5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[8px] font-bold shrink-0">
+                      {qr.payerName[0]?.toUpperCase() || '?'}
+                    </div>
                     <span className="text-xs font-bold text-foreground truncate">{qr.payerName}</span>
                   </div>
                   {qr.note && (
@@ -405,7 +407,7 @@ export function GroupSummary({ group, onSelectBill: _onSelectBill }: GroupSummar
             <div className="w-full flex items-center justify-between pb-2 mb-2 border-b border-border/40">
               <div className="flex items-center gap-2 text-left min-w-0">
                 <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <Crown className="w-3.5 h-3.5 text-amber-500" />
+                  <QrCode className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold text-foreground truncate">{previewQr.payerName}</h3>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +39,7 @@ import { QrUploadButton } from "@/components/shared/qr-upload-button";
 import { ParticipantCombobox } from "@/components/shared/participant-combobox";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useAppSettingsStore } from "@/store/useAppSettingsStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import type { BillGroupDetail, GroupPaymentQr } from "@/../db/types";
 
 interface GroupConfigurationProps {
@@ -185,6 +186,58 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
 
   const paymentQrs: GroupPaymentQr[] = group.payment_qrs || [];
   const participants = group.participants || [];
+
+  const authUser = useAuthStore((s) => s.user);
+
+  // Identify "Me" participant if matching authUser or group owner
+  const myParticipant = useMemo(() => {
+    if (authUser) {
+      const match = participants.find(
+        (p) =>
+          (p.userId && p.userId === authUser.id) ||
+          (p.email && authUser.email && p.email.toLowerCase() === authUser.email.toLowerCase()) ||
+          p.name.trim().toLowerCase() === authUser.name?.trim().toLowerCase()
+      );
+      if (match) return match;
+    }
+    if (group.is_owner && group.owner_name) {
+      const match = participants.find(
+        (p) => p.name.trim().toLowerCase() === group.owner_name?.trim().toLowerCase()
+      );
+      if (match) return match;
+    }
+    return null;
+  }, [authUser, participants, group.is_owner, group.owner_name]);
+
+  // Compute top quick candidates (strictly limited to max 3-4 suggestions total)
+  const quickCandidates = useMemo<Array<{ id: string; name: string; isMe: boolean }>>(() => {
+    const list: Array<{ id: string; name: string; isMe: boolean }> = [];
+    const addedNames = new Set<string>();
+
+    // 1. "Me" candidate first
+    if (myParticipant) {
+      list.push({ id: myParticipant.id, name: myParticipant.name, isMe: true });
+      addedNames.add(myParticipant.name.trim().toLowerCase());
+    } else if (authUser?.name) {
+      list.push({ id: 'me', name: authUser.name, isMe: true });
+      addedNames.add(authUser.name.trim().toLowerCase());
+    } else if (group.is_owner && group.owner_name) {
+      list.push({ id: 'me', name: group.owner_name, isMe: true });
+      addedNames.add(group.owner_name.trim().toLowerCase());
+    }
+
+    // 2. Add top other participants (limit to max 3-4 total so it never clutters)
+    for (const p of participants) {
+      if (list.length >= 4) break;
+      const lower = p.name.trim().toLowerCase();
+      if (!addedNames.has(lower)) {
+        list.push({ id: p.id, name: p.name, isMe: false });
+        addedNames.add(lower);
+      }
+    }
+
+    return list;
+  }, [myParticipant, authUser, group.is_owner, group.owner_name, participants]);
 
   return (
     <>
@@ -414,7 +467,15 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                       {/* QR Payer Info */}
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          {group.owner_name && qr.payerName.trim().toLowerCase() === group.owner_name.trim().toLowerCase() ? (
+                            <span title="Group Owner">
+                              <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            </span>
+                          ) : (
+                            <div className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[9px] font-bold shrink-0">
+                              {qr.payerName[0]?.toUpperCase() || '?'}
+                            </div>
+                          )}
                           <h4 className="font-bold text-xs text-foreground truncate" title={qr.payerName}>
                             {qr.payerName}
                           </h4>
@@ -530,11 +591,48 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                 )}
               </div>
 
-              {/* Payer Selection via Combobox */}
+              {/* Payer Selection via Combobox & Quick Suggestions */}
               <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <User className="w-3 h-3 text-primary" /> Who is this QR for? <span className="text-destructive">*</span>
                 </Label>
+
+                {/* Quick select chips (strictly limited to max 3-4, clean pills, no repetitive crowns) */}
+                {quickCandidates.length > 0 && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                    {quickCandidates.map((c) => {
+                      const isSelected = newPayerName.trim().toLowerCase() === c.name.trim().toLowerCase();
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setNewPayerName(c.name);
+                            setNewPayerId(c.id === 'me' ? null : c.id);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap select-none",
+                            isSelected
+                              ? "bg-primary text-primary-foreground shadow-2xs font-bold"
+                              : "bg-muted/50 hover:bg-muted/80 border border-border/70 text-foreground"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+                              isSelected
+                                ? "bg-primary-foreground/20 text-primary-foreground"
+                                : "bg-primary/10 text-primary"
+                            )}
+                          >
+                            {c.isMe ? 'Me' : (c.name[0]?.toUpperCase() || '?')}
+                          </span>
+                          <span>{c.isMe ? `Me (${c.name})` : c.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <ParticipantCombobox
                   participants={participants}
@@ -544,7 +642,7 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                     setNewPayerName(name);
                     setNewPayerId(id);
                   }}
-                  placeholder="Select participant or type custom name..."
+                  placeholder="Or search / select from all group members..."
                 />
               </div>
 
@@ -597,7 +695,7 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
             <div className="w-full flex items-center justify-between pb-2 mb-2 border-b border-border/40">
               <div className="flex items-center gap-2 text-left min-w-0">
                 <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <Crown className="w-3.5 h-3.5 text-amber-500" />
+                  <QrCode className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold text-foreground truncate">{previewQr.payerName}</h3>

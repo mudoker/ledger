@@ -93,9 +93,9 @@ export function ParticipantCombobox({
           )}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
-            <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
-              {selectedParticipant ? (
-                <Crown className="w-3 h-3 text-amber-500" />
+            <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary text-[10px] font-bold">
+              {value ? (
+                value.trim()[0]?.toUpperCase()
               ) : (
                 <User className="w-3 h-3 text-muted-foreground" />
               )}
