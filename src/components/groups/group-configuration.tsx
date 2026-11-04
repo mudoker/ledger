@@ -36,6 +36,7 @@ import { TransferOwnershipModal } from "@/components/shared/transfer-ownership-m
 import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
 import { SettingsPageLayout } from "@/components/shared/settings-page-layout";
 import { QrUploadButton } from "@/components/shared/qr-upload-button";
+import { ParticipantCombobox } from "@/components/shared/participant-combobox";
 import { useGroupStore } from "@/store/useGroupStore";
 import { useAppSettingsStore } from "@/store/useAppSettingsStore";
 import type { BillGroupDetail, GroupPaymentQr } from "@/../db/types";
@@ -529,53 +530,22 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                 )}
               </div>
 
-              {/* Payer Selection */}
+              {/* Payer Selection via Combobox */}
               <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <User className="w-3 h-3 text-primary" /> Who is this QR for? <span className="text-destructive">*</span>
                 </Label>
 
-                {participants.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground">Select from group participants:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {participants.map((p) => {
-                        const isSelected = newPayerName === p.name;
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => {
-                              setNewPayerName(p.name);
-                              setNewPayerId(p.id);
-                            }}
-                            className={cn(
-                              "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
-                              isSelected
-                                ? "bg-primary text-primary-foreground shadow-2xs"
-                                : "bg-muted/50 hover:bg-muted border border-border/70 text-foreground"
-                            )}
-                          >
-                            <Crown className="w-3 h-3 text-amber-500" />
-                            <span>{p.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-1">
-                  <Input
-                    placeholder="Or type custom payer name..."
-                    value={newPayerName}
-                    onChange={(e) => {
-                      setNewPayerName(e.target.value);
-                      setNewPayerId(null);
-                    }}
-                    className="h-9 text-xs rounded-xl bg-background/80"
-                  />
-                </div>
+                <ParticipantCombobox
+                  participants={participants}
+                  value={newPayerName}
+                  selectedId={newPayerId}
+                  onChange={(name, id) => {
+                    setNewPayerName(name);
+                    setNewPayerId(id);
+                  }}
+                  placeholder="Select participant or type custom name..."
+                />
               </div>
 
               {/* Bank Note */}
@@ -596,13 +566,13 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
               )}
             </div>
 
-            <DialogFooter className="pt-3 border-t border-border/60 shrink-0 flex items-center justify-end gap-2">
+            <DialogFooter className="pt-3 border-t border-border/60 shrink-0 flex flex-row items-center justify-end gap-2 w-full">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setIsUploadQrModalOpen(false)}
-                className="h-9 rounded-xl text-xs font-bold"
+                className="h-9 px-4 rounded-xl text-xs font-bold flex-1 sm:flex-initial"
               >
                 Cancel
               </Button>
@@ -610,7 +580,7 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                 type="submit"
                 size="sm"
                 disabled={!newQrImage || !newPayerName.trim() || isUploadingQr}
-                className="h-9 px-4 rounded-xl text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+                className="h-9 px-4 rounded-xl text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 flex-1 sm:flex-initial shadow-sm"
               >
                 <CloudUpload className="w-3.5 h-3.5" />
                 <span>{isUploadingQr ? 'Saving QR...' : 'Save & Publish QR'}</span>
