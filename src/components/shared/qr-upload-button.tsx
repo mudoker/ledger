@@ -1,26 +1,82 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { CloudUpload } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
 
 /**
- * Reads any image file into a Base64 data URL string.
+ * Reads and optimizes an image file into a Base64 data URL string.
+ * Automatically scales down large photos (e.g. from mobile cameras)
+ * to max 1024x1024 to keep payload lightweight (<150KB) and prevent HTTP 413 errors.
  */
-export function readImageAsDataUrl(file: File): Promise<string> {
+export function readImageAsDataUrl(file: File, maxDimension = 1024, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file) {
       reject(new Error('No file provided'));
       return;
     }
+
+    // Only process images
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Selected file is not an image'));
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Failed to read file as data URL'));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('Failed to read image file'));
+        return;
       }
+
+      // If we are in non-browser environment (e.g. SSR/test), resolve data URL directly
+      if (typeof window === 'undefined' || typeof Image === 'undefined') {
+        resolve(result);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(result);
+            return;
+          }
+
+          // Use white background in case of transparent PNG/WebP converted to JPEG
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Export as JPEG with good compression
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedDataUrl);
+        } catch {
+          // Fallback to original data URL if canvas fails
+          resolve(result);
+        }
+      };
+      img.onerror = () => {
+        // Fallback to original data URL
+        resolve(result);
+      };
+      img.src = result;
     };
     reader.onerror = () => {
       reject(reader.error || new Error('FileReader error'));
@@ -51,6 +107,7 @@ export function QrUploadButton({
   accept = 'image/*',
 }: QrUploadButtonProps) {
   const [isReading, setIsReading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,13 +122,31 @@ export function QrUploadButton({
     } finally {
       setIsReading(false);
       // Reset input value so re-uploading the same file still fires onChange
-      e.target.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled || isReading) return;
+    fileInputRef.current?.click();
   };
 
   if (variant === 'dropzone') {
     return (
-      <label
+      <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick(e as any);
+          }
+        }}
         className={cn(
           "flex flex-col items-center justify-center py-6 px-4 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 hover:bg-primary/5 cursor-pointer transition-colors text-center group",
           disabled && "opacity-60 cursor-not-allowed pointer-events-none",
@@ -86,24 +161,28 @@ export function QrUploadButton({
           )}
         </div>
         <span className="text-xs font-bold text-foreground">
-          {isReading ? 'Reading image...' : label}
+          {isReading ? 'Optimizing image...' : label}
         </span>
         <span className="text-[10px] text-muted-foreground mt-0.5">
-          PNG, JPG, WebP screenshot or image
+          PNG, JPG, WebP screenshot or photo
         </span>
-        <Input
+        <input
+          ref={fileInputRef}
           type="file"
           accept={accept}
           disabled={disabled || isReading}
-          className="sr-only"
+          className="hidden"
           onChange={handleFileChange}
         />
-      </label>
+      </div>
     );
   }
 
   return (
-    <label
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={disabled || isReading}
       className={cn(
         "relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 border border-border/80 text-xs font-semibold text-foreground cursor-pointer transition-colors active:scale-95",
         disabled && "opacity-60 cursor-not-allowed pointer-events-none",
@@ -115,14 +194,15 @@ export function QrUploadButton({
       ) : (
         <CloudUpload className="w-3.5 h-3.5 text-primary" />
       )}
-      <span>{isReading ? 'Loading...' : label}</span>
-      <Input
+      <span>{isReading ? 'Optimizing...' : label}</span>
+      <input
+        ref={fileInputRef}
         type="file"
         accept={accept}
         disabled={disabled || isReading}
-        className="sr-only"
+        className="hidden"
         onChange={handleFileChange}
       />
-    </label>
+    </button>
   );
 }

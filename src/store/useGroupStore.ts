@@ -143,8 +143,19 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       ? new Date(lg.updatedAt).getTime() > new Date(serverGroup.updated_at).getTime()
       : Boolean(lg && !serverGroup);
 
+    // Merge payment QRs across server, local DB, and in-memory currentGroup
+    const serverPaymentQrs: GroupPaymentQr[] = (serverGroup as any)?.payment_qrs || [];
+    const localPaymentQrs: GroupPaymentQr[] = (lg as any)?.payment_qrs || [];
+    const inMemoryPaymentQrs: GroupPaymentQr[] = (get().currentGroup?.id === id) ? (get().currentGroup?.payment_qrs || []) : [];
+
+    const mergedQrsMap = new Map<string, GroupPaymentQr>();
+    serverPaymentQrs.forEach(q => mergedQrsMap.set(q.id, q));
+    localPaymentQrs.forEach(q => mergedQrsMap.set(q.id, q));
+    inMemoryPaymentQrs.forEach(q => mergedQrsMap.set(q.id, q));
+    const unifiedPaymentQrs = Array.from(mergedQrsMap.values());
+
     const baseGroup = (serverGroup && !isLocalNewer)
-      ? { ...serverGroup, participants }
+      ? { ...serverGroup, participants, payment_qrs: unifiedPaymentQrs }
       : (lg ? {
           id: lg.id,
           name: lg.name,
@@ -159,7 +170,8 @@ export const useGroupStore = create<GroupState>((set, get) => ({
           updated_at: lg.updatedAt,
           bills: (serverGroup?.bills || []).filter(b => !pendingDeleteIds.has(b.id)),
           participants,
-        } : (serverGroup ? { ...serverGroup, participants } : null));
+          payment_qrs: unifiedPaymentQrs,
+        } : (serverGroup ? { ...serverGroup, participants, payment_qrs: unifiedPaymentQrs } : null));
 
     if (!baseGroup) {
       set({ error: 'Group not found', isLoading: false, currentGroup: null });
@@ -199,6 +211,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       total_amount: totalAmount,
       total_items: totalItems,
       participants: unifiedParticipants,
+      payment_qrs: unifiedPaymentQrs,
     };
 
     // Persist aggregated group snapshot locally for offline resilience (except in cloud-only mode)
@@ -220,6 +233,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         visibility: finalDetail.visibility || 'public',
         ownerId: finalDetail.owner_id || null,
         participants: localParticipantsSnapshot,
+        payment_qrs: unifiedPaymentQrs,
         totalAmount: finalDetail.total_amount,
         totalBills: finalDetail.total_bills,
         totalItems: finalDetail.total_items,
@@ -240,6 +254,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         total_bills: mergedBills.length,
         total_items: totalItems,
         participants: unifiedParticipants,
+        payment_qrs: unifiedPaymentQrs,
       } : g);
       return {
         currentGroup: finalDetail,
@@ -614,8 +629,14 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   },
 
   addPaymentQr: async (groupId: string, qrData: { payerName: string; payerId?: string | null; qrUrl: string; note?: string | null }) => {
-    const cur = get().currentGroup?.id === groupId ? get().currentGroup : null;
-    const existingQrs: GroupPaymentQr[] = cur?.payment_qrs || [];
+    const cur = get().currentGroup?.id === groupId ? get().currentGroup : get().groups.find(g => g.id === groupId);
+    let existingQrs: GroupPaymentQr[] = cur?.payment_qrs || [];
+    if (existingQrs.length === 0) {
+      const localG = await getLocalDb().getGroup(groupId).catch(() => null);
+      if (localG?.payment_qrs && localG.payment_qrs.length > 0) {
+        existingQrs = localG.payment_qrs;
+      }
+    }
     const newQr: GroupPaymentQr = {
       id: crypto.randomUUID(),
       payerName: qrData.payerName.trim(),
@@ -634,12 +655,29 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       groups: state.groups.map(g => g.id === groupId ? { ...g, payment_qrs: nextQrs } : g),
     }));
 
+    // Persist to localDb immediately for instant resilience
+    const storageMode = useAppSettingsStore.getState().storageMode;
+    if (storageMode !== 'cloud') {
+      const localDb = getLocalDb();
+      const lg = await localDb.getGroup(groupId).catch(() => null);
+      if (lg) {
+        lg.payment_qrs = nextQrs;
+        await localDb.saveGroup(lg).catch(() => {});
+      }
+    }
+
     await get().updateGroup(groupId, { payment_qrs: nextQrs });
   },
 
   removePaymentQr: async (groupId: string, qrId: string) => {
-    const cur = get().currentGroup?.id === groupId ? get().currentGroup : null;
-    const existingQrs: GroupPaymentQr[] = cur?.payment_qrs || [];
+    const cur = get().currentGroup?.id === groupId ? get().currentGroup : get().groups.find(g => g.id === groupId);
+    let existingQrs: GroupPaymentQr[] = cur?.payment_qrs || [];
+    if (existingQrs.length === 0) {
+      const localG = await getLocalDb().getGroup(groupId).catch(() => null);
+      if (localG?.payment_qrs && localG.payment_qrs.length > 0) {
+        existingQrs = localG.payment_qrs;
+      }
+    }
     const nextQrs = existingQrs.filter(q => q.id !== qrId);
 
     set((state) => ({
@@ -649,6 +687,17 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       } : state.currentGroup,
       groups: state.groups.map(g => g.id === groupId ? { ...g, payment_qrs: nextQrs } : g),
     }));
+
+    // Persist to localDb immediately for instant resilience
+    const storageMode = useAppSettingsStore.getState().storageMode;
+    if (storageMode !== 'cloud') {
+      const localDb = getLocalDb();
+      const lg = await localDb.getGroup(groupId).catch(() => null);
+      if (lg) {
+        lg.payment_qrs = nextQrs;
+        await localDb.saveGroup(lg).catch(() => {});
+      }
+    }
 
     await get().updateGroup(groupId, { payment_qrs: nextQrs });
   },
