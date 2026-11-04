@@ -381,30 +381,32 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
           )}
         </div>
 
-        {/* Aggregated Overview Cards with colored active borders */}
-        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mt-3.5 sm:mt-5">
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border border-primary ring-1 ring-primary/40 shadow-xs relative overflow-hidden">
-            <div className="flex items-center gap-1.5 text-primary text-[10px] font-bold uppercase tracking-wider mb-1">
-              <Coins className="w-3.5 h-3.5" />
-              <span>Expenses</span>
+        {/* Aggregated Overview Cards with colored active borders (only shown in bills and summary tabs) */}
+        {(activeMainTab === 'bills' || activeMainTab === 'summary') && (
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mt-3.5 sm:mt-5">
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-card to-card border border-primary ring-1 ring-primary/40 shadow-xs relative overflow-hidden">
+              <div className="flex items-center gap-1.5 text-primary text-[10px] font-bold uppercase tracking-wider mb-1">
+                <Coins className="w-3.5 h-3.5" />
+                <span>Expenses</span>
+              </div>
+              <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
+                <MoneyDisplay amount={group.total_amount} currency={group.currency} />
+              </div>
+              <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">across all bills</div>
             </div>
-            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
-              <MoneyDisplay amount={group.total_amount} currency={group.currency} />
-            </div>
-            <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">across all bills</div>
-          </div>
 
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-card to-card border border-blue-500 ring-1 ring-blue-500/40 shadow-xs relative overflow-hidden">
-            <div className="flex items-center gap-1.5 text-blue-500 text-[10px] font-bold uppercase tracking-wider mb-1">
-              <Layers className="w-3.5 h-3.5" />
-              <span>Bills</span>
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 via-card to-card border border-blue-500 ring-1 ring-blue-500/40 shadow-xs relative overflow-hidden">
+              <div className="flex items-center gap-1.5 text-blue-500 text-[10px] font-bold uppercase tracking-wider mb-1">
+                <Layers className="w-3.5 h-3.5" />
+                <span>Bills</span>
+              </div>
+              <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
+                <CountDisplay count={group.total_bills} />
+              </div>
+              <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">linked invoices</div>
             </div>
-            <div className="text-base sm:text-2xl font-black text-foreground tabular-nums tracking-tight whitespace-nowrap truncate">
-              <CountDisplay count={group.total_bills} />
-            </div>
-            <div className="text-[9px] text-muted-foreground mt-0.5 whitespace-nowrap">linked invoices</div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Main Content Area - pb-36 ensures ample clearance above floating bottom nav */}
