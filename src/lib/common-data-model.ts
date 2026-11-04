@@ -298,6 +298,10 @@ export function mergeBillsForGroup(
         }
       }
       if (!duplicateServerBill) {
+        if (storageMode === 'cloud' && safeServerBills.length > 0 && lb.sharingStatus !== 'uploading') {
+          // In Cloud mode, do not resurrect local-only orphaned bills into a synced server group
+          continue;
+        }
         billMap.set(lb.id, {
           ...normalized,
           isLocal: isAutoSyncMode && lb.sharingStatus !== 'revocation_pending' ? false : normalized.isLocal,
@@ -469,6 +473,9 @@ export function aggregateGroupSummaries(
       if (billMap.has('__server_aggregate__')) {
         // If we only have server aggregate, fold in local-only bills
         if (!isKnownServerBill) {
+          if (storageMode === 'cloud' && lb.sharingStatus !== 'uploading') {
+            continue;
+          }
           billMap.set(lb.id, {
             totalAmount: totals.totalAmount,
             itemCount: totals.itemCount,
@@ -480,6 +487,9 @@ export function aggregateGroupSummaries(
         const existing = billMap.get(lb.id);
 
         if (!existing) {
+          if (storageMode === 'cloud' && serverBillIdSet.size > 0 && lb.sharingStatus !== 'uploading') {
+            continue;
+          }
           // Local-only bill: add to group
           billMap.set(lb.id, {
             totalAmount: totals.totalAmount,

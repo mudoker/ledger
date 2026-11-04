@@ -32,17 +32,14 @@ async function alignDalatMongMo() {
     { id: '64593efa-ebda-496b-95d1-11e235a19aeb', name: 'Luong', paidAmount: 0, sponsorAmount: 0, userId: null, email: null },
     { id: '03bd0a9a-a228-471e-be07-14e65315cc3d', name: 'Quốc Đoàn', paidAmount: 0, sponsorAmount: 0, userId: ownerId, email: 'huuquoc7603@gmail.com' },
     { id: '0203dd1c-9ab9-4c56-ada2-1a2b906d3db2', name: 'Chau', paidAmount: 0, sponsorAmount: 0, userId: null, email: null }, // Alice is Chau
-    { id: '3901cc7a-2ffa-4435-82db-4d4ccbd5baa4', name: 'Chan Bui', paidAmount: 0, sponsorAmount: 0, userId: null, email: null },
   ];
 
   const createBillPayload = (
     name: string,
     amount: number,
-    payerNames: string | string[],
-    attendantNames: string[],
-    sponsor?: { name: string; amount: number }
+    payerName: string,
+    attendantNames: string[]
   ) => {
-    const isMultiPayer = Array.isArray(payerNames);
     const billPeople: any[] = [];
     const personIdByName = new Map<string, string>();
 
@@ -60,70 +57,25 @@ async function alignDalatMongMo() {
       });
     }
 
-    // Assign paid amounts
-    if (isMultiPayer) {
-      const payers = payerNames as string[];
-      const perPayer = amount / payers.length;
-      for (const pName of payers) {
-        let pid = personIdByName.get(pName);
-        if (!pid) {
-          pid = crypto.randomUUID();
-          personIdByName.set(pName, pid);
-          const isQuoc = pName === 'Quốc Đoàn';
-          billPeople.push({
-            id: pid,
-            name: pName,
-            paidAmount: perPayer,
-            sponsorAmount: 0,
-            userId: isQuoc ? ownerId : null,
-            email: isQuoc ? 'huuquoc7603@gmail.com' : null,
-          });
-        } else {
-          const bp = billPeople.find(p => p.id === pid);
-          if (bp) bp.paidAmount = perPayer;
-        }
-      }
+    let payerId = personIdByName.get(payerName);
+    if (!payerId) {
+      payerId = crypto.randomUUID();
+      personIdByName.set(payerName, payerId);
+      const isQuoc = payerName === 'Quốc Đoàn';
+      billPeople.push({
+        id: payerId,
+        name: payerName,
+        paidAmount: amount,
+        sponsorAmount: 0,
+        userId: isQuoc ? ownerId : null,
+        email: isQuoc ? 'huuquoc7603@gmail.com' : null,
+      });
     } else {
-      const pName = payerNames as string;
-      let pid = personIdByName.get(pName);
-      if (!pid) {
-        pid = crypto.randomUUID();
-        personIdByName.set(pName, pid);
-        const isQuoc = pName === 'Quốc Đoàn';
-        billPeople.push({
-          id: pid,
-          name: pName,
-          paidAmount: amount,
-          sponsorAmount: 0,
-          userId: isQuoc ? ownerId : null,
-          email: isQuoc ? 'huuquoc7603@gmail.com' : null,
-        });
-      } else {
-        const bp = billPeople.find(p => p.id === pid);
-        if (bp) bp.paidAmount = amount;
-      }
+      const bp = billPeople.find(p => p.id === payerId);
+      if (bp) bp.paidAmount = amount;
     }
 
-    // Add non-attending sponsor if specified
-    if (sponsor) {
-      let spId = personIdByName.get(sponsor.name);
-      if (!spId) {
-        spId = crypto.randomUUID();
-        billPeople.push({
-          id: spId,
-          name: sponsor.name,
-          paidAmount: 0,
-          sponsorAmount: sponsor.amount,
-          userId: null,
-          email: null,
-        });
-      } else {
-        const bp = billPeople.find(p => p.id === spId);
-        if (bp) bp.sponsorAmount = sponsor.amount;
-      }
-    }
-
-    const hostPersonId = isMultiPayer ? null : personIdByName.get(payerNames as string);
+    const hostPersonId = payerId;
 
     const assignments: Record<string, number> = {};
     for (const attName of attendantNames) {
@@ -153,6 +105,7 @@ async function alignDalatMongMo() {
   const fiveNoChauNames = ['Dat', 'Qui', 'Lan', 'Luong', 'Quốc Đoàn'];
   const fourGrabNames = ['Dat', 'Qui', 'Lan', 'Luong'];
 
+  // Canonical 23 bills matching spreadsheet 1:1 using persistent UUIDs to prevent phone duplication
   const billsToSync = [
     {
       id: 'dalat_tien_nha',
@@ -160,21 +113,21 @@ async function alignDalatMongMo() {
         'Tiền nhà (Homestay)',
         7428189,
         'Dat',
-        all6Names,
-        { name: 'Chan Bui', amount: 1200000 } // Chan Bui sponsor 1200k to housing!
+        all6Names
+        // 7,428,189 VND is the deducted price already as instructed!
       ),
     },
     {
-      id: 'efbd1dc5-c7a5-42d5-b802-85632ac3ea27', // existing Ve Xe ID
+      id: 'efbd1dc5-c7a5-42d5-b802-85632ac3ea27', // existing ticket bill ID
       ...createBillPayload('Tiền xe đi', 3250000, 'Qui', fiveNoChauNames),
     },
     {
       id: 'dalat_tien_xe_ve',
-      ...createBillPayload('Tiền xe về', 2570000, 'Qui', fourGrabNames), // 4 attendants: Dat, Qui, Lan, Luong (excluding Quoc and Alice)
+      ...createBillPayload('Tiền xe về', 2570000, 'Qui', fourGrabNames), // 4 attendants: Dat, Qui, Lan, Luong
     },
     {
-      id: '18b07d6a-a573-4d94-ba27-37bebfc3c170', // Banh Can Co Hoa
-      ...createBillPayload('Ăn sáng (Bánh căn cô Hoa)', 280000, 'Dat', fiveNoChauNames),
+      id: 'dalat_an_sang_d1',
+      ...createBillPayload('Ăn sáng (Ngày 1 - Bánh căn cô Hoa)', 280000, 'Dat', fiveNoChauNames),
     },
     {
       id: 'dalat_xang_d1',
@@ -189,8 +142,8 @@ async function alignDalatMongMo() {
       ...createBillPayload('Vé cáp treo', 750000, 'Dat', fiveNoChauNames),
     },
     {
-      id: 'dalat_an_trua_d1',
-      ...createBillPayload('Ăn trưa (Ngày 1)', 954000, 'Qui', fiveNoChauNames),
+      id: '18b07d6a-a573-4d94-ba27-37bebfc3c170', // Buffet Rau
+      ...createBillPayload('Ăn trưa (Ngày 1 - Buffet Rau)', 954000, 'Qui', fiveNoChauNames),
     },
     {
       id: 'dalat_nuoc_suoi',
@@ -198,7 +151,6 @@ async function alignDalatMongMo() {
     },
     {
       id: '5df6c255-b3b3-41f2-be0a-1c0141607147', // Nam Nuong 1900
-      // 700k sponsor for Chan removed as specified!
       ...createBillPayload('Ăn tối (Nem Nướng 1900)', 1524700, 'Dat', fiveNoChauNames),
     },
     {
@@ -206,20 +158,20 @@ async function alignDalatMongMo() {
       ...createBillPayload('Đậu nành', 130000, 'Dat', fiveNoChauNames),
     },
     {
-      id: 'dalat_an_sang_d2',
-      ...createBillPayload('Ăn sáng (Ngày 2 - Bánh mì)', 360000, 'Dat', all6Names),
+      id: '652b5d48-4f52-44b1-ad31-f708e6b18d8e', // Banh mi xiu mai chen' from user's phone
+      ...createBillPayload('Bánh mì xíu mại chén (Ăn sáng Ngày 2)', 360000, 'Dat', all6Names),
     },
     {
       id: 'dalat_xang_d2',
-      // Multi-payer: Dat 50k, Qui 50k, Quoc 50k
-      ...createBillPayload('Xăng (Ngày 2)', 150000, ['Dat', 'Qui', 'Quốc Đoàn'], all6Names),
+      // Single payer (Dat) for gas per instruction: "assuming 1 payer with others pay upfront instead of treating as 3 payers"
+      ...createBillPayload('Xăng (Ngày 2)', 150000, 'Dat', all6Names),
     },
     {
-      id: 'dalat_farm',
-      ...createBillPayload('Farm', 480000, 'Dat', all6Names),
+      id: 'a2495b6c-1cde-4aa7-a26e-7fbf27119fea', // Thi Tran Iyashi from user's phone
+      ...createBillPayload('Farm (Thị Trấn Iyashi)', 480000, 'Dat', all6Names),
     },
     {
-      id: '6d330166-9801-432b-9185-01f3aeb2446a', // Lamgfarm Center
+      id: '6d330166-9801-432b-9185-01f3aeb2446a', // Langfarm Center
       ...createBillPayload('Langfarm (Langfarm Center)', 1289520, 'Dat', all6Names),
     },
     {
@@ -227,8 +179,8 @@ async function alignDalatMongMo() {
       ...createBillPayload('Cafe (Cafe Linh Lam)', 316000, 'Quốc Đoàn', all6Names),
     },
     {
-      id: 'dalat_an_trua_d2',
-      ...createBillPayload('Ăn trưa (Gà nướng)', 590000, 'Dat', all6Names),
+      id: '8205b2ed-14d4-40d8-bbc2-1e10f27ab7c8', // Ga Nuong Com Lam from user's phone
+      ...createBillPayload('Ăn trưa (Gà Nướng Cơm Lam)', 590000, 'Dat', all6Names),
     },
     {
       id: 'b25be879-91a9-450a-aee3-57c58e20d4b5', // Cafe Linh
@@ -256,6 +208,25 @@ async function alignDalatMongMo() {
     },
   ];
 
+  const canonicalBillIds = new Set(billsToSync.map(b => b.id));
+
+  // 1. Clean up duplicate or orphaned bills in Neon DB
+  const pool = db.pool;
+  if (pool) {
+    console.log('🧹 Purging orphaned/duplicate bills from group...');
+    const existingBillsRes = await pool.query('SELECT id, name FROM bills WHERE group_id = $1', [groupId]);
+    for (const eb of existingBillsRes.rows) {
+      if (!canonicalBillIds.has(eb.id)) {
+        console.log(` -> Removing duplicate/orphaned bill: ${eb.name} (${eb.id})`);
+        await pool.query('DELETE FROM item_assignments WHERE item_id IN (SELECT id FROM items WHERE bill_id = $1)', [eb.id]);
+        await pool.query('DELETE FROM people WHERE bill_id = $1', [eb.id]);
+        await pool.query('DELETE FROM items WHERE bill_id = $1', [eb.id]);
+        await pool.query('DELETE FROM global_charges WHERE bill_id = $1', [eb.id]);
+        await pool.query('DELETE FROM bills WHERE id = $1', [eb.id]);
+      }
+    }
+  }
+
   console.log(`📝 Aligning Group "${groupId}" with ${groupParticipants.length} participants...`);
   await db.updateGroup(
     groupId,
@@ -268,7 +239,7 @@ async function alignDalatMongMo() {
     ownerId
   );
 
-  console.log(`💾 Saving ${billsToSync.length} bills aligned with spreadsheet...`);
+  console.log(`💾 Saving ${billsToSync.length} canonical bills aligned with spreadsheet...`);
   for (const b of billsToSync) {
     console.log(` -> Saving: ${b.name}`);
     await db.saveBill(
