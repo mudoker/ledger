@@ -8,15 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
     Plus,
     Trash2,
-    Settings,
     Percent,
     Tag,
     MapPin,
-    Check,
-    CloudUpload,
     Folder,
-    UserCheck,
-    Shield,
     Coins,
     QrCode,
     Crown,
@@ -28,11 +23,11 @@ import { cn } from "@/lib/utils";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import { getCurrencySymbol } from "@/lib/currency";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { calculateBillTotals } from "@/lib/common-data-model";
 import { InheritParticipantsDialog } from "@/components/groups/inherit-participants-dialog";
 import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
+import { SettingsPageLayout } from "@/components/shared/settings-page-layout";
+import { QrUploadButton } from "@/components/shared/qr-upload-button";
 import type { PersonData } from "@/../db/types";
 
 export interface BillConfigurationProps {
@@ -91,6 +86,9 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
     const currentBillId = useBillStore((state) => state.currentBillId);
     const isReadOnly = useBillStore((state) => state.isReadOnly);
     const deleteBill = useBillStore((state) => state.deleteBill);
+    const sharingStatus = useBillStore((state) => state.sharingStatus);
+    const visibility = useBillStore((state) => state.visibility);
+    const isLocal = !currentBillId || sharingStatus === 'local' || visibility === 'local';
     const { groups, fetchGroups } = useGroupStore();
 
     useEffect(() => {
@@ -117,7 +115,9 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                 if (gd && (gd as any).participants?.length) {
                     participants = (gd as any).participants;
                 }
-            } catch {}
+            } catch {
+                // Ignore group participant fetch error
+            }
         }
 
         const hasUnadded = participants.some((gp) => {
@@ -180,50 +180,28 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
     }, [billName, location, hostId, globalCharges, people, items, qrCode, onSave]);
 
     return (
-        <Card className="w-full h-full flex flex-col min-h-0 border-0 md:border md:border-border/50 bg-transparent md:bg-card/30 overflow-hidden shadow-none rounded-none md:rounded-2xl">
-            {/* Clean Modern Header */}
-            <CardHeader className="pb-2.5 pt-0 px-2 sm:px-4 md:px-5 md:pt-4 shrink-0 border-b border-border/40">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-foreground/[0.04] border border-foreground/[0.08] flex items-center justify-center text-foreground shrink-0 shadow-2xs">
-                            <Settings className="w-4 h-4 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                            <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground truncate">
-                                Bill Settings
-                            </h2>
-                            <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
-                                Details, currency, taxes &amp; payment QR
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/[0.04] border border-foreground/[0.08] text-[10px] font-semibold text-muted-foreground shrink-0">
-                        {saving ? (
-                            <>
-                                <div className="w-2.5 h-2.5 border-[1.5px] border-muted-foreground/30 border-t-primary rounded-full animate-spin" />
-                                <span>Saving</span>
-                            </>
-                        ) : saved ? (
-                            <>
-                                <Check className="w-3 h-3 text-primary" />
-                                <span className="text-foreground">Saved</span>
-                            </>
-                        ) : (
-                            <>
-                                <CloudUpload className="w-3 h-3 text-muted-foreground/70" />
-                                <span>Synced</span>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </CardHeader>
-
-            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
-                <ScrollArea className="flex-1 min-h-0 h-full px-2 sm:px-4 md:px-5">
-                    <div className="py-3 sm:py-4 space-y-4 max-w-3xl pb-8">
-                        {/* Section 1: General Bill Info (2x2 Grid Card) */}
-                        <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 space-y-3">
+        <>
+            <SettingsPageLayout
+                title="Bill Settings"
+                subtitle="Details, currency, taxes & payment QR"
+                saving={saving}
+                saved={saved}
+                isLocal={isLocal}
+                admin={{
+                    isReadOnly,
+                    roleBadgeText: isReadOnly ? 'Viewer' : 'Owner',
+                    adminTitle: isReadOnly ? 'Read-Only Access' : 'Bill Administration',
+                    adminDescription: isReadOnly
+                        ? 'Only the bill owner can modify settings or delete this bill.'
+                        : 'Transfer ownership to another member or permanently delete this bill.',
+                    onTransferClick: (!isReadOnly && currentBillId) ? () => setIsTransferModalOpen(true) : undefined,
+                    onDeleteClick: (!isReadOnly && currentBillId) ? () => setIsDeleteModalOpen(true) : undefined,
+                    transferButtonText: 'Transfer',
+                    deleteButtonText: 'Delete Bill',
+                }}
+            >
+            {/* Section 1: General Bill Info (2x2 Grid Card) */}
+            <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -426,7 +404,9 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                 <div className="min-w-0">
                                     <p className="text-xs font-bold text-foreground">Host Payment QR Code</p>
                                     <p className="text-[11px] text-muted-foreground truncate">
-                                        {qrCode ? "Displayed in Summary for instant scanning" : "Upload bank or e-wallet QR for participants"}
+                                        {qrCode
+                                            ? (isLocal ? "Displayed in Summary (stored locally on this device)" : "Displayed in Summary for instant scanning")
+                                            : "Upload bank or e-wallet QR for participants"}
                                     </p>
                                 </div>
                             </div>
@@ -444,80 +424,16 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                                             Remove QR
                                         </Button>
                                     ) : (
-                                        <label className="relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 border border-border/80 text-xs font-semibold text-foreground cursor-pointer transition-colors active:scale-95">
-                                            <CloudUpload className="w-3.5 h-3.5 text-primary" />
-                                            <span>Upload QR</span>
-                                            <Input
-                                                type="file"
-                                                accept="image/*"
-                                                className="sr-only"
-                                                onChange={(e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onloadend = () => {
-                                                            setQrCode(reader.result as string);
-                                                        };
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }}
-                                            />
-                                        </label>
+                                        <QrUploadButton
+                                            onImageSelected={(dataUrl) => setQrCode(dataUrl)}
+                                            disabled={isReadOnly}
+                                            label="Upload QR"
+                                        />
                                     )}
                                 </div>
                             )}
                         </div>
-
-                        {/* Section 4: Unified Administration & Danger Zone Card */}
-                        <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 flex items-center justify-between gap-3 flex-wrap">
-                            <div className="space-y-0.5 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
-                                    <p className="text-xs font-bold text-foreground">
-                                        {isReadOnly ? 'Read-Only Access' : 'Bill Administration'}
-                                    </p>
-                                    <span className={cn(
-                                        "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-                                        isReadOnly ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary border border-primary/20"
-                                    )}>
-                                        {isReadOnly ? 'Viewer' : 'Owner'}
-                                    </span>
-                                </div>
-                                <p className="text-[11px] text-muted-foreground">
-                                    {isReadOnly
-                                        ? 'Only the bill owner can modify settings or delete this bill.'
-                                        : 'Transfer ownership to another member or permanently delete this bill.'}
-                                </p>
-                            </div>
-
-                            {!isReadOnly && currentBillId && (
-                                <div className="flex items-center gap-2 shrink-0">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setIsTransferModalOpen(true)}
-                                        className="h-8 rounded-xl font-semibold text-xs gap-1.5"
-                                    >
-                                        <UserCheck className="w-3.5 h-3.5 text-amber-500" />
-                                        <span>Transfer</span>
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setIsDeleteModalOpen(true)}
-                                        className="h-8 rounded-xl font-semibold text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                        <span>Delete Bill</span>
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </ScrollArea>
-            </CardContent>
+        </SettingsPageLayout>
 
             {targetGroupData && (
                 <InheritParticipantsDialog
@@ -590,6 +506,6 @@ export function BillConfiguration(props: BillConfigurationProps = {}) {
                     }
                 }}
             />
-        </Card>
+        </>
     );
 }
