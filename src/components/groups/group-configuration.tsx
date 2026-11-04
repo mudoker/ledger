@@ -4,8 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +13,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Settings,
   Tag,
   AlignLeft,
   Coins,
@@ -27,19 +24,20 @@ import {
   Eye,
   Download,
   Check,
-  CloudUpload,
-  UserCheck,
   Crown,
   Copy,
-  Shield,
   CreditCard,
   User,
+  CloudUpload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
 import { TransferOwnershipModal } from "@/components/shared/transfer-ownership-modal";
 import { DeleteConfirmationModal } from "@/components/shared/delete-confirmation-modal";
+import { SettingsPageLayout } from "@/components/shared/settings-page-layout";
+import { QrUploadButton } from "@/components/shared/qr-upload-button";
 import { useGroupStore } from "@/store/useGroupStore";
+import { useAppSettingsStore } from "@/store/useAppSettingsStore";
 import type { BillGroupDetail, GroupPaymentQr } from "@/../db/types";
 
 interface GroupConfigurationProps {
@@ -49,6 +47,8 @@ interface GroupConfigurationProps {
 
 export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationProps) {
   const { updateGroup, addPaymentQr, removePaymentQr, fetchGroup } = useGroupStore();
+  const storageMode = useAppSettingsStore((s) => s.storageMode);
+  const isLocal = group.owner_id === 'local' || storageMode === 'local';
 
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description || '');
@@ -186,50 +186,28 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
   const participants = group.participants || [];
 
   return (
-    <Card className="w-full flex flex-col min-h-0 border-0 md:border md:border-border/50 bg-transparent md:bg-card/30 overflow-hidden shadow-none rounded-none md:rounded-2xl">
-      {/* Header */}
-      <CardHeader className="pb-3 pt-0 px-2 sm:px-4 md:px-5 md:pt-4 shrink-0 border-b border-border/40">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-foreground/[0.04] border border-foreground/[0.08] flex items-center justify-center text-foreground shrink-0 shadow-2xs">
-              <Settings className="w-4 h-4 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground truncate">
-                Group Settings
-              </h2>
-              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
-                Details, currency, access &amp; payment QR codes
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/[0.04] border border-foreground/[0.08] text-[10px] font-semibold text-muted-foreground shrink-0">
-            {saving ? (
-              <>
-                <div className="w-2.5 h-2.5 border-[1.5px] border-muted-foreground/30 border-t-primary rounded-full animate-spin" />
-                <span>Saving</span>
-              </>
-            ) : saved ? (
-              <>
-                <Check className="w-3 h-3 text-primary" />
-                <span className="text-foreground">Saved</span>
-              </>
-            ) : (
-              <>
-                <CloudUpload className="w-3 h-3 text-muted-foreground/70" />
-                <span>Synced</span>
-              </>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
-        <ScrollArea className="flex-1 min-h-0 h-full px-2 sm:px-4 md:px-5">
-          <div className="py-3 sm:py-4 space-y-4 max-w-3xl pb-10">
-            {/* Section 1: General Group Info (Card) */}
-            <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 space-y-3.5 shadow-2xs">
+    <>
+      <SettingsPageLayout
+        title="Group Settings"
+        subtitle="Details, currency, access & payment QR codes"
+        saving={saving}
+        saved={saved}
+        isLocal={isLocal}
+        admin={{
+          isReadOnly: !group.is_owner,
+          roleBadgeText: group.is_owner ? 'Owner' : 'Participant',
+          adminTitle: group.is_owner ? 'Group Administration' : 'Group Access',
+          adminDescription: group.is_owner
+            ? 'Transfer ownership to another user or permanently delete this group.'
+            : `Managed by ${group.owner_name || 'group owner'}. Only the owner can modify group settings or delete this group.`,
+          onTransferClick: group.is_owner ? () => setIsTransferModalOpen(true) : undefined,
+          onDeleteClick: group.is_owner ? () => setIsDeleteModalOpen(true) : undefined,
+          transferButtonText: 'Transfer',
+          deleteButtonText: 'Delete Group',
+        }}
+      >
+        {/* Section 1: General Group Info (Card) */}
+        <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 space-y-3.5 shadow-2xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Tag className="w-3 h-3 text-primary" /> Group Info
@@ -492,57 +470,7 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                 </div>
               )}
             </div>
-
-            {/* Section 3: Group Administration & Danger Zone Card */}
-            <div className="p-3.5 sm:p-4 rounded-2xl border border-border/70 bg-card/60 flex items-center justify-between gap-3 flex-wrap shadow-2xs">
-              <div className="space-y-0.5 min-w-0">
-                <div className="flex items-center gap-2">
-                  <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <p className="text-xs font-bold text-foreground">
-                    {group.is_owner ? 'Group Administration' : 'Group Access'}
-                  </p>
-                  <span className={cn(
-                    "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-                    group.is_owner ? "bg-primary/10 text-primary border border-primary/20" : "bg-muted text-muted-foreground"
-                  )}>
-                    {group.is_owner ? 'Owner' : 'Participant'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  {group.is_owner
-                    ? 'Transfer ownership to another user or permanently delete this group.'
-                    : `Managed by ${group.owner_name || 'group owner'}. Only the owner can modify group settings or delete this group.`}
-                </p>
-              </div>
-
-              {group.is_owner && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsTransferModalOpen(true)}
-                    className="h-8 rounded-xl font-semibold text-xs gap-1.5 border-border/80"
-                  >
-                    <UserCheck className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Transfer</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsDeleteModalOpen(true)}
-                    className="h-8 rounded-xl font-semibold text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Group</span>
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </ScrollArea>
-      </CardContent>
+      </SettingsPageLayout>
 
       {/* Upload QR Code Modal */}
       <Dialog open={isUploadQrModalOpen} onOpenChange={setIsUploadQrModalOpen}>
@@ -591,28 +519,11 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                     </div>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center py-6 px-4 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 hover:bg-primary/5 cursor-pointer transition-colors text-center group">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-2 group-hover:scale-105 transition-transform">
-                      <CloudUpload className="w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground">Click to upload QR code</span>
-                    <span className="text-[10px] text-muted-foreground mt-0.5">PNG, JPG, WebP screenshot or image</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setNewQrImage(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
+                  <QrUploadButton
+                    variant="dropzone"
+                    label="Click to upload QR code"
+                    onImageSelected={(dataUrl) => setNewQrImage(dataUrl)}
+                  />
                 )}
               </div>
 
@@ -820,6 +731,6 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
           }
         }}
       />
-    </Card>
+    </>
   );
 }

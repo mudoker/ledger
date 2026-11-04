@@ -1,4 +1,4 @@
-const SW_VERSION = "1.0.24";
+const SW_VERSION = "1.0.25";
 const CACHE_NAME = `ledger-v${SW_VERSION}`;
 const STATIC_ASSETS = [
   "/",
