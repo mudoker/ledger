@@ -273,8 +273,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   }, [group.bills, storageMode]);
 
   return (
-    <PullToRefresh onRefresh={handleRefresh} className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden">
-      {/* Top Header / Sticky Nav */}
+    <div className="flex-1 flex flex-col min-h-0 bg-background overflow-x-hidden relative">
+      <PullToRefresh onRefresh={handleRefresh} className="flex-1 flex flex-col min-h-0">
+        {/* Top Header / Sticky Nav */}
       <div className="flex-none px-4 sm:px-6 md:px-8 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] md:pt-6 pb-3 sm:pb-4 border-b border-border/40 w-full max-w-4xl mx-auto">
         <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <Button
@@ -697,8 +698,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         isLoading={isDeleteLoading}
         onConfirm={handleConfirmDelete}
       />
+      </PullToRefresh>
 
-      {/* Mobile Bottom Navigation for Group Page */}
+      {/* Mobile Bottom Navigation for Group Page - placed strictly OUTSIDE PullToRefresh to guarantee fixed anchor */}
       <BottomNav
         items={[
           {
@@ -721,9 +723,9 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
         ]}
         activeId={activeMainTab}
         onChange={(tabId) => setActiveMainTab(tabId as 'bills' | 'members' | 'summary')}
-        className="fixed bottom-0 left-0 right-0"
+        className="fixed bottom-0 left-0 right-0 z-50"
         desktopHidden={true}
       />
-    </PullToRefresh>
+    </div>
   );
 }

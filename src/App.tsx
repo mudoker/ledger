@@ -815,30 +815,28 @@ function App() {
                   )}
                 </div>
 
-                {/* Mobile Tab Layout */}
+                {/* Mobile Tab Layout - Native scroll with no touch-interception wrappers */}
                 <div className="md:hidden flex-1 relative overflow-hidden flex flex-col pb-0 min-h-0">
-                  <PullToRefresh onRefresh={handleRefreshActiveBill} className="flex-1 overflow-hidden h-full flex flex-col min-h-0">
-                    {mobileTab === 'people' && (
-                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        <PeopleSection />
-                      </div>
-                    )}
-                    {mobileTab === 'items' && (
-                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        <ItemsSection />
-                      </div>
-                    )}
-                    {mobileTab === 'summary' && (
-                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        <SummarySection />
-                      </div>
-                    )}
-                    {mobileTab === 'settings' && (
-                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        <BillConfiguration />
-                      </div>
-                    )}
-                  </PullToRefresh>
+                  {mobileTab === 'people' && (
+                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                      <PeopleSection />
+                    </div>
+                  )}
+                  {mobileTab === 'items' && (
+                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                      <ItemsSection />
+                    </div>
+                  )}
+                  {mobileTab === 'summary' && (
+                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                      <SummarySection />
+                    </div>
+                  )}
+                  {mobileTab === 'settings' && (
+                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                      <BillConfiguration />
+                    </div>
+                  )}
                 </div>
               </main>
 

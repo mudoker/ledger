@@ -129,8 +129,9 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
     }, [items, globalCharges]);
 
     return (
-        <div className="flex-1 flex flex-col min-h-0 bg-background">
-            {/* Hero Section */}
+        <div className="flex-1 flex flex-col min-h-0 bg-background relative">
+            <PullToRefresh onRefresh={handleRefresh} className="flex-1 flex flex-col min-h-0">
+                {/* Hero Section */}
             <div className="flex-none pt-4 sm:pt-12 pb-6 sm:pb-16 px-4 sm:px-6 text-center space-y-3.5 sm:space-y-6 max-w-2xl mx-auto w-full">
                 <motion.div
                     initial={{ scale: 0.9, opacity: 0 }}
@@ -341,13 +342,12 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                     })()}
                 </div>
 
-                <PullToRefresh onRefresh={handleRefresh} className="w-full">
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5, delay: 0.4 }}
-                        className="grid gap-3 sm:gap-4 pb-8 sm:pb-12"
-                    >
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.4 }}
+                    className="grid gap-3 sm:gap-4 pb-8 sm:pb-12"
+                >
                         {!user ? (
                             (!isInitialized && isAuthLoading) ? (
                                 <div className="space-y-3">
@@ -499,8 +499,8 @@ export function LandingPage({ onNewBill, onSelectBill, onSelectGroup, onLoadDemo
                             </>
                         )}
                     </motion.div>
-                </PullToRefresh>
-            </div>
+                </div>
+            </PullToRefresh>
 
             {/* Bottom Search Bar Dock with User Status */}
             <BottomSearchBar

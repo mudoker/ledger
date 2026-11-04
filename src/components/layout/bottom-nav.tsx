@@ -30,7 +30,7 @@ export function BottomNav<T extends string = string>({
     <nav
       aria-label="Bottom Navigation"
       className={cn(
-        "flex-none bg-card/95 dark:bg-[#121215]/95 backdrop-blur-2xl border-t border-border/80 select-none pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgba(0,0,0,0.35)] z-30 transition-all duration-200 [html[data-keyboard-open='true']_&]:hidden",
+        "flex-none bg-card/95 dark:bg-[#121215]/95 backdrop-blur-2xl border-t border-border/80 select-none pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgba(0,0,0,0.35)] z-50 transition-all duration-200 [html[data-keyboard-open='true']_&]:hidden",
         desktopHidden && "md:hidden",
         className
       )}
