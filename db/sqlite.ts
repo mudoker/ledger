@@ -1143,6 +1143,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         g.currency,
         g.visibility,
         g.participants,
+        g.payment_qrs,
         g.created_at,
         g.updated_at,
         u.name as owner_name,
