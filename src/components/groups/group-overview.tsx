@@ -304,17 +304,6 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               )}
             </Button>
 
-            <Button
-              variant={activeMainTab === 'settings' ? 'secondary' : 'outline'}
-              size="sm"
-              onClick={() => setActiveMainTab('settings')}
-              className="gap-1.5 h-8 text-xs font-semibold rounded-xl border-border/70 hover:bg-muted/60"
-              title="Group Settings & Payment QRs"
-            >
-              <Settings className="w-3.5 h-3.5 text-primary" />
-              <span className="hidden sm:inline">Settings</span>
-            </Button>
-
             {group.is_owner && (
               <>
                 <Button
