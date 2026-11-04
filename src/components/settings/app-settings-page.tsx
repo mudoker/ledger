@@ -12,6 +12,7 @@ import {
   PRIVACY_CONSENT_DISCLOSURE,
   OPEN_SOURCE_LICENSES,
 } from '@/constants/app-info';
+import { MarkdownViewer } from '@/components/ui/markdown-viewer';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -466,10 +467,10 @@ export function AppSettingsPage({ onBack }: AppSettingsPageProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto py-3 space-y-3 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap pr-1 font-sans">
-            {activeDocModal === 'privacy' && PRIVACY_POLICY}
-            {activeDocModal === 'terms' && TERMS_OF_SERVICE}
-            {activeDocModal === 'consent' && PRIVACY_CONSENT_DISCLOSURE}
+          <div className="flex-1 overflow-y-auto py-3 space-y-3 text-xs leading-relaxed text-muted-foreground pr-1 font-sans">
+            {activeDocModal === 'privacy' && <MarkdownViewer content={PRIVACY_POLICY} hideFirstH1 />}
+            {activeDocModal === 'terms' && <MarkdownViewer content={TERMS_OF_SERVICE} hideFirstH1 />}
+            {activeDocModal === 'consent' && <MarkdownViewer content={PRIVACY_CONSENT_DISCLOSURE} hideFirstH1 />}
             {activeDocModal === 'licenses' && (
               <div className="space-y-3">
                 <p>Ledger is built using the following high quality open-source software libraries:</p>
