@@ -1,19 +1,13 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import {
-  ArrowRight,
   CheckCircle2,
   AlertTriangle,
-  Receipt,
-  Users,
   Copy,
   Check,
-  ExternalLink,
-  Wallet,
   Scale,
   Sparkles,
   QrCode,
@@ -34,7 +28,7 @@ interface GroupSummaryProps {
   onSelectBill: (billId: string) => void;
 }
 
-export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
+export function GroupSummary({ group, onSelectBill: _onSelectBill }: GroupSummaryProps) {
   const [copied, setCopied] = useState(false);
   const [previewQr, setPreviewQr] = useState<GroupPaymentQr | null>(null);
   const [copiedNoteId, setCopiedNoteId] = useState<string | null>(null);
@@ -152,7 +146,7 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
               return (
                 <div
                   key={idx}
-                  className="flex items-center gap-1.5 sm:gap-3 bg-background/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-foreground/5 w-full min-w-0"
+                  className="flex items-center gap-1.5 sm:gap-4 bg-background/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-foreground/5 w-full min-w-0"
                 >
                   {/* Debtor */}
                   <div className="flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14">
@@ -164,7 +158,7 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
                     </span>
                   </div>
 
-                  {/* Amount with directional shimmer track */}
+                  {/* Amount with directional shimmer track & optional vertical Scan QR chip */}
                   <div className="flex-1 flex flex-col items-center gap-0.5 sm:gap-1 min-w-0 px-1">
                     <div className="text-[11px] xs:text-xs sm:text-sm font-black text-primary tabular-nums italic truncate max-w-full">
                       {formatCurrency(t.amount, groupCurrency)}
@@ -172,31 +166,48 @@ export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
                     <div className="w-full h-1 bg-primary/10 rounded-full overflow-hidden relative">
                       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/50 to-transparent animate-shimmer" />
                     </div>
+                    {matchedQr && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewQr(matchedQr)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-[9px] font-bold transition-all cursor-pointer active:scale-95 mt-0.5 shadow-2xs"
+                        title={`Scan ${t.toName}'s Payment QR`}
+                      >
+                        <QrCode className="w-2.5 h-2.5" />
+                        <span>Scan QR</span>
+                      </button>
+                    )}
                   </div>
 
-                  {/* Creditor */}
-                  <div className="flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14">
-                    <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center font-black text-xs text-primary border border-primary/20 shrink-0">
-                      {t.toName[0]?.toUpperCase() || '?'}
-                    </div>
-                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-tighter truncate max-w-[44px] xs:max-w-[48px] sm:max-w-[56px] text-center" title={t.toName}>
-                      {t.toName}
-                    </span>
-                  </div>
-
-                  {/* QR quick pay button if creditor has QR */}
-                  {matchedQr && (
-                    <Button
+                  {/* Creditor (interactive with QR badge if matched) */}
+                  {matchedQr ? (
+                    <button
                       type="button"
-                      variant="outline"
-                      size="sm"
                       onClick={() => setPreviewQr(matchedQr)}
-                      className="h-7 px-2 rounded-xl text-[10px] font-bold gap-1 text-primary border-primary/30 hover:bg-primary/10 shrink-0"
-                      title={`Scan ${t.toName}'s Payment QR`}
+                      className="group/creditor flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14 cursor-pointer transition-transform active:scale-95"
+                      title={`Tap to view ${t.toName}'s Payment QR`}
                     >
-                      <QrCode className="w-3 h-3" />
-                      <span className="hidden sm:inline">Pay QR</span>
-                    </Button>
+                      <div className="relative">
+                        <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-primary/15 group-hover/creditor:bg-primary/25 flex items-center justify-center font-black text-xs text-primary border border-primary/30 shrink-0 transition-colors shadow-2xs">
+                          {t.toName[0]?.toUpperCase() || '?'}
+                        </div>
+                        <span className="absolute -bottom-1 -right-1 p-0.5 bg-primary text-primary-foreground rounded-full shadow-xs ring-1 ring-background" title="QR Available">
+                          <QrCode className="w-2 h-2" />
+                        </span>
+                      </div>
+                      <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-tighter truncate max-w-[44px] xs:max-w-[48px] sm:max-w-[56px] text-center text-primary group-hover/creditor:underline" title={t.toName}>
+                        {t.toName}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="flex flex-col items-center gap-0.5 shrink-0 w-11 xs:w-12 sm:w-14">
+                      <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center font-black text-xs text-primary border border-primary/20 shrink-0">
+                        {t.toName[0]?.toUpperCase() || '?'}
+                      </div>
+                      <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-tighter truncate max-w-[44px] xs:max-w-[48px] sm:max-w-[56px] text-center" title={t.toName}>
+                        {t.toName}
+                      </span>
+                    </div>
                   )}
                 </div>
               );
