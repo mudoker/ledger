@@ -382,6 +382,18 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       console.warn('Failed to update local group:', e);
     }
 
+    // In local mode for a local group, do not transmit to server
+    const currentG = get().currentGroup?.id === id ? get().currentGroup : get().groups.find(g => g.id === id);
+    const isLocalGroup = currentG?.owner_id === 'local';
+    if (isLocalGroup && storageMode === 'local') {
+      set((state) => ({
+        currentGroup: state.currentGroup?.id === id ? { ...state.currentGroup, ...data } : state.currentGroup,
+        groups: state.groups.map((g) => (g.id === id ? { ...g, ...data } : g)),
+        isLoading: false,
+      }));
+      return;
+    }
+
     // Try cloud update
     try {
       const res = await fetch(`/api/groups/${id}`, {

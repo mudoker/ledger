@@ -153,4 +153,73 @@ describe('Group Settings and Multi-Payer QR Payment Mechanism', () => {
     expect(refreshed?.payment_qrs).toHaveLength(1);
     expect(refreshed?.payment_qrs?.[0].payerName).toBe('Member Payer');
   });
+
+  it('6. In local storage mode, QR code updates and group settings strictly stay local without cloud sync', async () => {
+    const { useAppSettingsStore } = await import('../src/store/useAppSettingsStore');
+    const { useGroupStore } = await import('../src/store/useGroupStore');
+    const { getLocalDb } = await import('../src/lib/local-db');
+
+    useAppSettingsStore.setState({ storageMode: 'local' });
+    const localDb = getLocalDb();
+
+    let networkCallCount = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      networkCallCount++;
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as any;
+
+    try {
+      const localGroupId = 'local_group_privacy_test';
+      await localDb.saveGroup({
+        id: localGroupId,
+        name: 'Local Private Group',
+        description: 'Local trip',
+        currency: 'VND',
+        visibility: 'restricted',
+        ownerId: 'local',
+        participants: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      useGroupStore.setState({
+        currentGroup: {
+          id: localGroupId,
+          name: 'Local Private Group',
+          description: 'Local trip',
+          owner_id: 'local',
+          is_owner: true,
+          currency: 'VND',
+          visibility: 'restricted',
+          total_amount: 0,
+          total_bills: 0,
+          total_items: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          bills: [],
+          participants: [],
+          payment_qrs: [],
+        },
+        groups: [],
+      });
+
+      // Add a QR code in local mode
+      await useGroupStore.getState().addPaymentQr(localGroupId, {
+        payerName: 'Private Payer',
+        qrUrl: 'data:image/png;base64,privatelocalqr',
+        note: 'Local note',
+      });
+
+      // Ensure 0 network requests occurred
+      expect(networkCallCount).toBe(0);
+
+      // Verify the QR was stored in localDb
+      const savedLocal = await localDb.getGroup(localGroupId);
+      expect(savedLocal?.payment_qrs).toHaveLength(1);
+      expect(savedLocal?.payment_qrs?.[0].payerName).toBe('Private Payer');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
