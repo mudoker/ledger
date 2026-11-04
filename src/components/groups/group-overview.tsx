@@ -3,29 +3,24 @@
 import { useState, useMemo } from 'react';
 import { useGroupStore } from '@/store/useGroupStore';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   ArrowLeft,
   Receipt,
   Folder,
-  Tag,
   Clock,
   MapPin,
   Trash2,
   UserCheck,
   ChevronRight,
-  ChevronDown,
   ExternalLink,
   Layers,
-  ShoppingBag,
   Coins,
   Search,
   Plus,
   Share2,
   Check,
-  Sparkles,
-  Settings2,
+  Settings,
   X,
   Scale,
   Users,
@@ -34,8 +29,7 @@ import {
   Lock,
   Crown,
 } from 'lucide-react';
-import { formatCurrency, formatConciseRelativeTime } from '@/lib/format';
-import { motion, AnimatePresence } from 'framer-motion';
+import { formatConciseRelativeTime } from '@/lib/format';
 import { TransferOwnershipModal } from '@/components/shared/transfer-ownership-modal';
 import { RoleBadge } from '@/components/layout/landing-card';
 import { EditGroupModal } from '@/components/shared/edit-group-modal';
@@ -43,6 +37,7 @@ import { CreateBillModal, type CreateBillFormData } from '@/components/shared/cr
 import { DeleteConfirmationModal } from '@/components/shared/delete-confirmation-modal';
 import { ModeToggle } from '@/components/layout/mode-toggle';
 import { GroupSummary } from './group-summary';
+import { GroupConfiguration } from './group-configuration';
 import type { BillGroupDetail } from '@/../db/types';
 import { ParticipantCard } from '@/components/shared/participant-card';
 import { BottomNav } from '@/components/layout/bottom-nav';
@@ -158,7 +153,7 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'members' | 'summary'>('bills');
+  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'members' | 'summary' | 'settings'>('bills');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -309,18 +304,19 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
               )}
             </Button>
 
+            <Button
+              variant={activeMainTab === 'settings' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setActiveMainTab('settings')}
+              className="gap-1.5 h-8 text-xs font-semibold rounded-xl border-border/70 hover:bg-muted/60"
+              title="Group Settings & Payment QRs"
+            >
+              <Settings className="w-3.5 h-3.5 text-primary" />
+              <span className="hidden sm:inline">Settings</span>
+            </Button>
+
             {group.is_owner && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditModalOpen(true)}
-                  className="gap-1.5 h-8 text-xs font-semibold rounded-xl border-border/70 hover:bg-muted/60"
-                  title="Edit group details"
-                >
-                  <Settings2 className="w-3.5 h-3.5 text-primary" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -450,6 +446,23 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
           >
             <Scale className="w-3.5 h-3.5 text-primary" />
             <span>Summary</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('settings')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeMainTab === 'settings'
+                ? 'bg-background text-foreground shadow-2xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5 text-primary" />
+            <span>Settings</span>
+            {group.payment_qrs && group.payment_qrs.length > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-primary/10 text-primary">
+                {group.payment_qrs.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -630,6 +643,16 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             )}
           </div>
         )}
+
+        {/* Tab 4: Group Settings View */}
+        {activeMainTab === 'settings' && (
+          <div className="space-y-4">
+            <GroupConfiguration
+              group={group}
+              onDeleteGroup={handleDelete}
+            />
+          </div>
+        )}
       </div>
 
       <EditGroupModal
@@ -720,9 +743,15 @@ export function GroupOverview({ group, onBack, onSelectBill, onNewBill }: GroupO
             label: 'Summary',
             icon: Scale,
           },
+          {
+            id: 'settings',
+            label: 'Settings',
+            icon: Settings,
+            badge: group.payment_qrs?.length || undefined,
+          },
         ]}
         activeId={activeMainTab}
-        onChange={(tabId) => setActiveMainTab(tabId as 'bills' | 'members' | 'summary')}
+        onChange={(tabId) => setActiveMainTab(tabId as 'bills' | 'members' | 'summary' | 'settings')}
         className="fixed bottom-0 left-0 right-0 z-50"
         desktopHidden={true}
       />

@@ -34,8 +34,6 @@ import {
   Shield,
   CreditCard,
   User,
-  ExternalLink,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CurrencyDropdown } from "@/components/shared/currency-dropdown";
@@ -124,7 +122,7 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [name, description, currency, visibility, group.is_owner, group.id, updateGroup]);
+  }, [name, description, currency, visibility, group.is_owner, group.id, group.name, group.description, group.currency, group.visibility, updateGroup]);
 
   // Handle QR upload submit
   const handleUploadQrSubmit = async (e?: React.FormEvent) => {
@@ -168,7 +166,9 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
       await navigator.clipboard.writeText(text);
       setCopiedNoteId(id);
       setTimeout(() => setCopiedNoteId(null), 2000);
-    } catch {}
+    } catch {
+      // Clipboard copy fallback
+    }
   };
 
   const handleConfirmDeleteQr = async () => {
