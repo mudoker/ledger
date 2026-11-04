@@ -48,7 +48,7 @@ if [[ -f "$APP_INFO" ]]; then
   fi
 fi
 NEXT_BUILD="$((CURRENT_BUILD + 1))"
-TODAY="$(date +%Y-%m-%d)"
+TODAY="${COMMIT_DATE:-$(date +%Y-%m-%d)}"
 
 # Update src/constants/app-info.ts
 if [[ -f "$APP_INFO" ]]; then
