@@ -74,6 +74,16 @@ export interface GroupBillOverview {
   isLocal?: boolean;
 }
 
+export interface GroupPaymentQr {
+  id: string;
+  payerName: string;
+  payerId?: string | null;
+  qrUrl: string;
+  note?: string | null;
+  uploadedBy?: string | null;
+  createdAt?: string;
+}
+
 export interface BillGroupDetail {
   id: string;
   name: string;
@@ -91,6 +101,7 @@ export interface BillGroupDetail {
   updated_at: string;
   bills: GroupBillOverview[];
   participants?: PersonData[];
+  payment_qrs?: GroupPaymentQr[];
 }
 
 export interface BillGroupSummary {
@@ -109,6 +120,7 @@ export interface BillGroupSummary {
   created_at: string;
   updated_at: string;
   participants?: PersonData[];
+  payment_qrs?: GroupPaymentQr[];
   bill_ids?: string[];
   bill_amounts?: Record<string, number>;
   bill_item_counts?: Record<string, number>;
@@ -221,7 +233,7 @@ export interface DatabaseAdapter {
   createGroup?(name: string, ownerId: string, description?: string | null, currency?: string, visibility?: 'public' | 'restricted', customId?: string | null, participants?: PersonData[]): Promise<BillGroupDetail>;
   getGroup?(id: string, userId?: string | null): Promise<BillGroupDetail | null>;
   listGroups?(userId?: string | null): Promise<BillGroupSummary[]>;
-  updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void>;
+  updateGroup?(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[]; payment_qrs?: GroupPaymentQr[] }, userId?: string | null): Promise<void>;
   deleteGroup?(id: string, userId?: string | null): Promise<boolean>;
   transferGroupOwnership?(id: string, newOwnerId: string, userId?: string | null): Promise<void>;
   transferBillOwnership?(billId: string, newOwnerId: string, userId?: string | null): Promise<void>;

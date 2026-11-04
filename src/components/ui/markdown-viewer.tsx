@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Info } from 'lucide-react';
 
 interface MarkdownViewerProps {
   content: string;
@@ -17,6 +18,8 @@ type Block =
   | { type: 'ul'; items: string[] }
   | { type: 'ol'; items: { num: string; text: string }[] }
   | { type: 'dateBadge'; text: string }
+  | { type: 'callout'; variant: 'info' | 'warning' | 'alert' | 'success'; title?: string; text: string }
+  | { type: 'table'; headers: string[]; rows: string[][] }
   | { type: 'p'; text: string };
 
 function renderInline(text: string): React.ReactNode {
@@ -103,6 +106,8 @@ export function parseMarkdownBlocks(content: string, hideFirstH1 = false): Block
   const parsedBlocks: Block[] = [];
   let currentUl: string[] | null = null;
   let currentOl: { num: string; text: string }[] | null = null;
+  let currentTable: string[] | null = null;
+  let currentCallout: { variant: 'info' | 'warning' | 'alert' | 'success'; title?: string; lines: string[] } | null = null;
   let isFirstH1 = true;
 
   const flushLists = () => {
@@ -116,24 +121,113 @@ export function parseMarkdownBlocks(content: string, hideFirstH1 = false): Block
     }
   };
 
+  const flushTable = () => {
+    if (currentTable && currentTable.length >= 2) {
+      const parseRow = (line: string) =>
+        line
+          .replace(/^\|/, '')
+          .replace(/\|$/, '')
+          .split('|')
+          .map((c) => c.trim());
+
+      const headers = parseRow(currentTable[0]);
+      // Skip row 1 if it's the divider |--|--|
+      const contentRows = currentTable
+        .slice(1)
+        .filter((line) => !/^[|\s-:]+$/.test(line))
+        .map(parseRow);
+
+      parsedBlocks.push({ type: 'table', headers, rows: contentRows });
+    }
+    currentTable = null;
+  };
+
+  const flushCallout = () => {
+    if (currentCallout) {
+      parsedBlocks.push({
+        type: 'callout',
+        variant: currentCallout.variant,
+        title: currentCallout.title,
+        text: currentCallout.lines.join(' '),
+      });
+      currentCallout = null;
+    }
+  };
+
+  const flushAll = () => {
+    flushLists();
+    flushTable();
+    flushCallout();
+  };
+
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
 
     if (!line) {
-      flushLists();
+      flushAll();
       continue;
+    }
+
+    // Callout / Blockquote: > ...
+    if (line.startsWith('>')) {
+      flushLists();
+      flushTable();
+      const calloutText = line.replace(/^>\s*/, '');
+      let variant: 'info' | 'warning' | 'alert' | 'success' = 'info';
+      let title: string | undefined;
+      let cleanText = calloutText;
+
+      if (/^\[!(WARNING|CAUTION)\]/i.test(calloutText)) {
+        variant = 'warning';
+        title = 'Financial & Regulatory Warning';
+        cleanText = calloutText.replace(/^\[!(WARNING|CAUTION)\]\s*/i, '');
+      } else if (/^\[!(ALERT|IMPORTANT)\]/i.test(calloutText)) {
+        variant = 'alert';
+        title = 'Important Legal Requirement';
+        cleanText = calloutText.replace(/^\[!(ALERT|IMPORTANT)\]\s*/i, '');
+      } else if (/^\[!(NOTE|TIP|INFO)\]/i.test(calloutText)) {
+        variant = 'info';
+        title = 'Notice & Compliance Policy';
+        cleanText = calloutText.replace(/^\[!(NOTE|TIP|INFO)\]\s*/i, '');
+      } else if (/^\*\*(Financial Disclaimer|Disclaimer|Important|Notice|Lưu ý|Khuyến cáo):?\*\*/i.test(calloutText)) {
+        variant = 'warning';
+        const m = calloutText.match(/^\*\*([^:*]+):?\*\*\s*(.*)/i);
+        if (m) {
+          title = m[1];
+          cleanText = m[2];
+        }
+      }
+
+      if (!currentCallout) {
+        currentCallout = { variant, title, lines: [cleanText] };
+      } else {
+        currentCallout.lines.push(cleanText);
+      }
+      continue;
+    } else {
+      flushCallout();
+    }
+
+    // Table rows: | col1 | col2 |
+    if (line.startsWith('|') && line.endsWith('|')) {
+      flushLists();
+      if (!currentTable) currentTable = [];
+      currentTable.push(line);
+      continue;
+    } else {
+      flushTable();
     }
 
     // Horizontal rule: --- or ***
     if (/^(-{3,}|\*{3,})$/.test(line)) {
-      flushLists();
+      flushAll();
       parsedBlocks.push({ type: 'hr' });
       continue;
     }
 
     // Headings
     if (line.startsWith('# ')) {
-      flushLists();
+      flushAll();
       if (isFirstH1 && hideFirstH1) {
         isFirstH1 = false;
         continue;
@@ -144,27 +238,27 @@ export function parseMarkdownBlocks(content: string, hideFirstH1 = false): Block
     }
 
     if (line.startsWith('## ')) {
-      flushLists();
+      flushAll();
       parsedBlocks.push({ type: 'h2', text: line.replace(/^##\s+/, '') });
       continue;
     }
 
     if (line.startsWith('### ')) {
-      flushLists();
+      flushAll();
       parsedBlocks.push({ type: 'h3', text: line.replace(/^###\s+/, '') });
       continue;
     }
 
     if (line.startsWith('#### ')) {
-      flushLists();
+      flushAll();
       parsedBlocks.push({ type: 'h4', text: line.replace(/^####\s+/, '') });
       continue;
     }
 
     // Date badge: **Last updated: ...** or **Effective Date: ...**
-    const dateMatch = line.match(/^\*\*(Last updated|Effective Date|Ngày cập nhật):?\s*([^*]+)\*\*$/i);
+    const dateMatch = line.match(/^\*\*(Last updated|Effective Date|Ngày cập nhật|Release Date):?\s*([^*]+)\*\*$/i);
     if (dateMatch) {
-      flushLists();
+      flushAll();
       parsedBlocks.push({
         type: 'dateBadge',
         text: `${dateMatch[1]}: ${dateMatch[2].trim()}`,
@@ -190,11 +284,11 @@ export function parseMarkdownBlocks(content: string, hideFirstH1 = false): Block
     }
 
     // Normal paragraph
-    flushLists();
+    flushAll();
     parsedBlocks.push({ type: 'p', text: line });
   }
 
-  flushLists();
+  flushAll();
   return parsedBlocks;
 }
 
@@ -202,7 +296,7 @@ export function MarkdownViewer({ content, className = '', hideFirstH1 = false }:
   const blocks = useMemo(() => parseMarkdownBlocks(content, hideFirstH1), [content, hideFirstH1]);
 
   return (
-    <div className={`space-y-3 text-xs leading-relaxed text-muted-foreground font-sans ${className}`}>
+    <div className={`space-y-3.5 text-xs leading-relaxed text-muted-foreground font-sans ${className}`}>
       {blocks.map((block, idx) => {
         switch (block.type) {
           case 'h1':
@@ -213,27 +307,81 @@ export function MarkdownViewer({ content, className = '', hideFirstH1 = false }:
             );
           case 'h2':
             return (
-              <h2 key={idx} className="text-sm sm:text-base font-bold text-foreground tracking-tight pt-2">
+              <h2 key={idx} className="text-sm sm:text-base font-bold text-foreground tracking-tight pt-3 border-b border-border/40 pb-1.5">
                 {renderInline(block.text)}
               </h2>
             );
           case 'h3':
             return (
-              <h3 key={idx} className="text-xs sm:text-sm font-semibold text-foreground tracking-tight pt-2 flex items-center gap-1.5">
+              <h3 key={idx} className="text-xs sm:text-sm font-semibold text-foreground tracking-tight pt-2.5 flex items-center gap-1.5">
                 {renderInline(block.text)}
               </h3>
             );
           case 'h4':
             return (
-              <h4 key={idx} className="text-xs font-semibold text-foreground pt-1">
+              <h4 key={idx} className="text-xs font-semibold text-foreground pt-1.5">
                 {renderInline(block.text)}
               </h4>
             );
           case 'dateBadge':
             return (
               <div key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/60 text-muted-foreground text-[11px] font-medium border border-border/40">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/70 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                 <span>{block.text}</span>
+              </div>
+            );
+          case 'callout': {
+            const isAlert = block.variant === 'alert';
+            const isWarning = block.variant === 'warning';
+            const borderCol = isAlert
+              ? 'border-destructive/50 bg-destructive/10 text-foreground'
+              : isWarning
+              ? 'border-amber-500/50 bg-amber-500/10 text-foreground'
+              : 'border-primary/50 bg-primary/10 text-foreground';
+            const Icon = isAlert ? AlertTriangle : isWarning ? ShieldAlert : ShieldCheck;
+            const iconCol = isAlert ? 'text-destructive' : isWarning ? 'text-amber-500' : 'text-primary';
+
+            return (
+              <div key={idx} className={`p-3 sm:p-3.5 rounded-xl border ${borderCol} my-2.5 flex items-start gap-2.5 shadow-sm`}>
+                <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconCol}`} />
+                <div className="flex-1 text-xs leading-relaxed space-y-1">
+                  {block.title && (
+                    <div className={`font-bold text-[11px] uppercase tracking-wider ${iconCol}`}>
+                      {block.title}
+                    </div>
+                  )}
+                  <div className="text-muted-foreground leading-relaxed">
+                    {renderInline(block.text)}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          case 'table':
+            return (
+              <div key={idx} className="overflow-x-auto my-3 rounded-xl border border-border/60">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/60 border-b border-border/60 font-semibold text-foreground">
+                    <tr>
+                      {block.headers.map((h, i) => (
+                        <th key={i} className="p-2 sm:p-2.5 whitespace-nowrap">
+                          {renderInline(h)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {block.rows.map((r, ri) => (
+                      <tr key={ri} className="hover:bg-muted/20">
+                        {r.map((c, ci) => (
+                          <td key={ci} className="p-2 sm:p-2.5 text-muted-foreground">
+                            {renderInline(c)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             );
           case 'hr':
@@ -244,7 +392,7 @@ export function MarkdownViewer({ content, className = '', hideFirstH1 = false }:
                 {block.items.map((item, itemIdx) => (
                   <li key={itemIdx} className="flex items-start gap-2 text-xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/80 mt-1.5 shrink-0" />
-                    <span className="flex-1 leading-relaxed">{renderInline(item)}</span>
+                    <span className="flex-1 leading-relaxed text-muted-foreground">{renderInline(item)}</span>
                   </li>
                 ))}
               </ul>
@@ -257,7 +405,7 @@ export function MarkdownViewer({ content, className = '', hideFirstH1 = false }:
                     <span className="font-bold text-primary text-[11px] shrink-0 min-w-4 pt-0.5">
                       {item.num}.
                     </span>
-                    <span className="flex-1 leading-relaxed">{renderInline(item.text)}</span>
+                    <span className="flex-1 leading-relaxed text-muted-foreground">{renderInline(item.text)}</span>
                   </li>
                 ))}
               </ol>

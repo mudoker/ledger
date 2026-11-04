@@ -16,10 +16,18 @@ import {
   Wallet,
   Scale,
   Sparkles,
+  QrCode,
+  Crown,
+  Eye,
+  Download,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 import { formatCurrency } from '@/lib/format';
 import { calculateGroupSettlement, type GroupSettlementResult } from '@/lib/group-settlement';
-import type { BillGroupDetail } from '@/../db/types';
+import type { BillGroupDetail, GroupPaymentQr } from '@/../db/types';
 
 interface GroupSummaryProps {
   group: BillGroupDetail;
@@ -28,6 +36,8 @@ interface GroupSummaryProps {
 
 export function GroupSummary({ group, onSelectBill }: GroupSummaryProps) {
   const [copied, setCopied] = useState(false);
+  const [previewQr, setPreviewQr] = useState<GroupPaymentQr | null>(null);
+  const [copiedNoteId, setCopiedNoteId] = useState<string | null>(null);
 
   // Highly optimized group settlement computation
   const settlement: GroupSettlementResult = useMemo(() => {

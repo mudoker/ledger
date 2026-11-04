@@ -54,9 +54,6 @@ export async function PUT(
     }
 
     const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized: Login required' }, { status: 401, headers: corsHeaders });
-    }
 
     let body: any;
     try {
@@ -65,15 +62,41 @@ export async function PUT(
       return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400, headers: corsHeaders });
     }
 
-    const { name, description, currency, visibility, participants } = body || {};
+    const { name, description, currency, visibility, participants, payment_qrs, paymentQrs } = body || {};
+    const effectivePaymentQrs = payment_qrs !== undefined ? payment_qrs : paymentQrs;
+
+    const isCoreSettings = name !== undefined || description !== undefined || currency !== undefined || visibility !== undefined;
+    if (isCoreSettings && !user) {
+      return NextResponse.json({ error: 'Unauthorized: Login required' }, { status: 401, headers: corsHeaders });
+    }
 
     const db = await getDb();
     if (!db.updateGroup || !db.getGroup) {
       return NextResponse.json({ error: 'Groups not supported' }, { status: 500, headers: corsHeaders });
     }
 
-    await db.updateGroup(id, { name, description, currency, visibility, participants }, user.id);
-    const updated = await db.getGroup(id, user.id);
+    const existingGroup = await db.getGroup(id, user?.id || null);
+    if (!existingGroup) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404, headers: corsHeaders });
+    }
+
+    if (isCoreSettings && !existingGroup.is_owner) {
+      return NextResponse.json({ error: 'Forbidden: Only the group owner can update group settings' }, { status: 403, headers: corsHeaders });
+    }
+
+    await db.updateGroup(
+      id,
+      {
+        name,
+        description,
+        currency,
+        visibility,
+        participants,
+        payment_qrs: effectivePaymentQrs,
+      },
+      user?.id || null
+    );
+    const updated = await db.getGroup(id, user?.id || null);
     return NextResponse.json(updated, { headers: corsHeaders });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to update group';

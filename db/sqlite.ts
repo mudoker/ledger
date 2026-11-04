@@ -9,6 +9,7 @@ import type {
   BillGroupSummary,
   GroupBillOverview,
   GroupItemOverview,
+  GroupPaymentQr,
   SearchResults,
   PersonData,
   GlobalChargeData,
@@ -198,6 +199,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         currency TEXT DEFAULT 'VND',
         visibility TEXT DEFAULT 'public',
         participants TEXT DEFAULT '[]',
+        payment_qrs TEXT DEFAULT '[]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -307,6 +309,9 @@ export class SqliteAdapter implements DatabaseAdapter {
     }
     if (!groupColNames.has('participants')) {
       this.db.exec("ALTER TABLE bill_groups ADD COLUMN participants TEXT DEFAULT '[]';");
+    }
+    if (!groupColNames.has('payment_qrs')) {
+      this.db.exec("ALTER TABLE bill_groups ADD COLUMN payment_qrs TEXT DEFAULT '[]';");
     }
 
     this.db.exec(`
@@ -907,6 +912,9 @@ export class SqliteAdapter implements DatabaseAdapter {
     const parsedParticipants: PersonData[] = (group as any).participants
       ? (typeof (group as any).participants === 'string' ? JSON.parse((group as any).participants) : (group as any).participants)
       : [];
+    const parsedPaymentQrs: GroupPaymentQr[] = (group as any).payment_qrs
+      ? (typeof (group as any).payment_qrs === 'string' ? JSON.parse((group as any).payment_qrs) : (group as any).payment_qrs)
+      : [];
 
     if (groupVisibility === 'restricted' && !isOwner) {
       if (!userId) return null;
@@ -1114,6 +1122,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       updated_at: normalizeSqliteTimestamp(group.updated_at),
       bills,
       participants: parsedParticipants,
+      payment_qrs: parsedPaymentQrs,
     };
   }
 
@@ -1231,20 +1240,30 @@ export class SqliteAdapter implements DatabaseAdapter {
         participants: Array.isArray((g as any).participants)
           ? (g as any).participants
           : (typeof (g as any).participants === 'string' ? JSON.parse((g as any).participants) : []),
+        payment_qrs: Array.isArray((g as any).payment_qrs)
+          ? (g as any).payment_qrs
+          : (typeof (g as any).payment_qrs === 'string' ? JSON.parse((g as any).payment_qrs) : []),
       };
     });
   }
 
-  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void> {
-    const existing = this.db.prepare('SELECT owner_id FROM bill_groups WHERE id = ?').get(id) as { owner_id: string } | undefined;
+  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[]; payment_qrs?: GroupPaymentQr[] }, userId?: string | null): Promise<void> {
+    const existing = this.db.prepare('SELECT owner_id, visibility, participants FROM bill_groups WHERE id = ?').get(id) as { owner_id: string; visibility: string; participants: string } | undefined;
     if (!existing) throw new Error('Group not found');
-    if (userId && existing.owner_id !== userId) {
+    const isOwner = Boolean(userId && existing.owner_id === userId);
+    const isEditingCoreSettings = data.name !== undefined || data.description !== undefined || data.currency !== undefined || data.visibility !== undefined;
+    if (userId && !isOwner && isEditingCoreSettings) {
       throw new Error('Forbidden: Only the group owner can update this group');
     }
 
-    const { name, description, currency, visibility, participants } = data;
+    const { name, description, currency, visibility, participants, payment_qrs } = data;
     try {
       this.db.prepare('ALTER TABLE bill_groups ADD COLUMN participants TEXT DEFAULT \'[]\'').run();
+    } catch {
+      // Column may already exist
+    }
+    try {
+      this.db.prepare('ALTER TABLE bill_groups ADD COLUMN payment_qrs TEXT DEFAULT \'[]\'').run();
     } catch {
       // Column may already exist
     }
@@ -1256,6 +1275,7 @@ export class SqliteAdapter implements DatabaseAdapter {
           currency = COALESCE(?, currency),
           visibility = COALESCE(?, visibility),
           participants = CASE WHEN ? IS NOT NULL THEN ? ELSE participants END,
+          payment_qrs = CASE WHEN ? IS NOT NULL THEN ? ELSE payment_qrs END,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
@@ -1265,6 +1285,8 @@ export class SqliteAdapter implements DatabaseAdapter {
       visibility || null,
       participants !== undefined ? JSON.stringify(participants) : null,
       participants !== undefined ? JSON.stringify(participants) : null,
+      payment_qrs !== undefined ? JSON.stringify(payment_qrs) : null,
+      payment_qrs !== undefined ? JSON.stringify(payment_qrs) : null,
       id
     );
 

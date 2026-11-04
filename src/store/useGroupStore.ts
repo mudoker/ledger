@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BillGroupSummary, BillGroupDetail, PersonData } from '@/../db/types';
+import type { BillGroupSummary, BillGroupDetail, PersonData, GroupPaymentQr } from '@/../db/types';
 import { getLocalDb } from '@/lib/local-db';
 import type { LocalGroupRecord, LocalPerson, LocalBillRecord } from '@/lib/local-db/types';
 import {
@@ -19,11 +19,13 @@ interface GroupState {
   fetchGroup: (id: string) => Promise<BillGroupDetail | null>;
   syncGroupWithBills: (groupId: string) => Promise<void>;
   createGroup: (name: string, description?: string | null, currency?: string, visibility?: 'public' | 'restricted') => Promise<BillGroupDetail>;
-  updateGroup: (id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: any[] }) => Promise<void>;
+  updateGroup: (id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: any[]; payment_qrs?: GroupPaymentQr[] }) => Promise<void>;
   deleteGroup: (id: string) => Promise<boolean>;
   transferOwnership: (id: string, newOwnerId: string) => Promise<boolean>;
   addGroupParticipant: (groupId: string, name: string, email?: string | null) => Promise<void>;
   removeGroupParticipant: (groupId: string, participantId: string) => Promise<void>;
+  addPaymentQr: (groupId: string, qr: { payerName: string; payerId?: string | null; qrUrl: string; note?: string | null }) => Promise<void>;
+  removePaymentQr: (groupId: string, qrId: string) => Promise<void>;
   clearCurrentGroup: () => void;
 }
 
@@ -597,6 +599,46 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       set({ error: msg, isLoading: false });
       throw e;
     }
+  },
+
+  addPaymentQr: async (groupId: string, qrData: { payerName: string; payerId?: string | null; qrUrl: string; note?: string | null }) => {
+    const cur = get().currentGroup?.id === groupId ? get().currentGroup : null;
+    const existingQrs: GroupPaymentQr[] = cur?.payment_qrs || [];
+    const newQr: GroupPaymentQr = {
+      id: crypto.randomUUID(),
+      payerName: qrData.payerName.trim(),
+      payerId: qrData.payerId || null,
+      qrUrl: qrData.qrUrl,
+      note: qrData.note?.trim() || null,
+      createdAt: new Date().toISOString(),
+    };
+    const nextQrs = [...existingQrs, newQr];
+
+    set((state) => ({
+      currentGroup: state.currentGroup?.id === groupId ? {
+        ...state.currentGroup,
+        payment_qrs: nextQrs,
+      } : state.currentGroup,
+      groups: state.groups.map(g => g.id === groupId ? { ...g, payment_qrs: nextQrs } : g),
+    }));
+
+    await get().updateGroup(groupId, { payment_qrs: nextQrs });
+  },
+
+  removePaymentQr: async (groupId: string, qrId: string) => {
+    const cur = get().currentGroup?.id === groupId ? get().currentGroup : null;
+    const existingQrs: GroupPaymentQr[] = cur?.payment_qrs || [];
+    const nextQrs = existingQrs.filter(q => q.id !== qrId);
+
+    set((state) => ({
+      currentGroup: state.currentGroup?.id === groupId ? {
+        ...state.currentGroup,
+        payment_qrs: nextQrs,
+      } : state.currentGroup,
+      groups: state.groups.map(g => g.id === groupId ? { ...g, payment_qrs: nextQrs } : g),
+    }));
+
+    await get().updateGroup(groupId, { payment_qrs: nextQrs });
   },
 
   clearCurrentGroup: () => set({ currentGroup: null }),

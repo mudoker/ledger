@@ -1,3 +1,5 @@
+import type { GroupPaymentQr } from '@/../db/types';
+
 export type BillSharingStatus =
   | 'local'               // Only on this device
   | 'uploading'           // Upload in progress
@@ -62,6 +64,7 @@ export interface LocalGroupRecord {
   visibility?: 'public' | 'restricted';
   ownerId: string | null;
   participants?: LocalPerson[];
+  payment_qrs?: GroupPaymentQr[];
   totalAmount?: number;
   totalBills?: number;
   totalItems?: number;

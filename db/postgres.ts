@@ -9,6 +9,7 @@ import type {
   BillGroupSummary,
   GroupBillOverview,
   GroupItemOverview,
+  GroupPaymentQr,
   SearchResults,
   PersonData,
   GlobalChargeData,
@@ -209,6 +210,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         ALTER TABLE bills ADD COLUMN IF NOT EXISTS is_shared INTEGER DEFAULT 1;
         ALTER TABLE bills ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
         ALTER TABLE bill_groups ADD COLUMN IF NOT EXISTS participants JSONB DEFAULT '[]'::jsonb;
+        ALTER TABLE bill_groups ADD COLUMN IF NOT EXISTS payment_qrs JSONB DEFAULT '[]'::jsonb;
         ALTER TABLE bill_groups ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) DEFAULT 'public';
 
         -- Performance Indexes
@@ -944,6 +946,9 @@ export class PostgresAdapter implements DatabaseAdapter {
       const parsedParticipants: PersonData[] = Array.isArray(group.participants)
         ? group.participants
         : (typeof group.participants === 'string' ? JSON.parse(group.participants) : []);
+      const parsedPaymentQrs: GroupPaymentQr[] = Array.isArray(group.payment_qrs)
+        ? group.payment_qrs
+        : (typeof group.payment_qrs === 'string' ? JSON.parse(group.payment_qrs) : []);
 
       if (groupVisibility === 'restricted' && !isOwner) {
         if (!userId) return null;
@@ -1139,6 +1144,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         updated_at: typeof group.updated_at === 'string' ? group.updated_at : new Date(group.updated_at).toISOString(),
         bills,
         participants: parsedParticipants,
+        payment_qrs: parsedPaymentQrs,
       };
     } finally {
       client.release();
@@ -1264,6 +1270,9 @@ export class PostgresAdapter implements DatabaseAdapter {
           participants: Array.isArray((g as any).participants)
             ? (g as any).participants
             : (typeof (g as any).participants === 'string' ? JSON.parse((g as any).participants) : []),
+          payment_qrs: Array.isArray((g as any).payment_qrs)
+            ? (g as any).payment_qrs
+            : (typeof (g as any).payment_qrs === 'string' ? JSON.parse((g as any).payment_qrs) : []),
         };
       });
 
@@ -1273,17 +1282,19 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[] }, userId?: string | null): Promise<void> {
+  async updateGroup(id: string, data: { name?: string; description?: string | null; currency?: string; visibility?: 'public' | 'restricted'; participants?: PersonData[]; payment_qrs?: GroupPaymentQr[] }, userId?: string | null): Promise<void> {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
       const existing = await client.query('SELECT owner_id FROM bill_groups WHERE id = $1', [id]);
       if (existing.rows.length === 0) throw new Error('Group not found');
-      if (userId && existing.rows[0].owner_id !== userId) {
+      const isOwner = Boolean(userId && existing.rows[0].owner_id === userId);
+      const isEditingCoreSettings = data.name !== undefined || data.description !== undefined || data.currency !== undefined || data.visibility !== undefined;
+      if (userId && !isOwner && isEditingCoreSettings) {
         throw new Error('Forbidden: Only the group owner can update this group');
       }
 
-      const { name, description, currency, visibility, participants } = data;
+      const { name, description, currency, visibility, participants, payment_qrs } = data;
       await client.query(`
         UPDATE bill_groups
         SET name = COALESCE($1, name),
@@ -1291,14 +1302,16 @@ export class PostgresAdapter implements DatabaseAdapter {
             currency = COALESCE($3, currency),
             visibility = COALESCE($4, visibility),
             participants = CASE WHEN $5::text IS NOT NULL THEN $5::jsonb ELSE participants END,
+            payment_qrs = CASE WHEN $6::text IS NOT NULL THEN $6::jsonb ELSE payment_qrs END,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $6
+        WHERE id = $7
       `, [
         name !== undefined ? name.trim() : null,
         description !== undefined ? description : null,
         currency || null,
         visibility || null,
         participants !== undefined ? JSON.stringify(participants) : null,
+        payment_qrs !== undefined ? JSON.stringify(payment_qrs) : null,
         id
       ]);
 
