@@ -128,81 +128,105 @@ export function QrUploadButton({
     }
   };
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (disabled || isReading) return;
-    fileInputRef.current?.click();
-  };
-
   if (variant === 'dropzone') {
     return (
       <div
         role="button"
-        tabIndex={disabled ? -1 : 0}
-        onClick={handleClick}
+        tabIndex={disabled || isReading ? -1 : 0}
+        onClick={() => {
+          if (disabled || isReading) return;
+          fileInputRef.current?.click();
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            handleClick(e as any);
+            if (!disabled && !isReading) {
+              fileInputRef.current?.click();
+            }
           }
         }}
         className={cn(
-          "flex flex-col items-center justify-center py-6 px-4 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 hover:bg-primary/5 cursor-pointer transition-colors text-center group",
-          disabled && "opacity-60 cursor-not-allowed pointer-events-none",
+          "relative flex flex-col items-center justify-center py-6 px-4 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 hover:bg-primary/5 cursor-pointer transition-colors text-center group overflow-hidden touch-manipulation",
+          (disabled || isReading) && "opacity-60 cursor-not-allowed pointer-events-none",
           className
         )}
       >
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-2 group-hover:scale-105 transition-transform">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={accept}
+          disabled={disabled || isReading}
+          tabIndex={-1}
+          aria-label={label}
+          title=""
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 file:hidden"
+          style={{ fontSize: '100px' }}
+          onChange={handleFileChange}
+          onClick={(e) => {
+            // Let the native file dialog trigger without bubbling to parent form or container
+            e.stopPropagation();
+          }}
+        />
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-2 group-hover:scale-105 transition-transform pointer-events-none">
           {isReading ? (
             <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           ) : (
             <CloudUpload className="w-5 h-5" />
           )}
         </div>
-        <span className="text-xs font-bold text-foreground">
+        <span className="text-xs font-bold text-foreground pointer-events-none">
           {isReading ? 'Optimizing image...' : label}
         </span>
-        <span className="text-[10px] text-muted-foreground mt-0.5">
+        <span className="text-[10px] text-muted-foreground mt-0.5 pointer-events-none">
           PNG, JPG, WebP screenshot or photo
         </span>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={accept}
-          disabled={disabled || isReading}
-          className="hidden"
-          onChange={handleFileChange}
-        />
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={disabled || isReading}
+    <div
+      role="button"
+      tabIndex={disabled || isReading ? -1 : 0}
+      onClick={() => {
+        if (disabled || isReading) return;
+        fileInputRef.current?.click();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (!disabled && !isReading) {
+            fileInputRef.current?.click();
+          }
+        }
+      }}
       className={cn(
-        "relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 border border-border/80 text-xs font-semibold text-foreground cursor-pointer transition-colors active:scale-95",
-        disabled && "opacity-60 cursor-not-allowed pointer-events-none",
+        "relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 border border-border/80 text-xs font-semibold text-foreground cursor-pointer transition-colors active:scale-95 overflow-hidden touch-manipulation",
+        (disabled || isReading) && "opacity-60 cursor-not-allowed pointer-events-none",
         className
       )}
     >
-      {isReading ? (
-        <div className="w-3 h-3 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin" />
-      ) : (
-        <CloudUpload className="w-3.5 h-3.5 text-primary" />
-      )}
-      <span>{isReading ? 'Optimizing...' : label}</span>
       <input
         ref={fileInputRef}
         type="file"
         accept={accept}
         disabled={disabled || isReading}
-        className="hidden"
+        tabIndex={-1}
+        aria-label={label}
+        title=""
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 file:hidden"
+        style={{ fontSize: '100px' }}
         onChange={handleFileChange}
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
       />
-    </button>
+      {isReading ? (
+        <div className="w-3 h-3 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin pointer-events-none" />
+      ) : (
+        <CloudUpload className="w-3.5 h-3.5 text-primary pointer-events-none" />
+      )}
+      <span className="pointer-events-none">{isReading ? 'Optimizing...' : label}</span>
+    </div>
   );
 }
