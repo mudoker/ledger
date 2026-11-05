@@ -181,7 +181,28 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     // 4. Merge server bills with local bills using common data model
     const serverBills = (serverGroup?.bills || []).filter(b => !pendingDeleteIds.has(b.id));
     const activeLocalBills = localBills.filter(b => !pendingDeleteIds.has(b.id));
-    const mergedBills = mergeBillsForGroup(serverBills, activeLocalBills, id, participants);
+
+    // Reconcile server-side bill deletions or unlinks in local IndexedDB so stale local drafts do not resurrect
+    const serverBillIdSet = new Set(serverBills.map(b => b.id));
+    const pendingBillIdSet = new Set(pendingOps.map(op => op.billId));
+    const reconciledLocalBills: LocalBillRecord[] = [];
+
+    for (const lb of activeLocalBills) {
+      const isLinkedToThisGroup = lb.groupId === id || (lb as any).group_id === id;
+      if (isLinkedToThisGroup && serverBills.length > 0 && !serverBillIdSet.has(lb.id)) {
+        const isPendingUpload = pendingBillIdSet.has(lb.id) || lb.sharingStatus === 'uploading';
+        if (!isPendingUpload && (lb.sharingStatus === 'shared' || isAutoSyncMode)) {
+          // Bill was deleted or unlinked on the server. Prune group association locally in IndexedDB.
+          lb.groupId = null;
+          (lb as any).group_id = null;
+          localDb.saveBill(lb).catch(() => {});
+          continue; // Exclude from activeLocalBills for this group
+        }
+      }
+      reconciledLocalBills.push(lb);
+    }
+
+    const mergedBills = mergeBillsForGroup(serverBills, reconciledLocalBills, id, participants);
 
     // Ensure group participants is strictly the superset of all bill participants (Bill.participants ⊆ Group.participants)
     const unifiedParticipants = ensureGroupParticipantsSuperset(participants, mergedBills);

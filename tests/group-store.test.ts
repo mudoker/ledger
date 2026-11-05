@@ -126,6 +126,126 @@ describe('useGroupStore - Zustand Group State Management', () => {
       expect(useGroupStore.getState().currentGroup).toBeNull();
       expect(useGroupStore.getState().error).toBe('Group not found');
     });
+
+    it('prunes server-deleted bills from localdb and prevents resurrecting ghost bills on fetchGroup in hybrid mode', async () => {
+      const { getLocalDb } = await import('@/lib/local-db');
+      const { useAppSettingsStore } = await import('@/store/useAppSettingsStore');
+      useAppSettingsStore.setState({ storageMode: 'hybrid' });
+
+      const localDb = getLocalDb();
+      // Setup group in localDb
+      await localDb.saveGroup({
+        id: 'group_reconcile_test',
+        name: 'Reconcile Group',
+        description: null,
+        currency: 'VND',
+        visibility: 'public',
+        ownerId: 'user_alice',
+        participants: [],
+        payment_qrs: [],
+        totalAmount: 1500000,
+        totalBills: 2,
+        totalItems: 2,
+        createdAt: '2026-02-01',
+        updatedAt: '2026-02-01',
+      });
+
+      // Bill 1: Kept on server
+      await localDb.saveBill({
+        id: 'b_kept',
+        name: 'Kept Bill',
+        location: null,
+        currency: 'VND',
+        hostId: null,
+        qrCode: null,
+        groupId: 'group_reconcile_test',
+        groupName: 'Reconcile Group',
+        ownerId: 'user_alice',
+        people: [],
+        items: [{ id: 'i1', name: 'Item 1', price: 500000, quantity: 1, assignments: {} }],
+        globalCharges: [],
+        sharingStatus: 'shared',
+        visibility: 'public',
+        shareToken: null,
+        lastSyncedAt: null,
+        syncError: null,
+        createdAt: '2026-02-01',
+        updatedAt: '2026-02-01',
+      });
+
+      // Bill 2: Deleted on server (still in localDb with groupId = 'group_reconcile_test')
+      await localDb.saveBill({
+        id: 'b_stale_deleted',
+        name: 'Stale Server-Deleted Bill',
+        location: null,
+        currency: 'VND',
+        hostId: null,
+        qrCode: null,
+        groupId: 'group_reconcile_test',
+        groupName: 'Reconcile Group',
+        ownerId: 'user_alice',
+        people: [],
+        items: [{ id: 'i2', name: 'Item 2', price: 1000000, quantity: 1, assignments: {} }],
+        globalCharges: [],
+        sharingStatus: 'shared',
+        visibility: 'public',
+        shareToken: null,
+        lastSyncedAt: null,
+        syncError: null,
+        createdAt: '2026-02-01',
+        updatedAt: '2026-02-01',
+      });
+
+      // Server returns only Bill 1 (Bill 2 was deleted from cloud)
+      const mockServerGroupDetail = {
+        id: 'group_reconcile_test',
+        name: 'Reconcile Group',
+        description: null,
+        owner_id: 'user_alice',
+        owner_name: 'Alice',
+        is_owner: true,
+        currency: 'VND',
+        total_amount: 500000,
+        total_bills: 1,
+        total_items: 1,
+        created_at: '2026-02-01',
+        updated_at: '2026-02-02',
+        bills: [
+          {
+            id: 'b_kept',
+            name: 'Kept Bill',
+            location: null,
+            currency: 'VND',
+            totalAmount: 500000,
+            created_at: '2026-02-01',
+            updated_at: '2026-02-01',
+            items: [{ id: 'i1', name: 'Item 1', price: 500000, quantity: 1, totalPrice: 500000 }],
+            people: [],
+          },
+        ],
+      };
+
+      globalThis.fetch = mock(async (url: string | URL | Request) => {
+        const urlStr = url.toString();
+        if (urlStr.includes('/api/groups/group_reconcile_test')) {
+          return new Response(JSON.stringify(mockServerGroupDetail), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+      }) as any;
+
+      // Execute pull-to-refresh / fetchGroup
+      const result = await useGroupStore.getState().fetchGroup('group_reconcile_test');
+
+      expect(result).not.toBeNull();
+      // Crucial assertion: Must contain ONLY 1 bill (500k), not 2 bills (1.5M)
+      expect(result!.bills.length).toBe(1);
+      expect(result!.total_bills).toBe(1);
+      expect(result!.total_amount).toBe(500000);
+
+      // Verify that localDb was reconciled and pruned: b_stale_deleted has its groupId cleared
+      const localStaleBill = await localDb.getBill('b_stale_deleted');
+      expect(localStaleBill?.groupId).toBeNull();
+    });
   });
 
   describe('createGroup', () => {
