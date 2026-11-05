@@ -246,6 +246,105 @@ describe('useGroupStore - Zustand Group State Management', () => {
       const localStaleBill = await localDb.getBill('b_stale_deleted');
       expect(localStaleBill?.groupId).toBeNull();
     });
+
+    it('updates localDb with latest server bill snapshot when server updatedAt is newer in single-writer LWW model', async () => {
+      const { getLocalDb } = await import('@/lib/local-db');
+      const { useAppSettingsStore } = await import('@/store/useAppSettingsStore');
+      useAppSettingsStore.setState({ storageMode: 'hybrid' });
+
+      const localDb = getLocalDb();
+      await localDb.saveGroup({
+        id: 'grp_lww_test',
+        name: 'LWW Trip',
+        description: null,
+        currency: 'VND',
+        visibility: 'public',
+        ownerId: 'user_bob',
+        participants: [],
+        payment_qrs: [],
+        totalAmount: 200000,
+        totalBills: 1,
+        totalItems: 1,
+        createdAt: '2026-02-01T10:00:00.000Z',
+        updatedAt: '2026-02-01T10:00:00.000Z',
+      });
+
+      // Older bill in localDb (e.g. 200,000 VND)
+      await localDb.saveBill({
+        id: 'bill_lww',
+        name: 'Lunch Old',
+        location: null,
+        currency: 'VND',
+        hostId: null,
+        qrCode: null,
+        groupId: 'grp_lww_test',
+        groupName: 'LWW Trip',
+        ownerId: 'user_bob',
+        people: [],
+        items: [{ id: 'it1', name: 'Noodles', price: 200000, quantity: 1, assignments: {} }],
+        globalCharges: [],
+        sharingStatus: 'shared',
+        visibility: 'public',
+        shareToken: null,
+        lastSyncedAt: '2026-02-01T10:00:00.000Z',
+        syncError: null,
+        createdAt: '2026-02-01T10:00:00.000Z',
+        updatedAt: '2026-02-01T10:00:00.000Z',
+      });
+
+      // Server bill was updated later (e.g. 2026-02-02T12:00:00.000Z to 350,000 VND)
+      const mockServerGroup = {
+        id: 'grp_lww_test',
+        name: 'LWW Trip',
+        description: null,
+        owner_id: 'user_bob',
+        owner_name: 'Bob',
+        is_owner: true,
+        currency: 'VND',
+        total_amount: 350000,
+        total_bills: 1,
+        total_items: 2,
+        created_at: '2026-02-01T10:00:00.000Z',
+        updated_at: '2026-02-02T12:00:00.000Z',
+        bills: [
+          {
+            id: 'bill_lww',
+            name: 'Lunch New (Updated on Cloud)',
+            location: 'Downtown',
+            currency: 'VND',
+            totalAmount: 350000,
+            created_at: '2026-02-01T10:00:00.000Z',
+            updated_at: '2026-02-02T12:00:00.000Z',
+            items: [
+              { id: 'it1', name: 'Noodles', price: 200000, quantity: 1, totalPrice: 200000 },
+              { id: 'it2', name: 'Drinks', price: 150000, quantity: 1, totalPrice: 150000 },
+            ],
+            people: [],
+          },
+        ],
+      };
+
+      globalThis.fetch = mock(async (url: string | URL | Request) => {
+        const urlStr = url.toString();
+        if (urlStr.includes('/api/groups/grp_lww_test')) {
+          return new Response(JSON.stringify(mockServerGroup), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+      }) as any;
+
+      const groupDetail = await useGroupStore.getState().fetchGroup('grp_lww_test');
+
+      expect(groupDetail).not.toBeNull();
+      expect(groupDetail!.total_amount).toBe(350000);
+      expect(groupDetail!.bills[0].name).toBe('Lunch New (Updated on Cloud)');
+
+      // Verify that localDb record was updated with the authoritative server version
+      const refreshedLocalBill = await localDb.getBill('bill_lww');
+      expect(refreshedLocalBill).not.toBeNull();
+      expect(refreshedLocalBill!.name).toBe('Lunch New (Updated on Cloud)');
+      expect(refreshedLocalBill!.items.length).toBe(2);
+      expect(refreshedLocalBill!.updatedAt).toBe('2026-02-02T12:00:00.000Z');
+    });
   });
 
   describe('createGroup', () => {

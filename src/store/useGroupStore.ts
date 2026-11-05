@@ -6,8 +6,10 @@ import {
   mergeBillsForGroup,
   aggregateGroupSummaries,
   ensureGroupParticipantsSuperset,
+  parseTimestampMs,
 } from '@/lib/common-data-model';
 import { useAppSettingsStore } from '@/store/useAppSettingsStore';
+import { syncManager } from '@/lib/local-db/sync-manager';
 
 interface GroupState {
   groups: BillGroupSummary[];
@@ -37,6 +39,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   fetchGroups: async () => {
     set({ isLoading: true, error: null });
+    const storageMode = useAppSettingsStore.getState().storageMode;
 
     let localGroups: LocalGroupRecord[] = [];
     let localBills: LocalBillRecord[] = [];
@@ -70,6 +73,40 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     } catch (e: unknown) {
       fetchError = e instanceof Error ? e.message : 'Network error';
     } finally {
+      // Reconcile and cache latest server group snapshots into localDb when server is authoritative
+      if (storageMode !== 'cloud' && serverGroups.length > 0) {
+        const localDb = getLocalDb();
+        for (const sg of serverGroups) {
+          const matchingLg = localGroups.find(lg => lg.id === sg.id);
+          const serverTime = parseTimestampMs(sg.updated_at);
+          const localTime = matchingLg ? parseTimestampMs(matchingLg.updatedAt) : 0;
+          if (!matchingLg || serverTime >= localTime) {
+            localDb.saveGroup({
+              id: sg.id,
+              name: sg.name,
+              description: sg.description,
+              currency: sg.currency || 'VND',
+              visibility: sg.visibility || 'public',
+              ownerId: sg.owner_id || null,
+              participants: (sg.participants || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                sponsorAmount: p.sponsorAmount ?? 0,
+                paidAmount: p.paidAmount ?? 0,
+                userId: p.userId || null,
+                email: p.email || null,
+              })),
+              payment_qrs: (sg as any).payment_qrs || [],
+              totalAmount: sg.total_amount,
+              totalBills: sg.total_bills,
+              totalItems: sg.total_items,
+              createdAt: sg.created_at || new Date().toISOString(),
+              updatedAt: sg.updated_at || new Date().toISOString(),
+            }).catch(() => {});
+          }
+        }
+      }
+
       // Unified group summaries aggregation
       const unifiedSummaries = aggregateGroupSummaries(serverGroups, localGroups, localBills);
 
@@ -262,13 +299,62 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         updatedAt: finalDetail.updated_at,
       }).catch(() => {});
 
-      // Backfill and reconcile local bill group associations in localDb so local copies reflect the group link
+      // Backfill and reconcile local bills with latest authoritative data in localDb:
+      // - If server is latest (serverTime >= localTime) and no pending local op, update localDb with server snapshot.
+      // - If local is latest (localTime > serverTime) and has pending op, retain local edits and trigger sync push.
       try {
         for (const b of mergedBills) {
           const matchingLocal = localBills.find(lb => lb.id === b.id);
-          if (matchingLocal && matchingLocal.groupId !== id) {
+          const hasPendingOp = pendingBillIdSet.has(b.id);
+          const localTime = matchingLocal ? parseTimestampMs(matchingLocal.updatedAt) : 0;
+          const serverTime = parseTimestampMs(b.updated_at || b.created_at);
+
+          if (!hasPendingOp && (!matchingLocal || serverTime >= localTime)) {
+            const updatedLocalRecord: LocalBillRecord = {
+              id: b.id,
+              name: b.name || matchingLocal?.name || '',
+              location: b.location !== undefined ? b.location : (matchingLocal?.location || null),
+              currency: b.currency || matchingLocal?.currency || finalDetail.currency || 'VND',
+              hostId: b.host_id !== undefined ? b.host_id : (matchingLocal?.hostId || null),
+              qrCode: matchingLocal?.qrCode || null,
+              groupId: id,
+              groupName: finalDetail.name,
+              ownerId: matchingLocal?.ownerId || finalDetail.owner_id || null,
+              people: (b.people && b.people.length > 0 ? b.people : matchingLocal?.people || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                sponsorAmount: p.sponsorAmount ?? 0,
+                paidAmount: p.paidAmount ?? 0,
+                userId: p.userId || null,
+                email: p.email || null,
+              })),
+              items: (b.items && b.items.length > 0 ? b.items : matchingLocal?.items || []).map(it => ({
+                id: it.id,
+                name: it.name,
+                price: Number(it.price || 0),
+                quantity: Number(it.quantity || 1),
+                assignments: it.assignments || {},
+              })),
+              globalCharges: (b.globalCharges || matchingLocal?.globalCharges || []).map(gc => ({
+                id: gc.id,
+                name: gc.name,
+                type: gc.type as any,
+                amount: Number(gc.amount || 0),
+              })),
+              sharingStatus: isAutoSyncMode ? 'shared' : (matchingLocal?.sharingStatus || 'shared'),
+              visibility: (finalDetail.visibility as any) || matchingLocal?.visibility || 'public',
+              shareToken: matchingLocal?.shareToken || null,
+              lastSyncedAt: new Date().toISOString(),
+              syncError: null,
+              createdAt: b.created_at || matchingLocal?.createdAt || new Date().toISOString(),
+              updatedAt: b.updated_at || matchingLocal?.updatedAt || new Date().toISOString(),
+            };
+            await localDb.saveBill(updatedLocalRecord).catch(() => {});
+          } else if (matchingLocal && matchingLocal.groupId !== id) {
             matchingLocal.groupId = id;
             await localDb.saveBill(matchingLocal).catch(() => {});
+          } else if (hasPendingOp) {
+            syncManager.processPendingOperations().catch(() => {});
           }
         }
       } catch {}
