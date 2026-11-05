@@ -41,11 +41,8 @@ describe('App Settings & Offline Authentication Suite', () => {
             expect(state.storageMode).toBe('local');
         });
 
-        it('allows toggling between local, cloud, and hybrid modes', () => {
+        it('allows toggling between local and hybrid modes (cloud mode deprecated)', () => {
             const setStorageMode = useAppSettingsStore.getState().setStorageMode;
-
-            setStorageMode('cloud');
-            expect(useAppSettingsStore.getState().storageMode).toBe('cloud');
 
             setStorageMode('hybrid');
             expect(useAppSettingsStore.getState().storageMode).toBe('hybrid');

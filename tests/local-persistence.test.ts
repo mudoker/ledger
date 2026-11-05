@@ -502,8 +502,8 @@ describe('Local Database & Offline Persistence Engine', () => {
             await syncManager.syncBillIfNeeded(localBill);
             expect(networkCallCount).toBe(0);
 
-            // Case 2: In 'cloud' mode, upload is triggered
-            useAppSettingsStore.setState({ storageMode: 'cloud' });
+            // Case 2: In 'hybrid' mode, upload is triggered
+            useAppSettingsStore.setState({ storageMode: 'hybrid' });
             await syncManager.syncBillIfNeeded(localBill);
             expect(networkCallCount).toBe(1);
         });

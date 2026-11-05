@@ -153,7 +153,7 @@ export function AppSettingsPage({ onBack }: AppSettingsPageProps) {
             </div>
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-3">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {/* Mode: Local Only */}
             <button
               type="button"
@@ -178,33 +178,6 @@ export function AppSettingsPage({ onBack }: AppSettingsPageProps) {
                 </div>
                 <h3 className="text-xs font-bold text-foreground">{t.storageModeLocal}</h3>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{t.storageModeLocalDesc}</p>
-              </div>
-            </button>
-
-            {/* Mode: Cloud Only */}
-            <button
-              type="button"
-              onClick={() => handleSelectStorageMode('cloud')}
-              className={cn(
-                'p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2.5',
-                storageMode === 'cloud'
-                  ? 'bg-primary/10 border-primary/50 shadow-sm ring-1 ring-primary/30'
-                  : 'bg-card border-border/70 hover:border-foreground/20 hover:bg-muted/40'
-              )}
-            >
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="p-1.5 rounded-lg bg-foreground/5 text-foreground inline-block">
-                    <Cloud className="w-4 h-4 text-blue-500" />
-                  </span>
-                  {storageMode === 'cloud' && (
-                    <span className="text-[10px] font-black uppercase tracking-wider text-primary bg-primary/20 px-2 py-0.5 rounded-full">
-                      Active
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-xs font-bold text-foreground">{t.storageModeCloud}</h3>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{t.storageModeCloudDesc}</p>
               </div>
             </button>
 

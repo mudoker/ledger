@@ -138,7 +138,7 @@ class SyncManager {
 
   async syncBillIfNeeded(bill: LocalBillRecord): Promise<void> {
     const storageMode = useAppSettingsStore.getState().storageMode;
-    // Only auto-sync if mode is cloud, hybrid, or bill is explicitly marked as shared
+    // Only auto-sync if mode is hybrid, cloud (legacy), or bill is explicitly marked as shared
     const shouldSync = storageMode === 'cloud' || storageMode === 'hybrid' || bill.sharingStatus === 'shared';
     if (!shouldSync) return;
 
@@ -204,7 +204,7 @@ class SyncManager {
 
   /**
    * Synchronizes all existing local groups and bills to the cloud when transitioning
-   * to 'cloud' or 'hybrid' mode, without wiping localDb data, and clears any stale 'Local' badges.
+   * to 'hybrid' mode, without wiping localDb data, and clears any stale 'Local' badges.
    */
   async syncAllLocalDataToCloud(): Promise<void> {
     const storageMode = useAppSettingsStore.getState().storageMode;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type StorageMode = 'local' | 'cloud' | 'hybrid';
+export type StorageMode = 'local' | 'hybrid' | 'cloud';
 export type AppLanguage = 'en' | 'vi';
 
 interface AppSettingsState {
@@ -23,7 +23,7 @@ export const useAppSettingsStore = create<AppSettingsState>()(
 
       setStorageMode: (mode) => {
         set({ storageMode: mode });
-        if (mode === 'cloud' || mode === 'hybrid') {
+        if (mode === 'hybrid' || mode === 'cloud') {
           try {
             const { useGroupStore } = require('@/store/useGroupStore');
             const groupState = useGroupStore.getState();
@@ -47,6 +47,11 @@ export const useAppSettingsStore = create<AppSettingsState>()(
     }),
     {
       name: 'ledger-app-settings',
+      onRehydrateStorage: () => (state) => {
+        if (state && (state.storageMode as string) === 'cloud') {
+          state.storageMode = 'hybrid';
+        }
+      },
     }
   )
 );
