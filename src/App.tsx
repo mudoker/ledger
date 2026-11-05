@@ -261,15 +261,13 @@ function App() {
     const cleanUrl = window.location.origin + window.location.pathname;
     window.history.pushState({}, '', cleanUrl);
 
-    // 3. Reset active group in store
-    useGroupStore.getState().clearCurrentGroup();
-
-    // 4. Save locally first so fetchHistory / fetchGroups read the freshest local snapshot
+    // 3. Save locally first so fetchHistory / fetchGroups read the freshest local snapshot
     if (!alreadySaved && !isReadOnly && (people.length > 0 || items.length > 0)) {
       await saveToDb().catch(() => {});
     }
     fetchHistory().catch(() => {});
-    useGroupStore.getState().fetchGroups().catch(() => {});
+    await useGroupStore.getState().fetchGroups().catch(() => {});
+    useGroupStore.getState().clearCurrentGroup();
   };
 
   const handleRefreshActiveBill = async () => {

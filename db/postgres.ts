@@ -744,6 +744,10 @@ export class PostgresAdapter implements DatabaseAdapter {
         );
       }
 
+      if (rawGroupId) {
+        await client.query('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [rawGroupId]);
+      }
+
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
@@ -757,18 +761,20 @@ export class PostgresAdapter implements DatabaseAdapter {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
-      if (userId) {
-        const billRes = await client.query('SELECT owner_id FROM bills WHERE id = $1', [billId]);
-        if (billRes.rows.length > 0) {
-          const ownerId = billRes.rows[0].owner_id;
-          if (ownerId && ownerId !== userId) {
-            throw new Error('Forbidden: Only the bill owner can delete this bill');
-          }
+      const billRes = await client.query('SELECT owner_id, group_id FROM bills WHERE id = $1', [billId]);
+      const prevGroupId = billRes.rows.length > 0 ? billRes.rows[0].group_id : null;
+      if (userId && billRes.rows.length > 0) {
+        const ownerId = billRes.rows[0].owner_id;
+        if (ownerId && ownerId !== userId) {
+          throw new Error('Forbidden: Only the bill owner can delete this bill');
         }
       }
 
       await client.query('BEGIN');
       const res = await client.query('DELETE FROM bills WHERE id = $1', [billId]);
+      if (prevGroupId) {
+        await client.query('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [prevGroupId]);
+      }
       await client.query('COMMIT');
       return (res.rowCount ?? 0) > 0;
     } catch (err) {
@@ -1198,7 +1204,7 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       const groupIds = groupsRes.rows.map(g => g.id);
       const billStatsRes = await client.query(`
-        SELECT b.id, b.group_id, b.name,
+        SELECT b.id, b.group_id, b.name, b.updated_at,
           (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
           (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed') as fixed_extras,
           (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras,
@@ -1220,12 +1226,13 @@ export class PostgresAdapter implements DatabaseAdapter {
         billAmounts: Record<string, number>;
         billItemCounts: Record<string, number>;
         billNames: Record<string, string>;
+        billUpdatedAt: Record<string, string>;
       }>();
       for (const bs of billStatsRes.rows) {
         const gid = String(bs.group_id);
         let curr = statsByGroup.get(gid);
         if (!curr) {
-          curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {}, billNames: {} };
+          curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {}, billNames: {}, billUpdatedAt: {} };
           statsByGroup.set(gid, curr);
         }
         const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
@@ -1237,6 +1244,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         curr.billAmounts[bid] = billTotal;
         curr.billItemCounts[bid] = Number(bs.item_count || 0);
         curr.billNames[bid] = String(bs.name || '');
+        curr.billUpdatedAt[bid] = typeof bs.updated_at === 'string' ? bs.updated_at : new Date(bs.updated_at).toISOString();
       }
 
       const results: BillGroupSummary[] = groupsRes.rows.map(g => {
@@ -1248,6 +1256,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           billAmounts: {},
           billItemCounts: {},
           billNames: {},
+          billUpdatedAt: {},
         };
         return {
           id: String(g.id),
@@ -1266,6 +1275,7 @@ export class PostgresAdapter implements DatabaseAdapter {
           bill_amounts: stats.billAmounts,
           bill_item_counts: stats.billItemCounts,
           bill_names: stats.billNames,
+          bill_updated_at: stats.billUpdatedAt,
           created_at: typeof g.created_at === 'string' ? g.created_at : new Date(g.created_at).toISOString(),
           updated_at: typeof g.updated_at === 'string' ? g.updated_at : new Date(g.updated_at).toISOString(),
           participants: Array.isArray((g as any).participants)
@@ -1426,11 +1436,12 @@ export class PostgresAdapter implements DatabaseAdapter {
     if (!this.pool) throw new Error('Database pool not initialized');
     const client = await this.pool.connect();
     try {
-      const existing = await client.query('SELECT owner_id FROM bills WHERE id = $1', [billId]);
+      const existing = await client.query('SELECT owner_id, group_id FROM bills WHERE id = $1', [billId]);
       if (existing.rows.length === 0) throw new Error('Bill not found');
       if (userId && existing.rows[0].owner_id && existing.rows[0].owner_id !== userId) {
         throw new Error('Forbidden: Only the bill owner can link or unlink this bill');
       }
+      const prevGroupId = existing.rows[0].group_id;
 
       if (groupId) {
         const groupRes = await client.query('SELECT id, visibility FROM bill_groups WHERE id = $1', [groupId]);
@@ -1440,6 +1451,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       await client.query('BEGIN');
       await client.query('UPDATE bills SET group_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [groupId, billId]);
       if (groupId) {
+        await client.query('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [groupId]);
         const groupRes = await client.query('SELECT visibility FROM bill_groups WHERE id = $1', [groupId]);
         if (groupRes.rows.length > 0) {
           const gVis = groupRes.rows[0].visibility;
@@ -1447,6 +1459,9 @@ export class PostgresAdapter implements DatabaseAdapter {
             await client.query("UPDATE bills SET visibility = 'public' WHERE id = $1 AND is_shared = 1 AND revoked_at IS NULL", [billId]);
           }
         }
+      }
+      if (prevGroupId && prevGroupId !== groupId) {
+        await client.query('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [prevGroupId]);
       }
       await client.query('COMMIT');
     } catch (err) {

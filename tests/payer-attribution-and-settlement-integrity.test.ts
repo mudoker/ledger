@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { calculateBill } from '@/hooks/useBillState';
 import { calculateGroupSettlement, buildCanonicalPersonRegistry } from '@/lib/group-settlement';
-import { resolveEffectivePayerName, mergeBillsForGroup } from '@/lib/common-data-model';
+import { resolveEffectivePayerName, mergeBillsForGroup, aggregateGroupSummaries } from '@/lib/common-data-model';
 import { useAppSettingsStore } from '@/store/useAppSettingsStore';
 import { useGroupStore } from '@/store/useGroupStore';
 import { SqliteAdapter } from '../db/sqlite';
@@ -335,6 +335,91 @@ describe('Payer Attribution, Settlement Integrity & Identity Isolation', () => {
     const loadedGroup = await db.getGroup(group.id, quocUser.id);
     const billInGroup = loadedGroup?.bills.find(b => b.id === 'bill_homestay');
     expect(billInGroup?.host_name).toBe('Đạt');
+
+    db.close();
+  });
+
+  it('guarantees 100% total equality between landing page group summary and group overview for 24 bills', async () => {
+    const db = new SqliteAdapter(':memory:');
+    await db.init();
+    const quocUser = await db.upsertUser({
+      id: 'user_quoc',
+      email: 'quoc@gmail.com',
+      name: 'Quốc Đoàn',
+      avatar_url: null,
+    });
+    const group = await db.createGroup('Da Lat Mong Mo', quocUser.id);
+
+    const tripBills = [
+      { id: 'b1', name: 'Tiền nhà', amt: 7428189 },
+      { id: 'b_tien_coc', name: 'Tiền cọc', amt: 1500000 },
+      { id: 'b2', name: 'Tiền xe đi', amt: 3250000 },
+      { id: 'b3', name: 'Tiền xe về', amt: 2570000 },
+      { id: 'b4', name: 'Ăn sáng (D1)', amt: 280000 },
+      { id: 'b5', name: 'Xăng (D1)', amt: 150000 },
+      { id: 'b6', name: 'Vé mongo', amt: 700000 },
+      { id: 'b7', name: 'Vé cáp treo', amt: 750000 },
+      { id: 'b8', name: 'Ăn trưa (D1)', amt: 954000 },
+      { id: 'b9', name: 'Nước suối', amt: 23000 },
+      { id: 'b10', name: 'Ăn tối', amt: 1524700 },
+      { id: 'b11', name: 'Đậu nành', amt: 130000 },
+      { id: 'b11_an_sang_d2', name: 'Ăn sáng (D2)', amt: 360000 },
+      { id: 'b12', name: 'Xăng (D2)', amt: 150000 },
+      { id: 'b13', name: 'Farm', amt: 480000 },
+      { id: 'b14', name: 'Langfarm', amt: 1289520 },
+      { id: 'b15', name: 'Cafe', amt: 316000 },
+      { id: 'b16', name: 'Ăn trưa (D2)', amt: 590000 },
+      { id: 'b17', name: 'Cafe hoàng hôn', amt: 400000 },
+      { id: 'b18', name: 'Tối lẩu bò', amt: 1357000 },
+      { id: 'b19', name: 'Ăn vặt', amt: 140000 },
+      { id: 'b20', name: 'Ăn sáng (D3)', amt: 248000 },
+      { id: 'b21', name: 'Grab', amt: 49000 },
+      { id: 'b22', name: 'Áo mưa', amt: 40000 },
+    ];
+
+    for (const b of tripBills) {
+      await db.saveBill(
+        b.id,
+        {
+          name: b.name,
+          currency: 'VND',
+          groupId: group.id,
+          items: [{ id: `it_${b.id}`, name: b.name, price: b.amt, quantity: 1, assignments: {} }],
+          people: [{ id: `p_${b.id}`, name: 'Quốc', paidAmount: b.amt }],
+        },
+        quocUser.id
+      );
+    }
+
+    const serverSummaries = await db.listGroups(quocUser.id);
+    const serverDetail = await db.getGroup(group.id, quocUser.id);
+
+    expect(serverSummaries.length).toBe(1);
+    expect(serverDetail).not.toBeNull();
+    // Verify DB level parity
+    expect(serverSummaries[0].total_amount).toBe(24679409);
+    expect(serverDetail?.total_amount).toBe(24679409);
+    expect(serverSummaries[0].total_bills).toBe(24);
+    expect(serverDetail?.total_bills).toBe(24);
+
+    // Now simulate local bills where 5 bills were saved locally with groupId = null
+    // (the exact cause of the 14.096.700 đ vs 24.679.409 đ mismatch)
+    const localBills: LocalBillRecord[] = [
+      { id: 'b1', name: 'Tiền nhà', groupId: null, groupName: null, location: null, currency: 'VND', hostId: null, qrCode: null, ownerId: quocUser.id, people: [], items: [], globalCharges: [], sharingStatus: 'local', visibility: 'local', shareToken: null, lastSyncedAt: null, syncError: null, createdAt: '2026-11-03T12:00:00.000Z', updatedAt: '2026-11-03T12:00:00.000Z' },
+      { id: 'b_tien_coc', name: 'Tiền cọc', groupId: null, groupName: null, location: null, currency: 'VND', hostId: null, qrCode: null, ownerId: quocUser.id, people: [], items: [], globalCharges: [], sharingStatus: 'local', visibility: 'local', shareToken: null, lastSyncedAt: null, syncError: null, createdAt: '2026-11-03T12:00:00.000Z', updatedAt: '2026-11-03T12:00:00.000Z' },
+      { id: 'b14', name: 'Langfarm', groupId: null, groupName: null, location: null, currency: 'VND', hostId: null, qrCode: null, ownerId: quocUser.id, people: [], items: [], globalCharges: [], sharingStatus: 'local', visibility: 'local', shareToken: null, lastSyncedAt: null, syncError: null, createdAt: '2026-11-03T12:00:00.000Z', updatedAt: '2026-11-03T12:00:00.000Z' },
+      { id: 'b15', name: 'Cafe', groupId: null, groupName: null, location: null, currency: 'VND', hostId: null, qrCode: null, ownerId: quocUser.id, people: [], items: [], globalCharges: [], sharingStatus: 'local', visibility: 'local', shareToken: null, lastSyncedAt: null, syncError: null, createdAt: '2026-11-03T12:00:00.000Z', updatedAt: '2026-11-03T12:00:00.000Z' },
+      { id: 'b21', name: 'Grab', groupId: null, groupName: null, location: null, currency: 'VND', hostId: null, qrCode: null, ownerId: quocUser.id, people: [], items: [], globalCharges: [], sharingStatus: 'local', visibility: 'local', shareToken: null, lastSyncedAt: null, syncError: null, createdAt: '2026-11-03T12:00:00.000Z', updatedAt: '2026-11-03T12:00:00.000Z' },
+    ];
+
+    useAppSettingsStore.setState({ storageMode: 'local' });
+    const aggregatedLandingSummaries = aggregateGroupSummaries(serverSummaries, [], localBills);
+
+    // Landing page summary MUST NOT drop the 5 bills and MUST be exactly 24.679.409 đ (NOT 14.096.700 đ)
+    expect(aggregatedLandingSummaries[0].total_amount).toBe(24679409);
+    expect(aggregatedLandingSummaries[0].total_bills).toBe(24);
+    expect(serverDetail).toBeDefined();
+    expect(aggregatedLandingSummaries[0].total_amount).toBe(serverDetail!.total_amount);
 
     db.close();
   });

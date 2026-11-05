@@ -240,6 +240,17 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         createdAt: finalDetail.created_at,
         updatedAt: finalDetail.updated_at,
       }).catch(() => {});
+
+      // Backfill and reconcile local bill group associations in localDb so local copies reflect the group link
+      try {
+        for (const b of mergedBills) {
+          const matchingLocal = localBills.find(lb => lb.id === b.id);
+          if (matchingLocal && matchingLocal.groupId !== id) {
+            matchingLocal.groupId = id;
+            await localDb.saveBill(matchingLocal).catch(() => {});
+          }
+        }
+      } catch {}
     }
 
     // Update currentGroup and keep groups list in sync

@@ -745,6 +745,10 @@ export class SqliteAdapter implements DatabaseAdapter {
         insertCharge.run(gc.id, billId, gc.name, gc.type, Number(gc.amount || 0));
       }
 
+      if (targetGroupId) {
+        this.db.prepare('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(targetGroupId);
+      }
+
       this.db.exec('COMMIT;');
     } catch (err) {
       this.db.exec('ROLLBACK;');
@@ -753,15 +757,16 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async deleteBill(billId: string, userId?: string | null): Promise<boolean> {
-    if (userId) {
-      const bill = this.db.prepare('SELECT owner_id FROM bills WHERE id = ?').get(billId) as BillRow | undefined;
-      if (bill && bill.owner_id && bill.owner_id !== userId) {
-        throw new Error('Forbidden: Only the bill owner can delete this bill');
-      }
+    const bill = this.db.prepare('SELECT owner_id, group_id FROM bills WHERE id = ?').get(billId) as BillRow | undefined;
+    if (userId && bill && bill.owner_id && bill.owner_id !== userId) {
+      throw new Error('Forbidden: Only the bill owner can delete this bill');
     }
     this.db.exec('BEGIN TRANSACTION;');
     try {
       const res = this.db.prepare('DELETE FROM bills WHERE id = ?').run(billId);
+      if (bill?.group_id) {
+        this.db.prepare('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(bill.group_id);
+      }
       this.db.exec('COMMIT;');
       return Number(res.changes || 0) > 0;
     } catch (err) {
@@ -1168,7 +1173,7 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     const placeholders = groupsRaw.map(() => '?').join(',');
     const billStats = this.db.prepare(`
-      SELECT b.id, b.group_id, b.name,
+      SELECT b.id, b.group_id, b.name, b.updated_at,
         (SELECT COALESCE(SUM(price * quantity), 0) FROM items WHERE bill_id = b.id) as subtotal,
         (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'fixed') as fixed_extras,
         (SELECT COALESCE(SUM(amount), 0) FROM global_charges WHERE bill_id = b.id AND type = 'percent') as percent_extras,
@@ -1180,7 +1185,7 @@ export class SqliteAdapter implements DatabaseAdapter {
           OR b.owner_id = ?
           OR (b.is_shared = 1 AND b.revoked_at IS NULL)
         )
-    `).all(...groupsRaw.map(g => g.id), userId || 'none', userId || 'none') as unknown as Array<{ id: string; group_id: string; name?: string | null; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
+    `).all(...groupsRaw.map(g => g.id), userId || 'none', userId || 'none') as unknown as Array<{ id: string; group_id: string; name?: string | null; updated_at: string; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
 
     const statsByGroup = new Map<string, {
       totalAmount: number;
@@ -1190,12 +1195,13 @@ export class SqliteAdapter implements DatabaseAdapter {
       billAmounts: Record<string, number>;
       billItemCounts: Record<string, number>;
       billNames: Record<string, string>;
+      billUpdatedAt: Record<string, string>;
     }>();
     for (const bs of billStats) {
       const gid = String(bs.group_id);
       let curr = statsByGroup.get(gid);
       if (!curr) {
-        curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {}, billNames: {} };
+        curr = { totalAmount: 0, totalItems: 0, billsCount: 0, billIds: [], billAmounts: {}, billItemCounts: {}, billNames: {}, billUpdatedAt: {} };
         statsByGroup.set(gid, curr);
       }
       const billTotal = Math.round(Number(bs.subtotal || 0) * (1 + Number(bs.percent_extras || 0) / 100) + Number(bs.fixed_extras || 0));
@@ -1207,6 +1213,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       curr.billAmounts[bid] = billTotal;
       curr.billItemCounts[bid] = Number(bs.item_count || 0);
       curr.billNames[bid] = String(bs.name || '');
+      curr.billUpdatedAt[bid] = normalizeSqliteTimestamp(bs.updated_at);
     }
 
     return groupsRaw.map(g => {
@@ -1218,6 +1225,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         billAmounts: {},
         billItemCounts: {},
         billNames: {},
+        billUpdatedAt: {},
       };
       return {
         id: String(g.id),
@@ -1236,6 +1244,7 @@ export class SqliteAdapter implements DatabaseAdapter {
         bill_amounts: stats.billAmounts,
         bill_item_counts: stats.billItemCounts,
         bill_names: stats.billNames,
+        bill_updated_at: stats.billUpdatedAt,
         created_at: normalizeSqliteTimestamp(g.created_at),
         updated_at: normalizeSqliteTimestamp(g.updated_at),
         participants: Array.isArray((g as any).participants)
@@ -1382,11 +1391,12 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async linkBillToGroup(billId: string, groupId: string | null, userId?: string | null): Promise<void> {
-    const existing = this.db.prepare('SELECT owner_id FROM bills WHERE id = ?').get(billId) as { owner_id: string | null } | undefined;
+    const existing = this.db.prepare('SELECT owner_id, group_id FROM bills WHERE id = ?').get(billId) as { owner_id: string | null; group_id: string | null } | undefined;
     if (!existing) throw new Error('Bill not found');
     if (userId && existing.owner_id && existing.owner_id !== userId) {
       throw new Error('Forbidden: Only the bill owner can link or unlink this bill');
     }
+    const prevGroupId = existing.group_id;
 
     if (groupId) {
       const group = this.db.prepare('SELECT id, visibility FROM bill_groups WHERE id = ?').get(groupId) as any;
@@ -1397,10 +1407,14 @@ export class SqliteAdapter implements DatabaseAdapter {
     try {
       this.db.prepare('UPDATE bills SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(groupId, billId);
       if (groupId) {
+        this.db.prepare('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(groupId);
         const group = this.db.prepare('SELECT visibility FROM bill_groups WHERE id = ?').get(groupId) as any;
         if (group && (group.visibility === 'public' || !group.visibility || group.visibility !== 'restricted')) {
           this.db.prepare("UPDATE bills SET visibility = 'public' WHERE id = ? AND is_shared = 1 AND revoked_at IS NULL").run(billId);
         }
+      }
+      if (prevGroupId && prevGroupId !== groupId) {
+        this.db.prepare('UPDATE bill_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(prevGroupId);
       }
       this.db.exec('COMMIT;');
     } catch (err) {

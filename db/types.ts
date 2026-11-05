@@ -125,6 +125,7 @@ export interface BillGroupSummary {
   bill_amounts?: Record<string, number>;
   bill_item_counts?: Record<string, number>;
   bill_names?: Record<string, string>;
+  bill_updated_at?: Record<string, string>;
 }
 
 export interface SearchResults {

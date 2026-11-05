@@ -223,7 +223,8 @@ export function mergeBillsForGroup(
   for (const sb of safeServerBills) {
     const localRecord = localBillById.get(sb.id);
     if (localRecord && storageMode !== 'cloud') {
-      const localGroupId = localRecord.groupId !== undefined ? localRecord.groupId : (localRecord as any).group_id;
+      const rawLocalGroupId = localRecord.groupId !== undefined ? localRecord.groupId : (localRecord as any).group_id;
+      const localGroupId = (rawLocalGroupId && (localRecord as any).group_id !== undefined) ? rawLocalGroupId : (localRecord.groupId || null);
       const localTime = parseTimestampMs(localRecord.updatedAt);
       const serverTime = parseTimestampMs(sb.updated_at);
       if (localGroupId !== groupId && localTime > serverTime) {
@@ -445,8 +446,8 @@ export function aggregateGroupSummaries(
           const rawLocalGroupId = localRecord.groupId !== undefined ? localRecord.groupId : (localRecord as any).group_id;
           const localGroupId = (rawLocalGroupId && localGroupRemap.get(rawLocalGroupId)) || rawLocalGroupId;
           const localTime = parseTimestampMs(localRecord.updatedAt);
-          const serverGroupTime = parseTimestampMs(sg.updated_at);
-          if (localGroupId !== sg.id && localTime > serverGroupTime) {
+          const serverBillTime = parseTimestampMs(sg.bill_updated_at?.[bid] || sg.updated_at);
+          if (localGroupId !== sg.id && localTime > serverBillTime) {
             continue;
           }
         }
@@ -513,16 +514,19 @@ export function aggregateGroupSummaries(
         } else {
           // Bill exists on both server and local.
           const localTime = parseTimestampMs(lb.updatedAt);
-          const serverGroupTime = parseTimestampMs(sg.updated_at);
-          const isLocalPreferred = storageMode === 'cloud'
-            ? (existing.totalAmount === 0 && totals.totalAmount > 0 && localTime >= serverGroupTime)
-            : (
-              localTime > serverGroupTime ||
-              lb.sharingStatus === 'uploading' ||
-              lb.sharingStatus === 'sync_error' ||
-              (storageMode === 'local' && lb.sharingStatus === 'local' && localTime >= serverGroupTime) ||
-              (existing.totalAmount === 0 && totals.totalAmount > 0 && localTime >= serverGroupTime)
-            );
+          const serverBillTime = parseTimestampMs(sg.bill_updated_at?.[lb.id] || sg.updated_at);
+          const hasLocalData = (lb.items && lb.items.length > 0) || totals.totalAmount > 0;
+          const isLocalPreferred = hasLocalData && (
+            storageMode === 'cloud'
+              ? (existing.totalAmount === 0 && totals.totalAmount > 0 && localTime >= serverBillTime)
+              : (
+                localTime > serverBillTime ||
+                lb.sharingStatus === 'uploading' ||
+                lb.sharingStatus === 'sync_error' ||
+                (existing.totalAmount === 0 && totals.totalAmount > 0) ||
+                (storageMode === 'local' && lb.sharingStatus === 'local' && localTime >= serverBillTime)
+              )
+          );
 
           if (isLocalPreferred) {
             billMap.set(lb.id, {
@@ -544,7 +548,9 @@ export function aggregateGroupSummaries(
       ? sg.total_bills + localOnlyBillsCount
       : billMap.size;
 
-    const finalTotalAmount = calculatedTotalAmount;
+    const finalTotalAmount = (billMap.size === (sg.bill_ids?.length || 0) && localOnlyBillsCount === 0 && sg.total_amount > 0 && (calculatedTotalAmount === 0 || (calculatedTotalAmount !== sg.total_amount && !safeLocalBills.some(b => b.sharingStatus === 'uploading' || Boolean(b.syncError)))))
+      ? sg.total_amount
+      : calculatedTotalAmount;
     const finalTotalBills = calculatedTotalBills;
     const finalTotalItems = calculatedTotalItems;
 
