@@ -7,18 +7,20 @@ import { cn } from '@/lib/utils';
 /**
  * Reads and optimizes an image file into a Base64 data URL string.
  * Automatically scales down large photos (e.g. from mobile cameras)
- * to max 1024x1024 to keep payload lightweight (<150KB) and prevent HTTP 413 errors.
+ * to max 800x800 to keep payload lightweight (<100KB) and prevent HTTP 413 errors.
  */
-export function readImageAsDataUrl(file: File, maxDimension = 1024, quality = 0.85): Promise<string> {
+export function readImageAsDataUrl(file: File, maxDimension = 800, quality = 0.82): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file) {
       reject(new Error('No file provided'));
       return;
     }
 
-    // Only process images
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Selected file is not an image'));
+    // Process images by MIME type or extension (important for iOS Safari HEIC/HEIF or empty type)
+    const isImageMime = file.type ? file.type.startsWith('image/') : false;
+    const isImageExt = Boolean(file.name && /\.(png|jpe?g|webp|gif|heic|heif|bmp|svg|tiff?)$/i.test(file.name));
+    if (!isImageMime && !isImageExt && file.type !== '') {
+      reject(new Error('Selected file is not a supported image'));
       return;
     }
 
@@ -87,6 +89,7 @@ export function readImageAsDataUrl(file: File, maxDimension = 1024, quality = 0.
 
 export interface QrUploadButtonProps {
   onImageSelected: (dataUrl: string, file: File) => void;
+  onError?: (error: Error) => void;
   disabled?: boolean;
   label?: string;
   className?: string;
@@ -96,15 +99,16 @@ export interface QrUploadButtonProps {
 
 /**
  * Reusable QR code image uploader component with file-to-dataURL reading.
- * Shared between BillConfiguration and GroupConfiguration.
+ * Uses native <label> trigger for 100% reliable mobile browser file picking without click collisions.
  */
 export function QrUploadButton({
   onImageSelected,
+  onError,
   disabled = false,
   label = 'Upload QR',
   className,
   variant = 'compact',
-  accept = 'image/*',
+  accept = 'image/*,.png,.jpg,.jpeg,.webp,.heic,.heif',
 }: QrUploadButtonProps) {
   const [isReading, setIsReading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +123,9 @@ export function QrUploadButton({
       onImageSelected(dataUrl, file);
     } catch (err) {
       console.warn('Failed to parse uploaded QR image:', err);
+      if (onError && err instanceof Error) {
+        onError(err);
+      }
     } finally {
       setIsReading(false);
       // Reset input value so re-uploading the same file still fires onChange
@@ -130,23 +137,9 @@ export function QrUploadButton({
 
   if (variant === 'dropzone') {
     return (
-      <div
-        role="button"
-        tabIndex={disabled || isReading ? -1 : 0}
-        onClick={() => {
-          if (disabled || isReading) return;
-          fileInputRef.current?.click();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            if (!disabled && !isReading) {
-              fileInputRef.current?.click();
-            }
-          }
-        }}
+      <label
         className={cn(
-          "relative flex flex-col items-center justify-center py-6 px-4 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 hover:bg-primary/5 cursor-pointer transition-colors text-center group overflow-hidden touch-manipulation",
+          "relative flex flex-col items-center justify-center py-6 px-4 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 hover:bg-primary/5 cursor-pointer transition-colors text-center group overflow-hidden touch-manipulation select-none",
           (disabled || isReading) && "opacity-60 cursor-not-allowed pointer-events-none",
           className
         )}
@@ -156,52 +149,30 @@ export function QrUploadButton({
           type="file"
           accept={accept}
           disabled={disabled || isReading}
-          tabIndex={-1}
-          aria-label={label}
-          title=""
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 file:hidden"
-          style={{ fontSize: '100px' }}
+          className="sr-only"
           onChange={handleFileChange}
-          onClick={(e) => {
-            // Let the native file dialog trigger without bubbling to parent form or container
-            e.stopPropagation();
-          }}
         />
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-2 group-hover:scale-105 transition-transform pointer-events-none">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-2 group-hover:scale-105 transition-transform">
           {isReading ? (
             <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           ) : (
             <CloudUpload className="w-5 h-5" />
           )}
         </div>
-        <span className="text-xs font-bold text-foreground pointer-events-none">
+        <span className="text-xs font-bold text-foreground">
           {isReading ? 'Optimizing image...' : label}
         </span>
-        <span className="text-[10px] text-muted-foreground mt-0.5 pointer-events-none">
+        <span className="text-[10px] text-muted-foreground mt-0.5">
           PNG, JPG, WebP screenshot or photo
         </span>
-      </div>
+      </label>
     );
   }
 
   return (
-    <div
-      role="button"
-      tabIndex={disabled || isReading ? -1 : 0}
-      onClick={() => {
-        if (disabled || isReading) return;
-        fileInputRef.current?.click();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          if (!disabled && !isReading) {
-            fileInputRef.current?.click();
-          }
-        }
-      }}
+    <label
       className={cn(
-        "relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 border border-border/80 text-xs font-semibold text-foreground cursor-pointer transition-colors active:scale-95 overflow-hidden touch-manipulation",
+        "relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 border border-border/80 text-xs font-semibold text-foreground cursor-pointer transition-colors active:scale-95 overflow-hidden touch-manipulation select-none",
         (disabled || isReading) && "opacity-60 cursor-not-allowed pointer-events-none",
         className
       )}
@@ -211,22 +182,15 @@ export function QrUploadButton({
         type="file"
         accept={accept}
         disabled={disabled || isReading}
-        tabIndex={-1}
-        aria-label={label}
-        title=""
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 file:hidden"
-        style={{ fontSize: '100px' }}
+        className="sr-only"
         onChange={handleFileChange}
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
       />
       {isReading ? (
-        <div className="w-3 h-3 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin pointer-events-none" />
+        <div className="w-3 h-3 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin" />
       ) : (
-        <CloudUpload className="w-3.5 h-3.5 text-primary pointer-events-none" />
+        <CloudUpload className="w-3.5 h-3.5 text-primary" />
       )}
-      <span className="pointer-events-none">{isReading ? 'Optimizing...' : label}</span>
-    </div>
+      <span>{isReading ? 'Optimizing...' : label}</span>
+    </label>
   );
 }

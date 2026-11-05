@@ -586,7 +586,11 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                   <QrUploadButton
                     variant="dropzone"
                     label="Click to upload QR code"
-                    onImageSelected={(dataUrl) => setNewQrImage(dataUrl)}
+                    onImageSelected={(dataUrl) => {
+                      setNewQrImage(dataUrl);
+                      setUploadError('');
+                    }}
+                    onError={(err) => setUploadError(err.message)}
                   />
                 )}
               </div>
@@ -664,13 +668,13 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
               )}
             </div>
 
-            <DialogFooter className="pt-3 border-t border-border/60 shrink-0 flex flex-row items-center justify-end gap-2 w-full">
+            <DialogFooter className="pt-3 border-t border-border/60 shrink-0 grid grid-cols-2 gap-2 w-full sm:flex sm:flex-row sm:justify-end sm:gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setIsUploadQrModalOpen(false)}
-                className="h-9 px-4 rounded-xl text-xs font-bold flex-1 sm:flex-initial"
+                className="w-full sm:w-auto h-9 px-4 rounded-xl text-xs font-bold"
               >
                 Cancel
               </Button>
@@ -678,7 +682,7 @@ export function GroupConfiguration({ group, onDeleteGroup }: GroupConfigurationP
                 type="submit"
                 size="sm"
                 disabled={!newQrImage || !newPayerName.trim() || isUploadingQr}
-                className="h-9 px-4 rounded-xl text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 flex-1 sm:flex-initial shadow-sm"
+                className="w-full sm:w-auto h-9 px-4 rounded-xl text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
               >
                 <CloudUpload className="w-3.5 h-3.5" />
                 <span>{isUploadingQr ? 'Saving QR...' : 'Save & Publish QR'}</span>
