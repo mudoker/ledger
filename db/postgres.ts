@@ -114,7 +114,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     // Fast path: check if schema and latest migrations already exist to avoid 25+ heavy DDL statements on cold start
     let schemaReady = false;
     try {
-      await this.pool.query('SELECT 1 FROM device_subscriptions LIMIT 0');
+      await this.pool.query('SELECT payment_qrs FROM bill_groups LIMIT 0');
       schemaReady = true;
     } catch {
       schemaReady = false;
@@ -985,7 +985,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         SELECT id, name, location, currency, host_id, is_shared, created_at, updated_at
         FROM bills
         WHERE group_id = $1
-          ${isOwner ? '' : 'AND is_shared = 1 AND revoked_at IS NULL'}
+          ${isOwner ? '' : 'AND (is_shared IS NULL OR is_shared = 1) AND revoked_at IS NULL'}
         ORDER BY created_at DESC, id ASC
       `, [id]);
 
@@ -1211,10 +1211,11 @@ export class PostgresAdapter implements DatabaseAdapter {
           (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
         FROM bills b
         WHERE b.group_id = ANY($1)
+          AND b.revoked_at IS NULL
           AND (
             EXISTS (SELECT 1 FROM bill_groups bg WHERE bg.id = b.group_id AND bg.owner_id = $2)
             OR b.owner_id = $2
-            OR (b.is_shared = 1 AND b.revoked_at IS NULL)
+            OR (b.is_shared IS NULL OR b.is_shared = 1)
           )
       `, [groupIds, userId || 'none']);
 

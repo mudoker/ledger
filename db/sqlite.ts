@@ -950,7 +950,7 @@ export class SqliteAdapter implements DatabaseAdapter {
       SELECT id, name, location, currency, host_id, is_shared, created_at, updated_at
       FROM bills
       WHERE group_id = ?
-        ${isOwner ? '' : 'AND is_shared = 1 AND revoked_at IS NULL'}
+        ${isOwner ? '' : 'AND (is_shared IS NULL OR is_shared = 1) AND revoked_at IS NULL'}
       ORDER BY created_at DESC, id ASC
     `).all(id) as unknown as Array<{
       id: string;
@@ -1180,10 +1180,11 @@ export class SqliteAdapter implements DatabaseAdapter {
         (SELECT COUNT(*) FROM items WHERE bill_id = b.id) as item_count
       FROM bills b
       WHERE b.group_id IN (${placeholders})
+        AND b.revoked_at IS NULL
         AND (
           EXISTS (SELECT 1 FROM bill_groups bg WHERE bg.id = b.group_id AND bg.owner_id = ?)
           OR b.owner_id = ?
-          OR (b.is_shared = 1 AND b.revoked_at IS NULL)
+          OR (b.is_shared IS NULL OR b.is_shared = 1)
         )
     `).all(...groupsRaw.map(g => g.id), userId || 'none', userId || 'none') as unknown as Array<{ id: string; group_id: string; name?: string | null; updated_at: string; subtotal: number; fixed_extras: number; percent_extras: number; item_count: number }>;
 
