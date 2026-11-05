@@ -32,6 +32,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { PullToRefresh } from "@/components/shared/pull-to-refresh";
 import { fetchVndRates } from "@/lib/currency";
+import { useAppSettingsStore } from "@/store/useAppSettingsStore";
 
 const GroupOverview = dynamic(
   () => import("@/components/groups/group-overview").then((m) => m.GroupOverview),
@@ -76,6 +77,7 @@ function App() {
     isHydrated,
     loadState,
     saveToDb,
+    saveToLocal,
     fetchBill,
     people,
     items,
@@ -163,16 +165,30 @@ function App() {
   const billGroupId = useBillStore((state) => state.groupId);
   const billCurrency = useBillStore((state) => state.currency);
 
+  // 1. Local-first write: Immediately persist local changes to IndexedDB
   useEffect(() => {
     if (!isHydrated || isReadOnly) return;
     if (view !== 'editor' && view !== 'summary' && view !== 'settings') return;
+    if (people.length === 0 && items.length === 0) return;
 
-    // Only auto-save if there's actual data
+    const storageMode = useAppSettingsStore.getState().storageMode;
+    if (storageMode !== 'cloud') {
+      const timer = setTimeout(() => {
+        saveToLocal().catch(() => {});
+      }, 150); // Fast local write so localDb is always authoritative first
+      return () => clearTimeout(timer);
+    }
+  }, [people, items, globalCharges, hostId, billName, location, billCurrency, billGroupId, isHydrated, isReadOnly, saveToLocal]);
+
+  // 2. Cloud synchronization: Debounced auto-sync to cloud in hybrid/cloud mode
+  useEffect(() => {
+    if (!isHydrated || isReadOnly) return;
+    if (view !== 'editor' && view !== 'summary' && view !== 'settings') return;
     if (people.length === 0 && items.length === 0) return;
 
     const timer = setTimeout(() => {
       saveToDb();
-    }, 2000); // 2 second delay for debounced auto-save
+    }, 1000); // 1 second debounced auto-sync to cloud
 
     return () => clearTimeout(timer);
   }, [people, items, globalCharges, hostId, billName, location, billCurrency, billGroupId, isHydrated, isReadOnly, saveToDb]);
@@ -790,52 +806,54 @@ function App() {
 
               {/* Main Content - Flex Grow */}
               <main className="flex-1 w-full mx-auto max-w-full md:max-w-[94%] 2xl:max-w-[2000px] px-1 sm:px-6 md:px-8 lg:px-10 md:pt-0 overflow-hidden relative flex flex-col min-h-0">
-                {/* Desktop Grid Layout */}
-                <div className="hidden md:flex flex-1 min-h-0 h-full overflow-hidden">
-                  {view === 'editor' && (
-                    <ResizableSplit
-                      left={<PeopleSection />}
-                      right={<ItemsSection />}
-                      defaultLeftPercent={35}
-                      minLeftPercent={22}
-                      maxLeftPercent={50}
-                    />
-                  )}
-                  {view === 'summary' && (
-                    <div className="h-full overflow-hidden max-w-5xl xl:max-w-6xl mx-auto w-full flex flex-col min-h-0">
-                      <SummarySection />
-                    </div>
-                  )}
-                  {view === 'settings' && (
-                    <div className="h-full overflow-hidden max-w-4xl mx-auto w-full flex flex-col min-h-0">
-                      <BillConfiguration />
-                    </div>
-                  )}
-                </div>
+                <PullToRefresh onRefresh={handleRefreshActiveBill} className="flex-1 flex flex-col min-h-0">
+                  {/* Desktop Grid Layout */}
+                  <div className="hidden md:flex flex-1 min-h-0 h-full overflow-hidden">
+                    {view === 'editor' && (
+                      <ResizableSplit
+                        left={<PeopleSection />}
+                        right={<ItemsSection />}
+                        defaultLeftPercent={35}
+                        minLeftPercent={22}
+                        maxLeftPercent={50}
+                      />
+                    )}
+                    {view === 'summary' && (
+                      <div className="h-full overflow-hidden max-w-5xl xl:max-w-6xl mx-auto w-full flex flex-col min-h-0">
+                        <SummarySection />
+                      </div>
+                    )}
+                    {view === 'settings' && (
+                      <div className="h-full overflow-hidden max-w-4xl mx-auto w-full flex flex-col min-h-0">
+                        <BillConfiguration />
+                      </div>
+                    )}
+                  </div>
 
-                {/* Mobile Tab Layout - Native scroll with no touch-interception wrappers */}
-                <div className="md:hidden flex-1 relative overflow-hidden flex flex-col pb-0 min-h-0">
-                  {mobileTab === 'people' && (
-                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                      <PeopleSection />
-                    </div>
-                  )}
-                  {mobileTab === 'items' && (
-                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                      <ItemsSection />
-                    </div>
-                  )}
-                  {mobileTab === 'summary' && (
-                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                      <SummarySection />
-                    </div>
-                  )}
-                  {mobileTab === 'settings' && (
-                    <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                      <BillConfiguration />
-                    </div>
-                  )}
-                </div>
+                  {/* Mobile Tab Layout - Native scroll with no touch-interception wrappers */}
+                  <div className="md:hidden flex-1 relative overflow-hidden flex flex-col pb-0 min-h-0">
+                    {mobileTab === 'people' && (
+                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                        <PeopleSection />
+                      </div>
+                    )}
+                    {mobileTab === 'items' && (
+                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                        <ItemsSection />
+                      </div>
+                    )}
+                    {mobileTab === 'summary' && (
+                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                        <SummarySection />
+                      </div>
+                    )}
+                    {mobileTab === 'settings' && (
+                      <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                        <BillConfiguration />
+                      </div>
+                    )}
+                  </div>
+                </PullToRefresh>
               </main>
 
               {/* Mobile Bottom Nav */}

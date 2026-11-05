@@ -1308,6 +1308,7 @@ export const useBillStore = create<BillState>()(
                 const pendingDeleteIds = new Set<string>();
                 const pendingUpdateIds = new Set<string>();
                 const pendingRevokeIds = new Set<string>();
+                let localBills: LocalBillRecord[] = [];
                 try {
                     const localDb = getLocalDb();
                     const pendingOps = await localDb.getPendingOps();
@@ -1321,7 +1322,7 @@ export const useBillStore = create<BillState>()(
                         }
                     }
 
-                    const localBills = await localDb.listBills();
+                    localBills = await localDb.listBills();
                     for (const b of localBills) {
                         if (pendingDeleteIds.has(b.id)) continue;
                         const total = calculateBillTotals(b).totalAmount;
@@ -1428,6 +1429,22 @@ export const useBillStore = create<BillState>()(
                                     visibility: sb.visibility && sb.visibility !== 'local' ? sb.visibility : 'restricted',
                                     shareToken: sb.shareToken || null,
                                 });
+                            }
+                        }
+
+                        // Reconcile cloud deletions: Prune any locally-cached bill that was deleted on the server
+                        if (isAutoSyncMode && serverData.length > 0) {
+                            const localDb = getLocalDb();
+                            for (const lb of localBills) {
+                                if (
+                                    !serverIdSet.has(lb.id) &&
+                                    !pendingDeleteIds.has(lb.id) &&
+                                    !pendingUpdateIds.has(lb.id) &&
+                                    lb.sharingStatus === 'shared'
+                                ) {
+                                    historyMap.delete(lb.id);
+                                    localDb.deleteBill(lb.id).catch(() => {});
+                                }
                             }
                         }
                     }
