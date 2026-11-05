@@ -7,7 +7,7 @@ import { useAuthStore } from './useAuthStore';
 import { getLocalDb } from '@/lib/local-db';
 import { syncManager, syncCoordinator } from '@/lib/local-db/sync-manager';
 import type { BillSharingStatus, BillVisibility, LocalBillRecord } from '@/lib/local-db/types';
-import { calculateBillTotals } from '@/lib/common-data-model';
+import { calculateBillTotals, parseTimestampMs } from '@/lib/common-data-model';
 
 export interface Person {
     id: string;
@@ -1239,8 +1239,8 @@ export const useBillStore = create<BillState>()(
                     }
 
                     const result = await response.json();
-                    const serverTime = new Date(result.updated_at).getTime();
-                    const localTime = localBill ? new Date(localBill.updatedAt).getTime() : 0;
+                    const serverTime = parseTimestampMs(result.updated_at);
+                    const localTime = localBill ? parseTimestampMs(localBill.updatedAt) : 0;
 
                     // Check if local has pending unsynced operations
                     let hasPendingSync = false;
@@ -1279,12 +1279,53 @@ export const useBillStore = create<BillState>()(
                             shareToken: result.shareToken || null,
                         });
 
-                        // Save downloaded bill to local storage in background (only when not in cloud-only mode)
+                        // Save downloaded authoritative bill snapshot directly to local storage preserving server updated_at
                         if (!isShare && currentMode !== 'cloud') {
-                            get().saveToLocal().catch(() => {});
+                            const localDb = getLocalDb();
+                            const serverSnapshot: LocalBillRecord = {
+                                id: result.id,
+                                name: result.data?.name || result.name || '',
+                                location: result.data?.location || result.location || null,
+                                currency: result.data?.currency || result.currency || 'VND',
+                                hostId: result.data?.hostId || result.host_id || null,
+                                qrCode: result.data?.qrCode || result.qr_code || null,
+                                groupId: result.group_id || result.data?.groupId || null,
+                                groupName: result.group_name || result.data?.groupName || null,
+                                ownerId: result.owner_id || useAuthStore.getState().user?.id || null,
+                                people: (result.data?.people || []).map((p: any) => ({
+                                    id: p.id,
+                                    name: p.name,
+                                    sponsorAmount: p.sponsorAmount ?? 0,
+                                    paidAmount: p.paidAmount ?? 0,
+                                    userId: p.userId || null,
+                                    email: p.email || null,
+                                })),
+                                items: (result.data?.items || []).map((it: any) => ({
+                                    id: it.id,
+                                    name: it.name,
+                                    price: Number(it.price || 0),
+                                    quantity: Number(it.quantity || 1),
+                                    assignments: it.assignments || {},
+                                })),
+                                globalCharges: (result.data?.globalCharges || []).map((gc: any) => ({
+                                    id: gc.id,
+                                    name: gc.name,
+                                    type: gc.type as any,
+                                    amount: Number(gc.amount || 0),
+                                })),
+                                sharingStatus: resolvedSharing,
+                                visibility: resolvedVis,
+                                shareToken: result.shareToken || null,
+                                lastSyncedAt: result.updated_at,
+                                syncError: null,
+                                createdAt: result.created_at || localBill?.createdAt || new Date().toISOString(),
+                                updatedAt: result.updated_at,
+                            };
+                            await localDb.saveBill(serverSnapshot).catch(() => {});
                         }
-                    } else if (hasPendingSync) {
+                    } else if (hasPendingSync || localTime > serverTime) {
                         // Local has newer unsynced edits: trigger background push to sync up to cloud!
+                        get().saveToDb().catch(() => {});
                         syncManager.processPendingOperations().catch(() => {});
                     }
                 } catch (error) {
@@ -1376,13 +1417,30 @@ export const useBillStore = create<BillState>()(
 
                             const existing = historyMap.get(sb.id);
                             if (existing) {
-                                const localTime = new Date(existing.updated_at).getTime();
-                                const serverTime = new Date(sb.updated_at).getTime();
+                                const localTime = parseTimestampMs(existing.updated_at);
+                                const serverTime = parseTimestampMs(sb.updated_at);
                                 const hasPendingUpdate = pendingUpdateIds.has(sb.id) || syncCoordinator.isSyncing(sb.id);
                                 const isPendingRevoke = pendingRevokeIds.has(sb.id) || existing.sharingStatus === 'revocation_pending';
                                 const isLocalNewer = storageMode === 'cloud'
                                     ? hasPendingUpdate
                                     : (hasPendingUpdate || localTime > serverTime);
+
+                                if (storageMode !== 'cloud' && !hasPendingUpdate && serverTime >= localTime) {
+                                    const localDb = getLocalDb();
+                                    const rawLocal = await localDb.getBill(sb.id).catch(() => null);
+                                    if (rawLocal && parseTimestampMs(rawLocal.updatedAt) < serverTime) {
+                                        rawLocal.name = sb.name || rawLocal.name;
+                                        rawLocal.location = sb.location !== undefined ? sb.location : rawLocal.location;
+                                        rawLocal.currency = sb.currency || rawLocal.currency;
+                                        rawLocal.groupId = sb.group_id !== undefined ? sb.group_id : rawLocal.groupId;
+                                        rawLocal.groupName = sb.group_name !== undefined ? sb.group_name : rawLocal.groupName;
+                                        rawLocal.updatedAt = sb.updated_at;
+                                        rawLocal.lastSyncedAt = sb.updated_at;
+                                        await localDb.saveBill(rawLocal).catch(() => {});
+                                    }
+                                } else if (hasPendingUpdate) {
+                                    syncManager.processPendingOperations().catch(() => {});
+                                }
 
                                 const mergedVisRaw = isLocalNewer
                                     ? (existing.visibility && existing.visibility !== 'local' ? existing.visibility : sb.visibility)
